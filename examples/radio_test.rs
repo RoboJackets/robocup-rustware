@@ -178,9 +178,9 @@ mod app {
                     match MessageType::from(buffer[0]) {
                         MessageType::ControlCommand => {
                             let control_command_length = <ControlCommand as PackedStruct>::ByteArray::len();
-                            let _control_command = ControlCommand::unpack_from_slice(&buffer[1..(1+control_command_length)]);
+                            let control_command = ControlCommand::unpack_from_slice(&buffer[1..(1+control_command_length)]);
                             
-                            // TODO: Do Something with the Message
+                            log::info!("Received Control Command: {:?}", control_command);
 
                             // Respond with a robot status response
                             let status = RobotStatusMessage::new(
@@ -217,9 +217,9 @@ mod app {
                         },
                         MessageType::ControlMessage => {
                             let control_message_length = <ControlMessage as PackedStruct>::ByteArray::len();
-                            let _control_message = ControlCommand::unpack_from_slice(&buffer[1..(1+control_message_length)]);
+                            let control_message = ControlCommand::unpack_from_slice(&buffer[1..(1+control_message_length)]);
                             
-                            // TODO: Do Something with the Message
+                            log::info!("Received Control Message: {:?}", control_message);
 
                             let status = RobotStatusMessage::new(
                                 Team::Blue,
