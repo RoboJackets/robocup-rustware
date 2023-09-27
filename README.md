@@ -99,3 +99,18 @@ The device driver documentation can be found [here](drivers/drivers.md)
 ## Examples Documentation
 
 The examples / sanity checks documentation can be found [here](examples/examples.md)
+
+## Example Device Drivers
+
+To give a little bit of background as to what a good device driver should kind of look like I'm going to link a few examples below:
+
+* [OLED Display Driver](https://github.com/jamwaffles/ssd1306/tree/master) <- a bit complex but arguably Rust's most used driver
+* [W25q32jv Flash Driver](https://github.com/tweedegolf/w25q32jv/tree/main) <- Ok spi flash driver
+* [Radio Driver](https://github.com/astro/embedded-nrf24l01) <- Semi-working well written radio driver
+
+## Useful Links
+
+### Background
+
+* [RTIC Book](https://rtic.rs/2/book/en/) <- super useful guide for RTIC
+* [Embedded Rust Book](https://docs.rust-embedded.org/book/) <- Useful guide to embedded development in rust
