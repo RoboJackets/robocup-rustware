@@ -18,6 +18,7 @@ mod app {
     use core::mem::MaybeUninit;
 
     use sx127::RadioMode;
+    use teensy4_bsp::hal::gpt::Gpt2;
     use teensy4_pins::common::*;
 
     use teensy4_bsp as bsp;
@@ -39,7 +40,7 @@ mod app {
     use robojackets_robocup_rtp::robot_status_message::RobotStatusMessage;
 
     const SYST_MONO_FACTOR: u32 = 10;
-    const DELAY_MS: u32 = SYST_MONO_FACTOR * 2000;
+    const DELAY_MS: u32 = SYST_MONO_FACTOR * 10_000;
     const FREQUENCY: i64 = 915;
     const GPT1_FREQUENCY: u32 = 1_000;
     const GPT1_CLOCK_SOURCE: ClockSource = ClockSource::HighFrequencyReferenceClock;
@@ -48,20 +49,20 @@ mod app {
     const HEAP_SIZE: usize = 1024;
     static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
 
-    type Led = gpio::Output<P7>;
     type Delay = Blocking<Gpt1, GPT1_FREQUENCY>;
+    type BlockingDelay = Blocking<Gpt2, GPT1_FREQUENCY>;
     type Interrupt = gpio::Input<P1>;
     type Radio = sx127::LoRa<board::Lpspi4, gpio::Output<P8>, gpio::Output<P9>, Delay>;
 
     #[local]
     struct Local {
-        led: Led,
         rx_int: Interrupt,
     }
 
     #[shared]
     struct Shared {
         radio: Radio,
+        blocking_delay: BlockingDelay,
     }
 
     #[init]
@@ -75,6 +76,7 @@ mod app {
             usb,
             lpspi4,
             mut gpt1,
+            mut gpt2,
             ..
         } = board::t41(ctx.device);
 
@@ -91,12 +93,14 @@ mod app {
         gpt1.set_clock_source(GPT1_CLOCK_SOURCE);
         let delay = Blocking::<_, GPT1_FREQUENCY>::from_gpt(gpt1);
 
+        gpt2.disable();
+        gpt2.set_divider(GPT1_DIVIDER);
+        gpt2.set_clock_source(GPT1_CLOCK_SOURCE);
+        let blocking_delay = Blocking::<_, GPT1_FREQUENCY>::from_gpt(gpt2);
+
         // RX DONE Interrupt setup
         let rx_int = gpio1.input(pins.p1);
         gpio1.set_interrupt(&rx_int, Some(Trigger::RisingEdge));
-
-        // init led from gpio2 pin 7
-        let led = gpio2.output(pins.p7);
 
         // initialize spi
         let spi = board::lpspi(
@@ -132,9 +136,9 @@ mod app {
         (
             Shared {
                 radio,
+                blocking_delay,
             },
             Local {
-                led,
                 rx_int
             },
         )
@@ -165,14 +169,14 @@ mod app {
                 Ok(_) => log::info!("Radio Listening..."),
                 Err(_) => panic!("Couldn't set radio to listening"),
             }
-        })
+        });
     }
 
-    #[task(binds = GPIO1_COMBINED_0_15, local = [rx_int, led], shared = [radio])]
+    #[task(binds = GPIO1_COMBINED_0_15, local = [rx_int], shared = [radio, blocking_delay])]
     fn receive_data(mut ctx: receive_data::Context) {
-        ctx.local.led.toggle();
+        log::info!("Interrupt Triggered");
 
-        ctx.shared.radio.lock(|radio| {
+        (ctx.shared.radio, ctx.shared.blocking_delay).lock(|radio, blocking_delay| {
             match radio.read_packet() {
                 Ok(buffer) => {
                     match MessageType::from(buffer[0]) {
@@ -194,11 +198,6 @@ mod app {
                                 false,
                                 [0u16; 18],
                             );
-                            
-                            match radio.set_mode(RadioMode::Tx) {
-                                Ok(_) => log::info!("Transmitting"),
-                                Err(_) => panic!("Unable to Send Data"),
-                            }
 
                             let packed_data = match status.pack() {
                                 Ok(bytes) => bytes,
@@ -214,10 +213,16 @@ mod app {
                                 Ok(_) => log::info!("Successfully Sent Response"),
                                 Err(_) => panic!("Unable to Send Response"),
                             }
+
+                            if radio.set_mode(RadioMode::Stdby).is_err() {
+                                panic!("Unable to set to standby");
+                            }
+
+                            blocking_delay.block_ms(100);
                         },
                         MessageType::ControlMessage => {
                             let control_message_length = <ControlMessage as PackedStruct>::ByteArray::len();
-                            let control_message = ControlCommand::unpack_from_slice(&buffer[1..(1+control_message_length)]);
+                            let control_message = ControlMessage::unpack_from_slice(&buffer[1..(1+control_message_length)]);
                             
                             log::info!("Received Control Message: {:?}", control_message);
 
@@ -233,11 +238,6 @@ mod app {
                                 [255u16; 18],
                             );
 
-                            match radio.set_mode(RadioMode::Tx) {
-                                Ok(_) => log::info!("Transmitting"),
-                                Err(_) => panic!("Unable to Send Data"),
-                            }
-
                             let packed_data = match status.pack() {
                                 Ok(bytes) => bytes,
                                 Err(err) => panic!("Unable to Send Data {:?}", err),
@@ -252,15 +252,26 @@ mod app {
                                 Ok(_) => log::info!("Successfully Sent Response"),
                                 Err(_) => panic!("Unable to Send Response"),
                             }
+
+                            if radio.set_mode(RadioMode::Stdby).is_err() {
+                                panic!("Unable to set to standby");
+                            }
+
+                            blocking_delay.block_ms(100);
                         },
-                        _ => todo!(),
+                        _ => log::info!("Unknown Packet Found: {:?}", buffer),
                     }
                 },
                 Err(_) => panic!("Error while reading data"),
             }
-        });
 
-        ctx.local.rx_int.clear_triggered();
-        ctx.local.led.toggle();
+            if radio.set_mode(RadioMode::RxContinuous).is_err() {
+                panic!("Unable to Set to Receive");
+            }
+
+            ctx.local.rx_int.clear_triggered();
+
+            blocking_delay.block_ms(10);
+        });
     }
 }
