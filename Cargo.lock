@@ -361,10 +361,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "46b71a9d9206e8b46714c74255adcaea8b11e0350c1d8456165073c3f75fc81a"
 
 [[package]]
-name = "rgb_led"
-version = "0.1.0"
-
-[[package]]
 name = "robocup-rustware"
 version = "0.1.0"
 dependencies = [
