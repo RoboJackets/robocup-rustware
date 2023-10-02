@@ -53,19 +53,24 @@ git clone https://github.com/RoboJackets/robocup-rustware.git
 git checkout -b <first_name>_<last_name>-firmware_tutorial
 ```
 3. Setup the Teensy Loader CLI
+for ubuntu
 ```sh
-./setup/<system>-setup.sh
+./setup/unix-setup.sh
 ```
-4. Cd into the drivers folder and create a new lib crate
+for mac
+```sh
+OS=mac ./setup/unix-setup.sh
+```
+1. Cd into the drivers folder and create a new lib crate
 ```sh
 cd drivers
 cargo new --lib <rgb_led_driver_name> 
 ```
-5. Add the new lib crate to the [manifest file (Cargo.toml)](Cargo.toml) under workspaces
-6. Write an RGB Led Driver
-7. Write a test (example) in the examples folder to demo an RTIC application using the RGB Led Driver**
-8. Create a PR with the RGB Led Driver
-9. Demo the Driver with either Nate or Kelvin
+1. Add the new lib crate to the [manifest file (Cargo.toml)](Cargo.toml) under workspaces
+2. Write an RGB Led Driver
+3. Write a test (example) in the examples folder to demo an RTIC application using the RGB Led Driver**
+4. Create a PR with the RGB Led Driver
+5. Demo the Driver with either Nate or Kelvin
 
 ### Writing an RGB Led Driver
 
