@@ -1,5 +1,19 @@
 #!/bin/sh
 
+if ! command -v 'cargo'; then
+	echo 'You need to install Rust onto your computer before starting this tutorial. https://www.rust-lang.org/tools/install'
+	exit 1
+fi
+
+echo "Installing cargo-binutils for rust-objcopy"
+if cargo --list | grep -q 'binstall'; then
+	echo "Using cargo binstall"
+	cargo binstall cargo-binutils
+else
+	echo "Using cargo install"
+	cargo install cargo-binutils
+fi
+
 currentDir="$(cd "$(dirname "${BASH_SOURCE[0]}")" > /dev/null 2>&1 && pwd)"
 
 echo "Cloning Teensy Loader CLI GitHub Repository"
