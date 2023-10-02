@@ -45,27 +45,38 @@ An RGB Led Device Driver is a self-contained driver utilizing the rust embedded_
 ### Steps
 
 1. Clone the repo
+
 ```sh
 git clone https://github.com/RoboJackets/robocup-rustware.git
 ```
-2. Branch off the repo
+
+1. Branch off the repo
+
 ```sh
 git checkout -b <first_name>_<last_name>-firmware_tutorial
 ```
-3. Setup the Teensy Loader CLI
-for ubuntu
+
+1. Setup the Teensy Loader CLI
+
+for linux
+
 ```sh
-./setup/unix-setup.sh
+./setup/unix.sh
 ```
+
 for mac
+
 ```sh
-OS=mac ./setup/unix-setup.sh
+OS=MACOSX ./setup/unix.sh
 ```
+
 1. Cd into the drivers folder and create a new lib crate
+
 ```sh
 cd drivers
 cargo new --lib <rgb_led_driver_name> 
 ```
+
 1. Add the new lib crate to the [manifest file (Cargo.toml)](Cargo.toml) under workspaces
 2. Write an RGB Led Driver
 3. Write a test (example) in the examples folder to demo an RTIC application using the RGB Led Driver**
@@ -109,13 +120,13 @@ The examples / sanity checks documentation can be found [here](examples/examples
 
 To give a little bit of background as to what a good device driver should kind of look like I'm going to link a few examples below:
 
-* [OLED Display Driver](https://github.com/jamwaffles/ssd1306/tree/master) <- a bit complex but arguably Rust's most used driver
-* [W25q32jv Flash Driver](https://github.com/tweedegolf/w25q32jv/tree/main) <- Ok spi flash driver
-* [Radio Driver](https://github.com/astro/embedded-nrf24l01) <- Semi-working well written radio driver
+- [OLED Display Driver](https://github.com/jamwaffles/ssd1306/tree/master) <- a bit complex but arguably Rust's most used driver
+- [W25q32jv Flash Driver](https://github.com/tweedegolf/w25q32jv/tree/main) <- Ok spi flash driver
+- [Radio Driver](https://github.com/astro/embedded-nrf24l01) <- Semi-working well written radio driver
 
 ## Useful Links
 
 ### Background
 
-* [RTIC Book](https://rtic.rs/2/book/en/) <- super useful guide for RTIC
-* [Embedded Rust Book](https://docs.rust-embedded.org/book/) <- Useful guide to embedded development in rust
+- [RTIC Book](https://rtic.rs/2/book/en/) <- super useful guide for RTIC
+- [Embedded Rust Book](https://docs.rust-embedded.org/book/) <- Useful guide to embedded development in rust
