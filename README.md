@@ -44,46 +44,62 @@ An RGB Led Device Driver is a self-contained driver utilizing the rust embedded_
 
 ### Steps
 
-1. Clone the repo
+1. Install Rust by Following the Instructions [here](https://www.rust-lang.org/tools/install)
+
+2. Clone the repo
 
 ```sh
 git clone https://github.com/RoboJackets/robocup-rustware.git
 ```
 
-1. Branch off the repo
+3. Branch off the repo
 
 ```sh
 git checkout -b <first_name>_<last_name>-firmware_tutorial
 ```
 
-1. Setup the Teensy Loader CLI
+4. Setup the Teensy Loader CLI
 
-for linux
+- Linux:
 
 ```sh
 ./setup/unix.sh
 ```
 
-for mac
+- Mac:
 
 ```sh
 OS=MACOSX ./setup/unix.sh
 ```
 
-1. Cd into the drivers folder and create a new lib crate
+- Windows:
+```cmd
+TODO:
+```
+
+5. Cd into the drivers folder and create a new lib crate
 
 ```sh
 cd drivers
 cargo new --lib <rgb_led_driver_name> 
 ```
 
-1. Add the new lib crate to the [manifest file (Cargo.toml)](Cargo.toml) under workspaces
-2. Write an RGB Led Driver
-3. Write a test (example) in the examples folder to demo an RTIC application using the RGB Led Driver**
-4. Create a PR with the RGB Led Driver
-5. Demo the Driver with either Nate or Kelvin
+6. Add the new lib crate to the [manifest file (Cargo.toml)](Cargo.toml) under workspaces (Technically Optional)
+7. Write an RGB Led Driver [see](#writing-an-rgb-led-driver)
+8. Write a test (example) in the examples folder to demo an RTIC application using the RGB Led Driver [see](#creating-a-test-example)
+9. Create a PR with the RGB Led Driver
+10. Demo the Driver with either Nate or Kelvin
 
 ### Writing an RGB Led Driver
+
+#### Description
+
+As an intro project you are given the following circuit diagram:
+![circuit diagram](docs/rgb_led_circuit.png)
+
+Your goal is to create a driver that (regardless of the underlying microcontroller) can change the color of this Led to match the capabilities below.  To complete this you should write the driver using embedded hal traits (nothing from the Teensy 4 library should be used).  
+
+#### Capabilities
 
 The RGB Led Driver needs to have the following basic capabilities:
 
@@ -104,17 +120,19 @@ In Rust, testing is paramount and even though this is no_std firmware, it is sti
 
 Ideally, every function / method in the driver should be used in the example with an optimal test making use of one driver method per software task (this isn't always possible and for the led driver it is fully allowable to have a task make the led red and then turn it off).
 
+For more information regarding RTIC I would highly recommend [the RTIC book](https://rtic.rs/2/book/en/).  It is relatively easy to read and should provide you with ample information that will make completing this task much easier.
+
 TLDR:
 
 Using [main.rs](src/main.rs) as an example, write a series of software tasks utilizing the various methods of the driver you wrote in the step before.
 
 ## Device Driver Documentation
 
-The device driver documentation can be found [here](drivers/drivers.md)
+Over time as drivers are written they will have sections in a separate markdown file devoted to how they work.  The device driver documentation can be found [here](drivers/drivers.md)
 
 ## Examples Documentation
 
-The examples / sanity checks documentation can be found [here](examples/examples.md)
+Over time as examples and tests are written they will have sections in a separate markdown file devoted to how they work.  The examples / sanity checks documentation can be found [here](examples/examples.md)
 
 ## Example Device Drivers
 
@@ -126,7 +144,12 @@ To give a little bit of background as to what a good device driver should kind o
 
 ## Useful Links
 
-### Background
+### Embedded Programming
 
 - [RTIC Book](https://rtic.rs/2/book/en/) <- super useful guide for RTIC
 - [Embedded Rust Book](https://docs.rust-embedded.org/book/) <- Useful guide to embedded development in rust
+
+### Learning Rust
+- [Rust Book](https://doc.rust-lang.org/book/) <- well written book teaching the language
+- [Rustlings](https://github.com/rust-lang/rustlings/) <- set of small examples for reading and writing Rust code
+- [Rust By Example](https://doc.rust-lang.org/rust-by-example/) <- Book of example programs in Rust to illustrate various Rust concepts
