@@ -27,6 +27,9 @@ features = ["cortex-m-systick"]
 version = "0.2"
 features = ["log"]
 
+[dev-dependencies]
+rgb_led = { path = "drivers/rgb_led" }
+
 [workspace]
 members = [
     "tools",
