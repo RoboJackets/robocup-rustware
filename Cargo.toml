@@ -32,8 +32,7 @@ rgb_led = { path = "drivers/rgb_led" }
 
 [workspace]
 members = [
-    "tools",
-    "drivers/rgb_led"
+    "tools"
 ]
 
 # Don't optimize build dependencies, like proc macros.
