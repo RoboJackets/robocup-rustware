@@ -19,7 +19,6 @@ fi
 echo "Adding Teensy Target and llvm-tools-preview"
 rustup target add thumbv7em-none-eabihf
 rustup component add llvm-tools-preview
-rustup default nightly
 
 # Linux Needs libusb-dev
 if type apt-get > /dev/null 2>&1; then
