@@ -1,27 +1,63 @@
 #![no_std]
 
-use core::marker::PhantomData;
+use embedded_hal::digital::v2::OutputPin;
 
-use embedded_hal::spi::FullDuplex;
-
-pub struct LedDriver<'a, T> {
-    spi: T,
-    _lifetime: PhantomData<&'a ()>
+pub struct LedDriver<R, G, B> {
+    r_pin: R,
+    g_pin: G,
+    b_pin: B,
 }
 
-impl<'a, T: FullDuplex<u8> + 'a> LedDriver<'a, T> {
-    pub fn new(spi: T) -> Self {
+impl<R: OutputPin<Error = E>, G: OutputPin<Error = E>, B: OutputPin<Error = E>, E>
+    LedDriver<R, G, B>
+{
+    pub fn new(r_pin: R, g_pin: G, b_pin: B) -> Self {
         Self {
-            spi,
-            _lifetime: PhantomData,
+            r_pin,
+            g_pin,
+            b_pin,
         }
     }
 
-    fn write(&mut self) -> nb::Result<(), T::Error> {
-        self.spi.send(0)
+    pub fn off(&mut self) -> Result<(), E> {
+        self.r_pin.set_low()?;
+        self.g_pin.set_low()?;
+        self.b_pin.set_low()
     }
 
-    fn read(&mut self) -> nb::Result<u8, T::Error> {
-        self.spi.read()
+    pub fn red(&mut self) -> Result<(), E> {
+        self.off()?;
+        self.r_pin.set_high()
     }
-} 
+
+    pub fn green(&mut self) -> Result<(), E> {
+        self.off()?;
+        self.g_pin.set_high()
+    }
+
+    pub fn blue(&mut self) -> Result<(), E> {
+        self.off()?;
+        self.b_pin.set_high()
+    }
+
+    pub fn yellow(&mut self) -> Result<(), E> {
+        self.red()?;
+        self.g_pin.set_high()
+    }
+
+    pub fn turquoise(&mut self) -> Result<(), E> {
+        self.green()?;
+        self.b_pin.set_high()
+    }
+
+    pub fn purple(&mut self) -> Result<(), E> {
+        self.red()?;
+        self.b_pin.set_high()
+    }
+
+    pub fn white(&mut self) -> Result<(), E> {
+        self.red()?;
+        self.g_pin.set_high()?;
+        self.b_pin.set_high()
+    }
+}

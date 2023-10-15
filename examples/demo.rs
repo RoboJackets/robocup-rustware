@@ -1,7 +1,7 @@
 //!
 //! This demo example shows how a teensy 4 RTIC application can be set up
 //! and spawns a software task that blinks an onboard led.
-//! 
+//!
 
 #![no_std]
 #![no_main]
@@ -9,20 +9,19 @@
 
 ///
 /// This is a demo example file that turns on and off the onboard led.
-/// 
+///
 /// Please follow this example for future examples and sanity tests
-/// 
-
+///
 use teensy4_panic as _;
 
 #[rtic::app(device = teensy4_bsp, peripherals = true, dispatchers = [GPT2])]
 mod app {
     use teensy4_pins::common::*;
 
-    use teensy4_bsp as bsp;
     use bsp::board;
+    use teensy4_bsp as bsp;
 
-    use bsp::hal as hal;
+    use bsp::hal;
     use hal::gpio::Output;
 
     use rtic_monotonics::systick::*;
@@ -35,16 +34,12 @@ mod app {
     }
 
     #[shared]
-    struct Shared {
-
-    }
+    struct Shared {}
 
     #[init]
     fn init(ctx: init::Context) -> (Shared, Local) {
         let board::Resources {
-            pins,
-            mut gpio2,
-            ..
+            pins, mut gpio2, ..
         } = board::t41(ctx.device);
 
         let systick_token = rtic_monotonics::create_systick_token!();
@@ -54,12 +49,7 @@ mod app {
 
         blink_led::spawn().ok();
 
-        (
-            Shared {},
-            Local {
-                led,
-            },
-        )
+        (Shared {}, Local { led })
     }
 
     #[idle]

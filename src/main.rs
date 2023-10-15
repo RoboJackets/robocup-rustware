@@ -6,12 +6,12 @@ use teensy4_panic as _;
 
 #[rtic::app(device = teensy4_bsp, peripherals = true)]
 mod app {
-    use teensy4_bsp as bsp;
     use bsp::board;
+    use teensy4_bsp as bsp;
 
-    use bsp::hal as hal;
+    use bsp::hal;
 
-    use bsp::ral as ral;
+    use bsp::ral;
 
     #[local]
     struct Local {}
@@ -21,10 +21,7 @@ mod app {
 
     #[init]
     fn init(ctx: init::Context) -> (Shared, Local) {
-        (
-            Shared {},
-            Local {},
-        )
+        (Shared {}, Local {})
     }
 
     #[idle]

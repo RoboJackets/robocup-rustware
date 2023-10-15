@@ -7,7 +7,13 @@
 //!
 //! See the teensy4-rs documentation for more information.
 
-use std::{env, error, path::PathBuf, process::{Command, Stdio}, thread::sleep, time::Duration};
+use std::{
+    env, error,
+    path::PathBuf,
+    process::{Command, Stdio},
+    thread::sleep,
+    time::Duration,
+};
 
 /// Loader configurations.
 ///
@@ -49,6 +55,6 @@ fn main() -> Result<(), Box<dyn error::Error>> {
         .arg(&hex_path)
         .spawn()?
         .wait()?;
-    
+
     Ok(())
 }
