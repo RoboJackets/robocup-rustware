@@ -1,0 +1,12 @@
+[package]
+name = "fpga-rs"
+version = "0.1.0"
+authors = ["kelvin-hau <khau3@gatech.edu>"]
+edition = "2021"
+
+[dependencies.embedded-hal]
+version = "~0.2"
+features = ["unproven"]
+
+[dependencies.teensy4-bsp]
+version = "0.4"

@@ -7,7 +7,7 @@
 //!
 //! See the teensy4-rs documentation for more information.
 
-use std::{env, error, path::PathBuf, process::{Command, Stdio}, thread::sleep, time::Duration};
+use std::{env, error, path::PathBuf, process::Command};
 
 /// Loader configurations.
 ///
@@ -45,10 +45,9 @@ fn main() -> Result<(), Box<dyn error::Error>> {
         .output()?;
 
     Command::new(cfg.loader)
-        .args(["-w", "-v", "--mcu=TEENSY41"])
+        .args(["-w", "-v", "--mcu=imxrt1062"])
         .arg(&hex_path)
         .spawn()?
         .wait()?;
-    
     Ok(())
 }
