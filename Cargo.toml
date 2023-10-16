@@ -27,9 +27,13 @@ features = ["cortex-m-systick"]
 version = "0.2"
 features = ["log"]
 
+[dependencies.kicker]
+path = "drivers/kicker"
+
 [workspace]
 members = [
-    "tools"
+    "tools",
+    "drivers/kicker",
 ]
 
 # Don't optimize build dependencies, like proc macros.

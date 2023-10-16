@@ -13,6 +13,7 @@ pub fn convert_error<E: Debug>(err: E) -> KickerBoardError<E> { KickerBoardError
 #[derive(Debug, Clone, Copy, Format)]
 pub enum KickerBoardError<E> {
     UnableToEnableProgramming,
+    MaxBinaryExceeded,
     Gpio(E),
     Spi(E),
     Other(E),

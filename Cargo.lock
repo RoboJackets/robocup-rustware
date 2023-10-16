@@ -280,6 +280,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "kicker"
+version = "0.1.0"
+dependencies = [
+ "defmt",
+ "defmt-macros",
+ "embedded-hal",
+ "fugit",
+]
+
+[[package]]
 name = "log"
 version = "0.4.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -366,6 +376,7 @@ version = "0.1.0"
 dependencies = [
  "cortex-m",
  "embedded-hal",
+ "kicker",
  "log",
  "rtic",
  "rtic-monotonics",
