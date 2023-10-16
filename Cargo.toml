@@ -29,7 +29,9 @@ features = ["log"]
 
 [workspace]
 members = [
-    "tools"
+    "tools",
+    "drivers/fpga",
+    "drivers/spi_config",
 ]
 
 # Don't optimize build dependencies, like proc macros.

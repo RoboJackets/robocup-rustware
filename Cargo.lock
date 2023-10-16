@@ -138,6 +138,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5443807d6dff69373d433ab9ef5378ad8df50ca6298caf15de6e52e24aaf54d5"
 
 [[package]]
+name = "fpga"
+version = "0.1.0"
+dependencies = [
+ "defmt",
+ "defmt-macros",
+ "embedded-hal",
+ "fugit",
+ "spi_config",
+]
+
+[[package]]
 name = "fugit"
 version = "0.3.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -463,6 +474,13 @@ name = "semver-parser"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "388a1df253eca08550bef6c72392cfe7c30914bf41df5269b68cbd6ff8f570a3"
+
+[[package]]
+name = "spi_config"
+version = "0.1.0"
+dependencies = [
+ "fugit",
+]
 
 [[package]]
 name = "syn"
