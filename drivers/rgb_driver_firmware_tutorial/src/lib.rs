@@ -15,8 +15,8 @@ pub struct rbgLED<T> {
 }
 
 impl<T: OutputPin<E>> rbgLED<T> {
-    fn SomethingOrOther() -> result {
-
+    pub fn SomethingOrOther() -> result {
+        
     }
 }
 
