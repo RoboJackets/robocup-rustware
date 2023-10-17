@@ -29,7 +29,8 @@ features = ["log"]
 
 [workspace]
 members = [
-    "tools"
+    "tools",
+    "drivers/icm42605-driver"
 ]
 
 # Don't optimize build dependencies, like proc macros.
