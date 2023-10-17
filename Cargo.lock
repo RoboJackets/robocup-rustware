@@ -145,6 +145,8 @@ dependencies = [
  "defmt-macros",
  "embedded-hal",
  "fugit",
+ "imxrt-hal",
+ "rtic-monotonics",
  "spi_config",
 ]
 

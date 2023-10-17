@@ -6,6 +6,12 @@ use embedded_hal::digital::v2::OutputPin;
 use embedded_hal::blocking::spi::{Transfer, Write};
 use embedded_hal::blocking::delay::DelayUs;
 
+use fugit::{RateExtU32, ExtU32};
+use rtic_monotonics::systick::Systick;
+
+// IMXRT_HAL Doesn't Implement Input from Embedded Hal
+use imxrt_hal::gpio::Input;
+
 use spi_config::ConfigurableSpi;
 
 mod init_command;
@@ -14,37 +20,52 @@ use init_command::FPGA_BYTES;
 mod command;
 use command::Command;
 
+pub mod error;
+use error::{FpgaError, convert_gpio_error, convert_spi_error};
+
 const FPGA_SPI_FREQUENCY_HZ: u32 = 100_000;
 const MAX_DUTY_CYCLES: u16 = 511;
 
-pub struct FPGA<E, CSN, INITB, PROGB, DONE, SPI, DELAY>
+/// In FreeRTOS our vTaskDelay had a period of 1ms
+const V_TASK_WAIT_PERIOD: u32 = 1;
+
+/// NOTE: all instructions in the github are reversed.
+
+/// TODO: Better Error Handling
+
+pub struct FPGA<E, INITB, DONE, CSN, PROGB, SPI, DELAY>
     where E: Debug,
           CSN: OutputPin<Error = E>,
-          INITB: OutputPin<Error = E>,
           PROGB: OutputPin<Error = E>,
-          DONE: OutputPin<Error = E>,
-          SPI: Transfer<u8, Error = E> + Write<u8, Error = E>,
+          SPI: Transfer<u8, Error = E> + Write<u8, Error = E> + ConfigurableSpi,
           DELAY: DelayUs<u32> {
     csn: CSN,
-    init_b: INITB,
+    init_b: Input<INITB>,
     prog_b: PROGB,
-    done: DONE,
+    done: Input<DONE>,
     spi: SPI,
     delay: DELAY,
     is_init: bool,
 }
 
-impl<E, CSN, INITB, PROGB, DONE, SPI, DELAY> FPGA<E, CSN, INITB, PROGB, DONE, SPI, DELAY>
+impl<E, INITB, DONE, CSN, PROGB, SPI, DELAY> FPGA<E, INITB, DONE, CSN, PROGB, SPI, DELAY>
     where E: Debug,
     CSN: OutputPin<Error = E>,
-    INITB: OutputPin<Error = E>,
     PROGB: OutputPin<Error = E>,
-    DONE: OutputPin<Error = E>,
-    SPI: Transfer<u8, Error = E> + Write<u8, Error = E>,
+    SPI: Transfer<u8, Error = E> + Write<u8, Error = E> + ConfigurableSpi,
     DELAY: DelayUs<u32> {
-    pub fn new(spi: SPI, csn: CSN, init_b: INITB, prog_b: PROGB, done: DONE, delay: DELAY) -> Self {
+    pub fn new(mut spi: SPI, csn: CSN, init_b: Input<INITB>, mut prog_b: PROGB, done: Input<DONE>, delay: DELAY) -> Result<Self, FpgaError<E>> {
+        //prog_b has PullType None, PinMode OpenDrain, PinSpeed Low, and is not inverted
+        // TODO: Check the prog_b has correct PinMode (i.e. Open Drain)
+
         // TODO: Configure SPI To Use FPGA_SPI_FREQ_HZ frequency
-        Self {
+
+        // Set the correct SPI Frequency
+        spi.set_frequency(FPGA_SPI_FREQUENCY_HZ.Hz()).unwrap();
+
+        prog_b.set_high().map_err(convert_gpio_error)?;
+
+        Ok(Self {
             csn,
             init_b,
             prog_b,
@@ -52,19 +73,53 @@ impl<E, CSN, INITB, PROGB, DONE, SPI, DELAY> FPGA<E, CSN, INITB, PROGB, DONE, SP
             spi,
             delay,
             is_init: false,
-        }
+        })
     }
 
     /// Configure FPGA with the binary.  Must be called to initialize the fpga
     /// 
     /// Returns true on successful FPGA Initialization
-    pub fn configure(&mut self) -> bool {
-        todo!()
+    pub async fn configure(&mut self) -> Result<(), FpgaError<E>> {
+        self.prog_b.set_high().map_err(convert_gpio_error)?;
+        Systick::delay(V_TASK_WAIT_PERIOD.millis()).await;
+        self.prog_b.set_low().map_err(convert_gpio_error)?;
+
+        // Wait for the FPGA to tell us it's ready for the bitstream
+        for _ in 0..100 {
+            Systick::delay(10 * V_TASK_WAIT_PERIOD.millis()).await;
+
+            // We're ready to start configuration when init_b goes high
+            if self.init_b.is_set() {
+                break;
+            }
+        }
+
+        if !self.init_b.is_set() {
+            return Err(FpgaError::InitTimeout);
+        }
+
+        self.send_config()?;
+
+        let mut config_success = false;
+        for _ in 0..1_000 {
+            Systick::delay(100 * V_TASK_WAIT_PERIOD.millis()).await;
+            if self.done.is_set() {
+                config_success = true;
+                break;
+            }
+        }
+
+        if config_success {
+            self.is_init = true;
+            return Ok(());
+        }
+
+        return Err(FpgaError::UnableToSetConfiguration);
     }
 
     /// Return true if initialized and configured
     pub fn is_ready(&mut self) -> bool {
-        todo!()
+        self.is_init
     }
 
     /// Sets the duty cycles and reads the encoders for all motors (plus resets the fpga watchdog)
@@ -86,8 +141,36 @@ impl<E, CSN, INITB, PROGB, DONE, SPI, DELAY> FPGA<E, CSN, INITB, PROGB, DONE, SP
     ///         [0] - Drive motor 1
     /// 
     /// Can also return 0x7F if the MAX_DUTY_CYCLE magnitude is exceeded
-    pub fn set_duty_get_enc(&mut self, duty_cycles: &[u16; 5], encoder_deltas: &[u16; 5]) -> u8 {
-        todo!()
+    pub fn set_duty_get_enc(&mut self, duty_cycles: &[i16; 5], encoder_deltas: &mut [i16; 5]) -> Result<u8, FpgaError<E>> {
+        self.spi.set_frequency(400_000u32.Hz()).unwrap();
+
+        let mut status = [0u8];
+
+        for duty in duty_cycles {
+            if duty.abs() > MAX_DUTY_CYCLES as i16 {
+                return Err(FpgaError::InvalidDutyCycle);
+            }
+        }
+
+        let duty_bytes = i16s_to_bytes(duty_cycles);
+        let mut encoder_bytes = [0u8; 10];
+
+        self.csn.set_low().map_err(convert_gpio_error)?;
+        self.safe_write_spi(&[Command::ReadStatusWriteDuty as u8])?;
+        self.safe_transfer_spi(&mut status)?;
+
+        for (i, duty_byte) in duty_bytes.iter().enumerate() {
+            let mut temp = [0u8];
+            self.safe_write_spi(&[*duty_byte])?;
+            self.safe_transfer_spi(&mut temp)?;
+            encoder_bytes[i] = temp[0];
+        }
+
+        self.csn.set_high().map_err(convert_gpio_error)?;
+
+        *encoder_deltas = bytes_to_i16s(&encoder_bytes);
+
+        Ok(status[0])
     }
 
     /// Sets the duty cycles for all motors (plus resets the fpga watchdog)
@@ -108,8 +191,23 @@ impl<E, CSN, INITB, PROGB, DONE, SPI, DELAY> FPGA<E, CSN, INITB, PROGB, DONE, SP
     ///         [0] - Drive motor 1
     /// 
     /// Can also return 0x7F if the MAX_DUTY_CYCLE magnitude is exceeded
-    pub fn set_duty_cycles(&mut self, duty_cycles: &[u16; 5]) -> u8 {
-        todo!()
+    pub fn set_duty_cycles(&mut self, duty_cycles: &[i16; 5]) -> Result<u8, FpgaError<E>> {
+        for duty in duty_cycles {
+            if *duty as u16 > MAX_DUTY_CYCLES {
+                return Err(FpgaError::InvalidDutyCycle);
+            }
+        }
+
+        let mut status = [0u8];
+        let duties = i16s_to_bytes(duty_cycles);
+
+        self.csn.set_low().map_err(convert_gpio_error)?;
+        self.safe_write_spi(&[Command::ReadStatusWriteDuty as u8])?;
+        self.safe_transfer_spi(&mut status)?;
+        self.safe_write_spi(&duties)?;
+        self.csn.set_high().map_err(convert_gpio_error)?;
+
+        Ok(status[0])
     }
 
     /// Reads the duty cycles for all motors into the duty_cycles array
@@ -128,8 +226,19 @@ impl<E, CSN, INITB, PROGB, DONE, SPI, DELAY> FPGA<E, CSN, INITB, PROGB, DONE, SP
     ///         [2] - Drive motor 3
     ///         [1] - Drive motor 2
     ///         [0] - Drive motor 1
-    pub fn read_duty_cycles(&mut self, duty_cycles: &mut [u16; 5]) -> u8 {
-        todo!()
+    pub fn read_duty_cycles(&mut self, duty_cycles: &mut [i16; 5]) -> Result<u8, FpgaError<E>> {
+        let mut status = [0u8];
+        let mut duty_cycle_bytes = [0u8; 10];
+
+        self.csn.set_low().map_err(convert_gpio_error)?;
+        self.safe_write_spi(&[Command::ReadDuty as u8])?;
+        self.safe_transfer_spi(&mut status)?;
+        self.safe_transfer_spi(&mut duty_cycle_bytes)?;
+        self.csn.set_high().map_err(convert_gpio_error)?;
+
+        *duty_cycles = bytes_to_i16s(&duty_cycle_bytes);
+
+        Ok(status[0])
     }
 
     /// Reads the encoders for all motors
@@ -148,8 +257,19 @@ impl<E, CSN, INITB, PROGB, DONE, SPI, DELAY> FPGA<E, CSN, INITB, PROGB, DONE, SP
     ///         [2] - Drive motor 3
     ///         [1] - Drive motor 2
     ///         [0] - Drive motor 1
-    pub fn read_encoders(&mut self, encoder_counts: &mut [u16; 5]) -> u8 {
-        todo!()
+    pub fn read_encoders(&mut self, encoder_counts: &mut [i16; 5]) -> Result<u8, FpgaError<E>> {
+        let mut status = [0u8];
+        let mut encoder_count_bytes = [0u8; 10];
+
+        self.csn.set_low().map_err(convert_gpio_error)?;
+        self.safe_write_spi(&[Command::ReadEncoders as u8])?;
+        self.safe_transfer_spi(&mut status)?;
+        self.safe_transfer_spi(&mut encoder_count_bytes)?;
+        self.csn.set_high().map_err(convert_gpio_error)?;
+
+        *encoder_counts = bytes_to_i16s(&encoder_count_bytes);
+
+        Ok(status[0])
     }
 
     /// Reads the hall count for all motors (similar to encoders)
@@ -168,8 +288,16 @@ impl<E, CSN, INITB, PROGB, DONE, SPI, DELAY> FPGA<E, CSN, INITB, PROGB, DONE, SP
     ///         [2] - Drive motor 3
     ///         [1] - Drive motor 2
     ///         [0] - Drive motor 1
-    pub fn read_halls(&mut self, halls: &mut [u16; 5]) -> u8 {
-        todo!()
+    pub fn read_halls(&mut self, halls: &mut [u8; 5]) -> Result<u8, FpgaError<E>> {
+        let mut status = [0u8];
+
+        self.csn.set_low().map_err(convert_gpio_error)?;
+        self.safe_write_spi(&[Command::ReadHalls as u8])?;
+        self.safe_transfer_spi(&mut status)?;
+        self.safe_transfer_spi(&mut halls[..])?;
+        self.csn.set_high().map_err(convert_gpio_error)?;
+
+        Ok(status[0])
     }
 
     /// Enables ore disables the motors on the fpga
@@ -185,8 +313,15 @@ impl<E, CSN, INITB, PROGB, DONE, SPI, DELAY> FPGA<E, CSN, INITB, PROGB, DONE, SP
     ///         [2] - Drive motor 3
     ///         [1] - Drive motor 2
     ///         [0] - Drive motor 1
-    pub fn set_motors_enabled(&mut self, on: bool) -> u8 {
-        todo!()
+    pub fn set_motors_enabled(&mut self, on: bool) -> Result<(), FpgaError<E>> {
+        let mut status = [0u8];
+
+        self.csn.set_low().map_err(convert_gpio_error)?;
+        self.safe_write_spi(&[Command::EnableDisableMotors as u8 | ((on as u8) << 7)])?;
+        self.safe_transfer_spi(&mut status)?;
+        self.csn.set_high().map_err(convert_gpio_error)?;
+
+        Ok(())
     }
 
     /// Resets the watchdog on the fpga.
@@ -202,8 +337,9 @@ impl<E, CSN, INITB, PROGB, DONE, SPI, DELAY> FPGA<E, CSN, INITB, PROGB, DONE, SP
     ///         [2] - Drive motor 3
     ///         [1] - Drive motor 2
     ///         [0] - Drive motor 1
-    pub fn watchdog_reset(&mut self) -> u8 {
-        todo!()
+    pub fn watchdog_reset(&mut self) -> Result<(), FpgaError<E>> {
+        self.set_motors_enabled(false)?;
+        self.set_motors_enabled(true)
     }
 
     /// Gets the git hash of the current fpga firmware
@@ -211,8 +347,27 @@ impl<E, CSN, INITB, PROGB, DONE, SPI, DELAY> FPGA<E, CSN, INITB, PROGB, DONE, SP
     /// hash will be overwritten to store the hash into (21 characters)
     /// 
     /// Returns true if the current fpga firmware has been modified and not committed
-    pub fn git_hash(&mut self, hash: &mut [u8; 21]) -> bool {
-        todo!()
+    pub fn git_hash(&mut self, hash: &mut [u8; 21]) -> Result<(), FpgaError<E>> {
+        // Store reversed git hash here
+        let mut found_hash = [0u8; 21];
+
+        self.csn.set_low().map_err(convert_gpio_error)?;
+        self.safe_write_spi(&[Command::ReadHash1 as u8])?;
+        self.safe_transfer_spi(&mut found_hash[0..10])?;
+        self.csn.set_high().map_err(convert_gpio_error)?;
+
+        self.csn.set_low().map_err(convert_gpio_error)?;
+        self.safe_write_spi(&[Command::ReadHash2 as u8])?;
+        self.safe_transfer_spi(&mut found_hash[10..])?;
+        self.csn.set_high().map_err(convert_gpio_error)?;
+
+        if (found_hash[found_hash.len() - 1] & 0x01) == 0 {
+            return Err(FpgaError::InvalidGitHash);
+        }
+
+        *hash = found_hash;
+
+        Ok(())
     }
 
     /// Get information from each of the DRV8303's
@@ -232,7 +387,91 @@ impl<E, CSN, INITB, PROGB, DONE, SPI, DELAY> FPGA<E, CSN, INITB, PROGB, DONE, SP
     /// It is assumed that the fpga has already been initialized and the spi bus is cleared out
     /// 
     /// Return true  if the config send was successful
-    pub fn send_config(&mut self) -> bool {
-        todo!()
+    pub fn send_config(&mut self) -> Result<(), FpgaError<E>> {
+        self.csn.set_low().map_err(convert_gpio_error)?;
+
+        self.spi.set_frequency(16_000_000u32.Hz()).map_err(convert_spi_error).unwrap();
+
+        self.safe_write_spi(&FPGA_BYTES)?;
+
+        self.csn.set_high().map_err(convert_gpio_error)?;
+
+        Ok(())
     }
+
+    /// Checks that there was no error on spi transmission and set csn high on failure
+    fn safe_write_spi(&mut self, data: &[u8]) -> Result<(), FpgaError<E>> {
+        if let Err(err) = self.spi.write(data) {
+            self.csn.set_high().unwrap();
+            return Err(convert_spi_error(err));
+        }
+
+        Ok(())
+    }
+
+    fn safe_transfer_spi(&mut self, data: &mut [u8]) -> Result<(), FpgaError<E>> {
+        if let Err(err) = self.spi.transfer(data) {
+            self.csn.set_high().unwrap();
+            return Err(convert_spi_error(err));
+        }
+
+        Ok(())
+    }
+}
+
+// Convert the i16s to a bunch of bytes in LSB order
+fn i16s_to_bytes(data: &[i16; 5]) -> [u8; 10] {
+    let mut byte_slice = [0u8; 10];
+
+    for (i, d) in data.iter().enumerate() {
+        let unsigned_data = to_sign_magnitude::<9>(*d);
+        byte_slice[2*i] = (unsigned_data & 0xff) as u8;
+        byte_slice[2*i+1] = (unsigned_data >> 8) as u8;
+    }
+
+    return byte_slice;
+}
+
+fn bytes_to_i16s(data: &[u8; 10]) -> [i16; 5] {
+    let mut output_slice = [0i16; 5];
+
+    for i in 0..data.len() {
+        let d = (data[i*2] as u16) << 8 | (data[i*2+1] as u16);
+        output_slice[i] = from_sign_magnitude::<9>(d);
+    }
+
+    output_slice
+}
+
+/// Data is sent in LSB format so this converts a u16 slice to a u8 slice
+fn u16_slice_to_bytes(data: &[u16; 5]) -> [u8; 10] {
+    return [
+        (data[0] & 0xff) as u8,
+        (data[0] >> 8) as u8,
+        (data[1] & 0xff) as u8,
+        (data[1] >> 8) as u8,
+        (data[2] & 0xff) as u8,
+        (data[2] >> 8) as u8,
+        (data[3] & 0xff) as u8,
+        (data[3] >> 8) as u8,
+        (data[4] & 0xff) as u8,
+        (data[4] >> 8) as u8,
+    ]
+}
+
+fn to_sign_magnitude<const SIGN_INDEX: usize>(value: i16) -> u16 {
+    if value > 0 {
+        return (-value as u16) | 1 << SIGN_INDEX;
+    } else {
+        return value as u16;
+    }
+}
+
+fn from_sign_magnitude<const SIGN_INDEX: usize>(mut value: u16) -> i16 {
+    if value & (1 << SIGN_INDEX) > 0 {
+        value ^= 1 << SIGN_INDEX;
+        return (value as i16) * -1
+    }
+
+    return value.try_into().unwrap();
 }

@@ -1,6 +1,6 @@
 pub enum Command {
-    EN_DIS_MTRS = 0x30,
-    R_ENC_W_VEL = 0x80,
+    EnableDisableMotors = 0x30,
+    ReadStatusWriteDuty = 0x80,
     ReadEncoders = 0x91,
     ReadHalls = 0x92,
     ReadDuty = 0x93,
