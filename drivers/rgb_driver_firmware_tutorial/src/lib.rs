@@ -15,8 +15,54 @@ pub struct rbgLED<T> {
 }
 
 impl<T: OutputPin<E>> rbgLED<T> {
-    pub fn SomethingOrOther() -> result {
-        
+    pub fn new(r: T, g: T, b: T) -> Self {
+        Self {
+            r,
+            g,
+            b,
+        }
+    }
+
+    pub fn off (&mut self) {
+        self.r.set_low();
+        self.g.set_low();
+        self.b.set_low();
+    }
+
+    pub fn red(&mut self) {
+        self.r.set_high();
+        self.g.set_low();
+        self.b.set_low();
+    }
+
+    pub fn green(&mut self) {
+        self.r.set_low();
+        self.g.set_high();
+        self.b.set_low();
+    }
+
+    pub fn blue(&mut self) {
+        self.r.set_low();
+        self.g.set_low();
+        self.b.set_high();
+    }
+
+    pub fn yellow(&mut self) {
+        self.r.set_high();
+        self.g.set_high();
+        self.b.set_low();
+    }
+
+    pub fn purple(&mut self) {
+        self.r.set_high();
+        self.g.set_low();
+        self.b.set_high();
+    }
+
+    pub fn cyan(&mut self) {
+        self.r.set_low();
+        self.g.set_high();
+        self.b.set_high();
     }
 }
 

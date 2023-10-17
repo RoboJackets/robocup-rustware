@@ -30,7 +30,7 @@ features = ["log"]
 [workspace]
 members = [
     "tools",
-    "drivers/rgb_led"
+    "drivers/rgb_driver_firmware_tutorial"
 ]
 
 # Don't optimize build dependencies, like proc macros.
