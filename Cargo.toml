@@ -10,6 +10,7 @@ cortex-m = "0.7"
 embedded-hal = "0.2"
 log = "0.4"
 teensy4-pins = "0.3.1"
+rgbLED = {path = "drivers/rgb_driver_firmware_tutorial" }
 
 [dependencies.teensy4-bsp]
 version = "0.4"
