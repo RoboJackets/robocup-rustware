@@ -83,6 +83,8 @@ impl<SPI, CS, InitP, PROG, DoneP, SpiE, PinE> FPGA<SPI, CS, InitP, PROG, DoneP>
             status: FpgaStatus::NotReady,
         };
 
+        fpga.prog_b.set_high().map_err(FpgaError::ProgPin)?;
+
         // initialize cs pin to be high (idle state)
         fpga.cs.set_high().map_err(FpgaError::CSPin)?;
 
@@ -295,17 +297,18 @@ impl<SPI, CS, InitP, PROG, DoneP, SpiE, PinE> FPGA<SPI, CS, InitP, PROG, DoneP>
         {
 
         // init write buffer
-        let mut write_buffer: [u8; 11] = [0;11];
+        let mut write_buffer: [u8; 12] = [0;12];
         
         // send READ ENC WRITE VEL instruction
         // we'll only write vel and not read any enc information for this function
         write_buffer[0] = Instruction::R_ENC_W_VEL.opcode();
+        write_buffer[1] = 0x00;
 
-        write_buffer[1] = 0x0F; // this is for motor 1
-        write_buffer[3] = 0x0F; // this is for motor 2
-        write_buffer[5] = 0x0F; // this is for motor 3
-        write_buffer[7] = 0x0F; // this is for motor 4
-        write_buffer[9] = 0x0F; // this is for dribbler :)
+        write_buffer[2] = 0xFF; // this is for motor 1
+        write_buffer[4] = 0x0F; // this is for motor 2
+        write_buffer[6] = 0x0F; // this is for motor 3
+        write_buffer[8] = 0x0F; // this is for motor 4
+        write_buffer[10] = 0x0F; // this is for dribbler :)
     
         //let mut counter = 1;
 
@@ -319,11 +322,14 @@ impl<SPI, CS, InitP, PROG, DoneP, SpiE, PinE> FPGA<SPI, CS, InitP, PROG, DoneP>
 
         // send the ls byte first and then the ms byte
         self.cs.set_low().map_err(FpgaError::CSPin)?;
+        // self.spi.write(&[Instruction::R_ENC_W_VEL.opcode()]).map_err(FpgaError::SPI)?;
+        // self.spi.transfer(&mut response).map_err(FpgaError::SPI)?;
+        // self.spi.write(&[0x00, 0xFF, 0x00, 0x0F, 0x00, 0x0F, 0x00, 0x0F, 0x00, 0x0F]).map_err(FpgaError::SPI)?;
         self.spi.transfer(&mut write_buffer).map_err(FpgaError::SPI)?;
         self.cs.set_high().map_err(FpgaError::CSPin)?;
 
         // return status code
-        Ok( write_buffer[0] )
+        Ok( write_buffer[1] )
     }
 
     ///

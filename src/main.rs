@@ -254,14 +254,14 @@ mod app {
         //     Err(e) => panic!("eror reading git hash {:?}", e),
         // }
 
-        loop {
-            // enable motors
-            match fpga.motors_en(true){
-                Ok(status) => log::info!(" enabled motors fpga status: {:b}", status),
-                Err(e) => panic!("error enabling motors... {:?}", e),
-            };
-            Systick::delay(DELAY_MS.millis()).await;
+        // enable motors
+        match fpga.motors_en(true){
+            Ok(status) => log::info!(" enabled motors fpga status: {:b}", status),
+            Err(e) => panic!("error enabling motors... {:?}", e),
+        };
+        Systick::delay(DELAY_MS.millis()).await;
 
+        loop {
             // write duty cycle
             match fpga.set_duty_cycles(&mut duty_cycles) {
                 Ok(status) => {
