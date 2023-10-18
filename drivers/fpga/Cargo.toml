@@ -16,8 +16,5 @@ imxrt-hal = "0.5.3"
 version = "1.0.0"
 features = ["cortex-m-systick"]
 
-[dependencies.spi_config]
-path = "../spi_config"
-
 [features]
 default = []

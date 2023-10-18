@@ -27,11 +27,13 @@ features = ["cortex-m-systick"]
 version = "0.2"
 features = ["log"]
 
+[dependencies.fpga]
+path = "./drivers/fpga"
+
 [workspace]
 members = [
     "tools",
-    "drivers/fpga",
-    "drivers/spi_config",
+    "drivers/fpga"
 ]
 
 # Don't optimize build dependencies, like proc macros.

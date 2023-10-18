@@ -3,6 +3,11 @@
     "rust-analyzer.check.allTargets": false,
     "rust-analyzer.linkedProjects": [
         "./Cargo.toml",
-        "./drivers/fpga/Cargo.toml"
+        "./drivers/fpga/Cargo.toml",
+        "./Cargo.toml"
+    ],
+    "rust-analyzer.check.extraArgs": [
+        "--examples",
+        "--bins",
     ]
 }

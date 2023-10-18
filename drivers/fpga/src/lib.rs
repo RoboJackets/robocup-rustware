@@ -4,15 +4,12 @@ use core::fmt::Debug;
 
 use embedded_hal::digital::v2::OutputPin;
 use embedded_hal::blocking::spi::{Transfer, Write};
-use embedded_hal::blocking::delay::DelayUs;
 
-use fugit::{RateExtU32, ExtU32};
+use fugit::{ExtU32};
 use rtic_monotonics::systick::Systick;
 
 // IMXRT_HAL Doesn't Implement Input from Embedded Hal
 use imxrt_hal::gpio::Input;
-
-use spi_config::ConfigurableSpi;
 
 mod init_command;
 use init_command::FPGA_BYTES;
@@ -23,47 +20,44 @@ use command::Command;
 pub mod error;
 use error::{FpgaError, convert_gpio_error, convert_spi_error};
 
-const FPGA_SPI_FREQUENCY_HZ: u32 = 100_000;
+// const FPGA_SPI_FREQUENCY_HZ: u32 = 100_000;
 const MAX_DUTY_CYCLES: u16 = 511;
 
 /// In FreeRTOS our vTaskDelay had a period of 1ms
 const V_TASK_WAIT_PERIOD: u32 = 1;
 
-/// NOTE: all instructions in the github are reversed.
+// TODO: Check whether or not the spi rate actually needs to be tweaked
 
-/// TODO: Better Error Handling
-
-pub struct FPGA<E, INITB, DONE, CSN, PROGB, SPI, DELAY>
-    where E: Debug,
-          CSN: OutputPin<Error = E>,
-          PROGB: OutputPin<Error = E>,
-          SPI: Transfer<u8, Error = E> + Write<u8, Error = E> + ConfigurableSpi,
-          DELAY: DelayUs<u32> {
+pub struct FPGA<GpioE, SpiE, INITB, DONE, CSN, PROGB, SPI>
+    where GpioE: Debug,
+          SpiE: Debug,
+          CSN: OutputPin<Error = GpioE>,
+          PROGB: OutputPin<Error = GpioE>,
+          SPI: Transfer<u8, Error = SpiE> + Write<u8, Error = SpiE> {
     csn: CSN,
     init_b: Input<INITB>,
     prog_b: PROGB,
     done: Input<DONE>,
     spi: SPI,
-    delay: DELAY,
     is_init: bool,
 }
 
-impl<E, INITB, DONE, CSN, PROGB, SPI, DELAY> FPGA<E, INITB, DONE, CSN, PROGB, SPI, DELAY>
-    where E: Debug,
-    CSN: OutputPin<Error = E>,
-    PROGB: OutputPin<Error = E>,
-    SPI: Transfer<u8, Error = E> + Write<u8, Error = E> + ConfigurableSpi,
-    DELAY: DelayUs<u32> {
-    pub fn new(mut spi: SPI, csn: CSN, init_b: Input<INITB>, mut prog_b: PROGB, done: Input<DONE>, delay: DELAY) -> Result<Self, FpgaError<E>> {
+impl<GpioE, SpiE, INITB, DONE, CSN, PROGB, SPI> FPGA<GpioE, SpiE, INITB, DONE, CSN, PROGB, SPI>
+    where GpioE: Debug,
+    SpiE: Debug,
+    CSN: OutputPin<Error = GpioE>,
+    PROGB: OutputPin<Error = GpioE>,
+    SPI: Transfer<u8, Error = SpiE> + Write<u8, Error = SpiE> {
+    pub fn new(spi: SPI, mut csn: CSN, init_b: Input<INITB>, mut prog_b: PROGB, done: Input<DONE>) -> Result<Self, FpgaError<GpioE, SpiE>> {
         //prog_b has PullType None, PinMode OpenDrain, PinSpeed Low, and is not inverted
         // TODO: Check the prog_b has correct PinMode (i.e. Open Drain)
 
-        // TODO: Configure SPI To Use FPGA_SPI_FREQ_HZ frequency
-
         // Set the correct SPI Frequency
-        spi.set_frequency(FPGA_SPI_FREQUENCY_HZ.Hz()).unwrap();
+        // spi.set_frequency(FPGA_SPI_FREQUENCY_HZ.Hz()).unwrap();
 
         prog_b.set_high().map_err(convert_gpio_error)?;
+
+        csn.set_high().map_err(convert_gpio_error)?;
 
         Ok(Self {
             csn,
@@ -71,7 +65,6 @@ impl<E, INITB, DONE, CSN, PROGB, SPI, DELAY> FPGA<E, INITB, DONE, CSN, PROGB, SP
             prog_b,
             done,
             spi,
-            delay,
             is_init: false,
         })
     }
@@ -79,22 +72,24 @@ impl<E, INITB, DONE, CSN, PROGB, SPI, DELAY> FPGA<E, INITB, DONE, CSN, PROGB, SP
     /// Configure FPGA with the binary.  Must be called to initialize the fpga
     /// 
     /// Returns true on successful FPGA Initialization
-    pub async fn configure(&mut self) -> Result<(), FpgaError<E>> {
+    pub async fn configure(&mut self) -> Result<(), FpgaError<GpioE, SpiE>> {
         self.prog_b.set_high().map_err(convert_gpio_error)?;
         Systick::delay(V_TASK_WAIT_PERIOD.millis()).await;
         self.prog_b.set_low().map_err(convert_gpio_error)?;
 
         // Wait for the FPGA to tell us it's ready for the bitstream
+        let mut fpga_init = false;
         for _ in 0..100 {
             Systick::delay(10 * V_TASK_WAIT_PERIOD.millis()).await;
 
             // We're ready to start configuration when init_b goes high
             if self.init_b.is_set() {
+                fpga_init = true;
                 break;
             }
         }
 
-        if !self.init_b.is_set() {
+        if !fpga_init {
             return Err(FpgaError::InitTimeout);
         }
 
@@ -141,8 +136,8 @@ impl<E, INITB, DONE, CSN, PROGB, SPI, DELAY> FPGA<E, INITB, DONE, CSN, PROGB, SP
     ///         [0] - Drive motor 1
     /// 
     /// Can also return 0x7F if the MAX_DUTY_CYCLE magnitude is exceeded
-    pub fn set_duty_get_enc(&mut self, duty_cycles: &[i16; 5], encoder_deltas: &mut [i16; 5]) -> Result<u8, FpgaError<E>> {
-        self.spi.set_frequency(400_000u32.Hz()).unwrap();
+    pub fn set_duty_get_enc(&mut self, duty_cycles: &[i16; 5], encoder_deltas: &mut [i16; 5]) -> Result<u8, FpgaError<GpioE, SpiE>> {
+        // self.spi.set_frequency(400_000u32.Hz()).unwrap();
 
         let mut status = [0u8];
 
@@ -191,7 +186,7 @@ impl<E, INITB, DONE, CSN, PROGB, SPI, DELAY> FPGA<E, INITB, DONE, CSN, PROGB, SP
     ///         [0] - Drive motor 1
     /// 
     /// Can also return 0x7F if the MAX_DUTY_CYCLE magnitude is exceeded
-    pub fn set_duty_cycles(&mut self, duty_cycles: &[i16; 5]) -> Result<u8, FpgaError<E>> {
+    pub fn set_duty_cycles(&mut self, duty_cycles: &[i16; 5]) -> Result<u8, FpgaError<GpioE, SpiE>> {
         for duty in duty_cycles {
             if *duty as u16 > MAX_DUTY_CYCLES {
                 return Err(FpgaError::InvalidDutyCycle);
@@ -226,7 +221,7 @@ impl<E, INITB, DONE, CSN, PROGB, SPI, DELAY> FPGA<E, INITB, DONE, CSN, PROGB, SP
     ///         [2] - Drive motor 3
     ///         [1] - Drive motor 2
     ///         [0] - Drive motor 1
-    pub fn read_duty_cycles(&mut self, duty_cycles: &mut [i16; 5]) -> Result<u8, FpgaError<E>> {
+    pub fn read_duty_cycles(&mut self, duty_cycles: &mut [i16; 5]) -> Result<u8, FpgaError<GpioE, SpiE>> {
         let mut status = [0u8];
         let mut duty_cycle_bytes = [0u8; 10];
 
@@ -257,7 +252,7 @@ impl<E, INITB, DONE, CSN, PROGB, SPI, DELAY> FPGA<E, INITB, DONE, CSN, PROGB, SP
     ///         [2] - Drive motor 3
     ///         [1] - Drive motor 2
     ///         [0] - Drive motor 1
-    pub fn read_encoders(&mut self, encoder_counts: &mut [i16; 5]) -> Result<u8, FpgaError<E>> {
+    pub fn read_encoders(&mut self, encoder_counts: &mut [i16; 5]) -> Result<u8, FpgaError<GpioE, SpiE>> {
         let mut status = [0u8];
         let mut encoder_count_bytes = [0u8; 10];
 
@@ -288,7 +283,7 @@ impl<E, INITB, DONE, CSN, PROGB, SPI, DELAY> FPGA<E, INITB, DONE, CSN, PROGB, SP
     ///         [2] - Drive motor 3
     ///         [1] - Drive motor 2
     ///         [0] - Drive motor 1
-    pub fn read_halls(&mut self, halls: &mut [u8; 5]) -> Result<u8, FpgaError<E>> {
+    pub fn read_halls(&mut self, halls: &mut [u8; 5]) -> Result<u8, FpgaError<GpioE, SpiE>> {
         let mut status = [0u8];
 
         self.csn.set_low().map_err(convert_gpio_error)?;
@@ -313,7 +308,7 @@ impl<E, INITB, DONE, CSN, PROGB, SPI, DELAY> FPGA<E, INITB, DONE, CSN, PROGB, SP
     ///         [2] - Drive motor 3
     ///         [1] - Drive motor 2
     ///         [0] - Drive motor 1
-    pub fn set_motors_enabled(&mut self, on: bool) -> Result<(), FpgaError<E>> {
+    pub fn set_motors_enabled(&mut self, on: bool) -> Result<(), FpgaError<GpioE, SpiE>> {
         let mut status = [0u8];
 
         self.csn.set_low().map_err(convert_gpio_error)?;
@@ -337,7 +332,7 @@ impl<E, INITB, DONE, CSN, PROGB, SPI, DELAY> FPGA<E, INITB, DONE, CSN, PROGB, SP
     ///         [2] - Drive motor 3
     ///         [1] - Drive motor 2
     ///         [0] - Drive motor 1
-    pub fn watchdog_reset(&mut self) -> Result<(), FpgaError<E>> {
+    pub fn watchdog_reset(&mut self) -> Result<(), FpgaError<GpioE, SpiE>> {
         self.set_motors_enabled(false)?;
         self.set_motors_enabled(true)
     }
@@ -347,7 +342,7 @@ impl<E, INITB, DONE, CSN, PROGB, SPI, DELAY> FPGA<E, INITB, DONE, CSN, PROGB, SP
     /// hash will be overwritten to store the hash into (21 characters)
     /// 
     /// Returns true if the current fpga firmware has been modified and not committed
-    pub fn git_hash(&mut self, hash: &mut [u8; 21]) -> Result<(), FpgaError<E>> {
+    pub fn git_hash(&mut self, hash: &mut [u8; 21]) -> Result<(), FpgaError<GpioE, SpiE>> {
         // Store reversed git hash here
         let mut found_hash = [0u8; 21];
 
@@ -378,8 +373,18 @@ impl<E, INITB, DONE, CSN, PROGB, SPI, DELAY> FPGA<E, INITB, DONE, CSN, PROGB, SP
     ///          | nibble 2: | GVDD_OV  | FAULT    | GVDD_UV  | PVDD_UV  |
     ///          | nibble 1: | OTSD     | OTW      | FETHA_OC | FETLA_OC |
     ///          | nibble 0: | FETHB_OC | FETLB_OC | FETHC_OC | FETLC_OC |
-    pub fn gate_drivers(&mut self, status_structures: &mut [u16; 10]) {
-        todo!()
+    pub fn gate_drivers(&mut self, status_structures: &mut [u16; 10]) -> Result<(), FpgaError<GpioE, SpiE>>{
+        let mut gate_driver_bytes = [0u8; 20];
+
+        self.csn.set_low().map_err(convert_gpio_error)?;
+        self.safe_write_spi(&[Command::CheckDrive as u8])?;
+        self.safe_transfer_spi(&mut gate_driver_bytes)?;
+
+        for (i, status) in status_structures.iter_mut().enumerate() {
+            *status = gate_driver_bytes[i*2] as u16 | gate_driver_bytes[i*2+1] as u16;
+        }
+
+        Ok(())
     }
 
     /// Sends the config over to the FPGA.
@@ -387,20 +392,17 @@ impl<E, INITB, DONE, CSN, PROGB, SPI, DELAY> FPGA<E, INITB, DONE, CSN, PROGB, SP
     /// It is assumed that the fpga has already been initialized and the spi bus is cleared out
     /// 
     /// Return true  if the config send was successful
-    pub fn send_config(&mut self) -> Result<(), FpgaError<E>> {
+    pub fn send_config(&mut self) -> Result<(), FpgaError<GpioE, SpiE>> {
         self.csn.set_low().map_err(convert_gpio_error)?;
-
-        self.spi.set_frequency(16_000_000u32.Hz()).map_err(convert_spi_error).unwrap();
-
+        // self.spi.set_frequency(16_000_000u32.Hz()).map_err(convert_spi_error).unwrap();
         self.safe_write_spi(&FPGA_BYTES)?;
-
         self.csn.set_high().map_err(convert_gpio_error)?;
 
         Ok(())
     }
 
     /// Checks that there was no error on spi transmission and set csn high on failure
-    fn safe_write_spi(&mut self, data: &[u8]) -> Result<(), FpgaError<E>> {
+    fn safe_write_spi(&mut self, data: &[u8]) -> Result<(), FpgaError<GpioE, SpiE>> {
         if let Err(err) = self.spi.write(data) {
             self.csn.set_high().unwrap();
             return Err(convert_spi_error(err));
@@ -409,7 +411,7 @@ impl<E, INITB, DONE, CSN, PROGB, SPI, DELAY> FPGA<E, INITB, DONE, CSN, PROGB, SP
         Ok(())
     }
 
-    fn safe_transfer_spi(&mut self, data: &mut [u8]) -> Result<(), FpgaError<E>> {
+    fn safe_transfer_spi(&mut self, data: &mut [u8]) -> Result<(), FpgaError<GpioE, SpiE>> {
         if let Err(err) = self.spi.transfer(data) {
             self.csn.set_high().unwrap();
             return Err(convert_spi_error(err));
@@ -441,22 +443,6 @@ fn bytes_to_i16s(data: &[u8; 10]) -> [i16; 5] {
     }
 
     output_slice
-}
-
-/// Data is sent in LSB format so this converts a u16 slice to a u8 slice
-fn u16_slice_to_bytes(data: &[u16; 5]) -> [u8; 10] {
-    return [
-        (data[0] & 0xff) as u8,
-        (data[0] >> 8) as u8,
-        (data[1] & 0xff) as u8,
-        (data[1] >> 8) as u8,
-        (data[2] & 0xff) as u8,
-        (data[2] >> 8) as u8,
-        (data[3] & 0xff) as u8,
-        (data[3] >> 8) as u8,
-        (data[4] & 0xff) as u8,
-        (data[4] >> 8) as u8,
-    ]
 }
 
 fn to_sign_magnitude<const SIGN_INDEX: usize>(value: i16) -> u16 {

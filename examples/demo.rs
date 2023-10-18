@@ -48,7 +48,7 @@ mod app {
         } = board::t41(ctx.device);
 
         let systick_token = rtic_monotonics::create_systick_token!();
-        Systick::start(ctx.core.SYST, 36_000_000, systick_token);
+        Systick::start(ctx.core.SYST, 600_000_000, systick_token);
 
         let led = gpio2.output(pins.p7);
 
