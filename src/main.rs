@@ -44,7 +44,7 @@ use bsp::hal::gpt::ClockSource;
 )]
 mod app {
 
-    use fpga::{error::FpgaError, instructions::DutyCycle};
+    use fpga::{error::FpgaError, structs::DutyCycle};
 
     // this allows us to define our packages outside the app module
     // we're essetially "bringing them all in"
