@@ -1,15 +1,16 @@
+# this is our root package :)
 [package]
-name = "robocup-rustware"
+name = "main"
 version = "0.1.0"
+authors = ["celcius-plus-273 <kelvinandreshau@gmail.com>"]
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
+# dependencies for the root package which we'll call the "main" package
 [dependencies]
-cortex-m = "0.7"
-embedded-hal = "0.2"
-log = "0.4"
+cortex-m = "0.7" # basic hal package for cortex m microcontroller boards
+log = "0.4" # allows for the logging feautre (a.k.a printing to the serial port)
 teensy4-pins = "0.3.1"
+imxrt-iomuxc = "0.2.2"
 sx127 = { git = "https://github.com/N8BWert/sx127" }
 embedded-alloc = "0.5.0"
 
@@ -23,10 +24,11 @@ version = "0.1.3"
 default-features = false
 features = ["nostd"]
 
-[dependencies.teensy4-bsp]
-version = "0.4"
-features = ["usb-logging", "rt"]
+[dependencies.embedded-hal]
+version = "~0.2"
+features = ["unproven"]
 
+# RTIC 2.0 dependencies
 [dependencies.rtic]
 version = "2.0.1"
 features = ["thumbv7-backend"]
@@ -35,16 +37,36 @@ features = ["thumbv7-backend"]
 version = "1.0.0"
 features = ["cortex-m-systick"]
 
+# teensy4-bsp is the board support package for teensy 4.0/4.1
+[dependencies.teensy4-bsp]
+version = "0.4"
+features = [
+    # Use the BSP's runtime. This lets you write your
+    # `main()` function.
+    "rt",
+    # Remove me if you don't want logging.
+    "usb-logging",
+]
+
+# allows for debugging messages when panicking
 [dependencies.teensy4-panic]
 version = "0.2"
 features = ["log"]
 
+# this is an example of how to include a local package as a dependency
+[dependencies.fpga-rs]
+path = "drivers/fpga"
+
+# the root package is also a workspace that holds all of the neccesary "supporting" packages
+# such as driver files, utility files (e.g. tools), etc.
 [workspace]
 members = [
-    "tools"
+    "drivers/fpga",
+    "tools",
 ]
 
-# Don't optimize build dependencies, like proc macros.
-# Helps with build times.
+# overrides the release build optimization level
+# this can be deleted if higher optimization is wanted
+# NOTE: lower optimization yields a faster build time
 [profile.release.build-override]
 opt-level = 0
