@@ -3,9 +3,11 @@
 #![crate_type = "lib"]
 
 // import instructions & helper/wrapper structs
-pub mod structs;
-use structs::Instruction;
-use structs::DutyCycle;
+pub mod instructions;
+use instructions::Instruction;
+
+pub mod duty_cycle;
+use duty_cycle::DutyCycle;
 
 // import fpga configuration array
 pub mod config_bin;
@@ -29,7 +31,6 @@ use embedded_hal::spi::{self, Mode};
 */
 use teensy4_bsp as bsp;
 use bsp::hal::gpio::Input;
-
 
 /// enum for fpga status :)
 // (IMPORTANT): maybe move into the structs module?
@@ -106,22 +107,20 @@ impl<SPI, CS, InitP, PROG, DoneP, SpiE, PinE> FPGA<SPI, CS, InitP, PROG, DoneP>
         // initialize cs pin to be high (idle state)
         fpga.cs.set_high().map_err(FpgaError::CSPin)?;
 
-        // returnt the instance
+        // return the instance
         Ok(fpga)
     }
 
-    /**
-    * Configures the FPGA as follows:
-    *    1. Toggles the prog_b pin to clear out anything prior
-    *    2. Awaits for the FPGA init_b pin
-    *    3. Sends config
-    *    4. Awaits for the FPGA done pin
-    *    5. Returns Ok if no errors or timeout
-    *
-    * Parameters:
-    *    delay: An instance of a blocking delay that implements the DelayUs and
-    *           DelayMs embedded traits
-    */
+    /// Configures the FPGA as follows:
+    ///    1. Toggles the prog_b pin to clear out anything prior
+    ///    2. Awaits for the FPGA init_b pin
+    ///    3. Sends config
+    ///    4. Awaits for the FPGA done pin
+    ///    5. Returns Ok if no errors or timeout
+    ///
+    /// Parameters:
+    ///    delay: An instance of a blocking delay that implements the DelayUs and
+    ///           DelayMs embedded traits
     pub fn configure<D>(&mut self, delay: &mut D) 
         -> Result<(), FpgaError<SpiE, PinE>> 
         where 
@@ -227,16 +226,15 @@ impl<SPI, CS, InitP, PROG, DoneP, SpiE, PinE> FPGA<SPI, CS, InitP, PROG, DoneP>
         let mut write_buffer: [u8; 7] = [0x00; 7];
         
         // send READ HALLS instruction through an SPI transfer transaction
-        write_buffer[0] = Instruction::R_HALLS.opcode();
+        write_buffer[0] = Instruction::ReadHalls.opcode();
         write_buffer[1] = 0x00; // all instructions are appended with a 0x00
 
         // read the halls into the write_buffer
         self.spi_transfer(&mut write_buffer)?;
 
         // read write_buffer for each hall
-        for i in 0..5 {
-            // store the hall value in the corresponding hall buffer
-            halls[i] = write_buffer[i + 2];
+        for (i, hall_value) in write_buffer[2..].iter().enumerate() {
+            halls[i] = *hall_value;
         }
 
         // return status code
@@ -251,7 +249,7 @@ impl<SPI, CS, InitP, PROG, DoneP, SpiE, PinE> FPGA<SPI, CS, InitP, PROG, DoneP>
         let mut write_buffer: [u8; 12] = [0x00; 12];
 
         // send READ ENCODERS instruction through an SPI transfer transaction
-        write_buffer[0] = Instruction::R_ENC.opcode();
+        write_buffer[0] = Instruction::ReadEncoders.opcode();
         write_buffer[1] = 0x00; // always append a 0x00 after the instruction
         
         /*
@@ -314,7 +312,7 @@ impl<SPI, CS, InitP, PROG, DoneP, SpiE, PinE> FPGA<SPI, CS, InitP, PROG, DoneP>
         let mut write_buffer: [u8; 12] = [0x00; 12];
 
         // send READ DUTY CYCLES instruction through SPI transfer transaction
-        write_buffer[0] = Instruction::R_DUTY.opcode();
+        write_buffer[0] = Instruction::ReadDuties.opcode();
         write_buffer[1] = 0x00; // always append 0x00 after instruction
 
         /*
@@ -357,7 +355,7 @@ impl<SPI, CS, InitP, PROG, DoneP, SpiE, PinE> FPGA<SPI, CS, InitP, PROG, DoneP>
         
         // send READ ENC WRITE VEL instruction
         // we'll only write vel and not read any enc information for this function
-        write_buffer[0] = Instruction::R_ENC_W_VEL.opcode();
+        write_buffer[0] = Instruction::ReadEncodersWriteVelocity.opcode();
         write_buffer[1] = 0x00; // all instructions are appended a 0x00 byte
 
         // for each duty cycle in duty_cycle...
@@ -383,7 +381,7 @@ impl<SPI, CS, InitP, PROG, DoneP, SpiE, PinE> FPGA<SPI, CS, InitP, PROG, DoneP>
         let mut write_buffer: [u8; 12] = [0x00; 12];
 
         // send READ ENC WRITE VEL instruction
-        write_buffer[0] = Instruction::R_ENC_W_VEL.opcode();
+        write_buffer[0] = Instruction::ReadEncodersWriteVelocity.opcode();
         write_buffer[1] = 0x00;
 
         // for each duty cycle in duty_cycle...
@@ -434,7 +432,7 @@ impl<SPI, CS, InitP, PROG, DoneP, SpiE, PinE> FPGA<SPI, CS, InitP, PROG, DoneP>
         -> Result<u8, FpgaError<SpiE, PinE>> {
         
         // send READ DRV instruction
-        let mut status: [u8; 1] = [Instruction::CHECK_DRV.opcode()];
+        let mut status: [u8; 1] = [Instruction::CheckDrive.opcode()];
         self.spi.transfer(&mut status).map_err(FpgaError::SPI)?;
 
         // Each DRV value contains 3 "Nibbles"
