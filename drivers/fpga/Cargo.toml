@@ -1,0 +1,13 @@
+[package]
+name = "fpga-rs"
+version = "0.1.0"
+authors = ["kelvin-hau <khau3@gatech.edu>"]
+edition = "2021"
+
+# always needed for device drivers :)
+[dependencies.embedded-hal]
+version = "~0.2"
+
+# we use the imxrt::gpio::Input struct from this dependency
+[dependencies.teensy4-bsp]
+version = "0.4"

@@ -138,6 +138,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5443807d6dff69373d433ab9ef5378ad8df50ca6298caf15de6e52e24aaf54d5"
 
 [[package]]
+name = "fpga-rs"
+version = "0.1.0"
+dependencies = [
+ "embedded-hal",
+ "teensy4-bsp",
+]
+
+[[package]]
 name = "fugit"
 version = "0.3.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -286,6 +294,22 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b5e6163cb8c49088c2c36f57875e58ccd8c87c7427f7fbd50ea6710b2f3f2e8f"
 
 [[package]]
+name = "main"
+version = "0.1.0"
+dependencies = [
+ "cortex-m",
+ "embedded-hal",
+ "fpga-rs",
+ "imxrt-iomuxc",
+ "log",
+ "rtic",
+ "rtic-monotonics",
+ "teensy4-bsp",
+ "teensy4-panic",
+ "teensy4-pins",
+]
+
+[[package]]
 name = "nb"
 version = "0.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -359,20 +383,6 @@ name = "ral-registers"
 version = "0.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "46b71a9d9206e8b46714c74255adcaea8b11e0350c1d8456165073c3f75fc81a"
-
-[[package]]
-name = "robocup-rustware"
-version = "0.1.0"
-dependencies = [
- "cortex-m",
- "embedded-hal",
- "log",
- "rtic",
- "rtic-monotonics",
- "teensy4-bsp",
- "teensy4-panic",
- "teensy4-pins",
-]
 
 [[package]]
 name = "rtic"
