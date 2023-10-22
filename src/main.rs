@@ -29,6 +29,9 @@ mod app {
 
     type Led = Output<P7>;
 
+    const HEAP_SIZE: usize = 1024;
+    static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
+
     #[local]
     struct Local {
         led: Led,
