@@ -1,5 +1,5 @@
 [package]
-name = "robocup-rustware"
+name = "rgb_led_driver_alaric"
 version = "0.1.0"
 edition = "2021"
 
@@ -27,24 +27,3 @@ features = ["cortex-m-systick"]
 version = "0.2"
 features = ["log"]
 
-[dev-dependencies]
-rgb_led_driver_alaric = { path = "./drivers/rgb_led_driver_alaric" }
-
-[workspace]
-members = [
-    "tools",
-    #"drivers/rgb_led",
-    "drivers/rgb_led_driver_alaric",
-]
-
-[[example]]
-name = "rgb_led_example"
-
-[[example]]
-name = "demo"
-
-
-# Don't optimize build dependencies, like proc macros.
-# Helps with build times.
-[profile.release.build-override]
-opt-level = 0
