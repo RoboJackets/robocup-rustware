@@ -41,7 +41,7 @@ features = ["log"]
 
 [workspace]
 members = [
-    "tools",
+    "tools"
 ]
 
 # Don't optimize build dependencies, like proc macros.
