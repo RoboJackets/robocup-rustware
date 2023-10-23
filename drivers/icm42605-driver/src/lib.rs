@@ -14,7 +14,7 @@ pub struct Icm42605<I2C> {
 }
 
 impl<
-        I2C: i2c::Write<Error = E> + i2c::Read<Error = E> + i2c::WriteRead<Error = E> + 'static,
+        I2C: i2c::Write<Error = E> + i2c::Read<Error = E> + 'static,
         E
     > Icm42605<I2C>
 {
