@@ -13,6 +13,13 @@
 /// Please follow this example for future examples and sanity tests
 /// 
 
+extern crate alloc;
+
+use embedded_alloc::Heap;
+
+#[global_allocator]
+static HEAP: Heap = Heap::empty();
+
 use teensy4_panic as _;
 
 #[rtic::app(device = teensy4_bsp, peripherals = true, dispatchers = [GPT2])]

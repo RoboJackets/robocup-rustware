@@ -2,6 +2,13 @@
 #![no_main] // bsp-rt is used as the entry point of the program instead
 #![feature(type_alias_impl_trait)] // this feature is needed for RTIC v2
 
+extern crate alloc;
+
+use embedded_alloc::Heap;
+
+#[global_allocator]
+static HEAP: Heap = Heap::empty();
+
 //// BASIC BSP PACKAGES ///
 use bsp::board;
 use teensy4_bsp as bsp;
