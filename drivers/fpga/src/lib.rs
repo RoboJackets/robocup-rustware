@@ -30,7 +30,6 @@ use embedded_hal::spi::{self, Mode};
 use teensy4_bsp as bsp;
 use bsp::hal::gpio::Input;
 
-
 /// enum for fpga status :)
 // (IMPORTANT): maybe move into the structs module?
 // TODO: do we need this?...could be useful as we can do a quick check before 
@@ -106,22 +105,20 @@ impl<SPI, CS, InitP, PROG, DoneP, SpiE, PinE> FPGA<SPI, CS, InitP, PROG, DoneP>
         // initialize cs pin to be high (idle state)
         fpga.cs.set_high().map_err(FpgaError::CSPin)?;
 
-        // returnt the instance
+        // return the instance
         Ok(fpga)
     }
 
-    /**
-    * Configures the FPGA as follows:
-    *    1. Toggles the prog_b pin to clear out anything prior
-    *    2. Awaits for the FPGA init_b pin
-    *    3. Sends config
-    *    4. Awaits for the FPGA done pin
-    *    5. Returns Ok if no errors or timeout
-    *
-    * Parameters:
-    *    delay: An instance of a blocking delay that implements the DelayUs and
-    *           DelayMs embedded traits
-    */
+    /// Configures the FPGA as follows:
+    ///    1. Toggles the prog_b pin to clear out anything prior
+    ///    2. Awaits for the FPGA init_b pin
+    ///    3. Sends config
+    ///    4. Awaits for the FPGA done pin
+    ///    5. Returns Ok if no errors or timeout
+    ///
+    /// Parameters:
+    ///    delay: An instance of a blocking delay that implements the DelayUs and
+    ///           DelayMs embedded traits
     pub fn configure<D>(&mut self, delay: &mut D) 
         -> Result<(), FpgaError<SpiE, PinE>> 
         where 
@@ -219,9 +216,6 @@ impl<SPI, CS, InitP, PROG, DoneP, SpiE, PinE> FPGA<SPI, CS, InitP, PROG, DoneP>
         self.status
     }
 
-    /**
-     * 
-     */
     pub fn read_halls(&mut self, halls: &mut [u8; 5])
         -> Result<u8, FpgaError<SpiE, PinE>> {
 
@@ -245,9 +239,6 @@ impl<SPI, CS, InitP, PROG, DoneP, SpiE, PinE> FPGA<SPI, CS, InitP, PROG, DoneP>
         Ok(write_buffer[1])
     }
 
-    /**
-     * 
-     */
     pub fn read_encs(&mut self, encs: &mut [i16; 5]) 
         -> Result<u8, FpgaError<SpiE, PinE>> {
         
@@ -310,9 +301,6 @@ impl<SPI, CS, InitP, PROG, DoneP, SpiE, PinE> FPGA<SPI, CS, InitP, PROG, DoneP>
         Ok(write_buffer[1])
     }
 
-    /**
-     * 
-     */
     pub fn read_duty_cycles(&mut self, duty_cycles: &mut [i16; 5]) 
         -> Result<u8, FpgaError<SpiE, PinE>> {
         
@@ -353,9 +341,6 @@ impl<SPI, CS, InitP, PROG, DoneP, SpiE, PinE> FPGA<SPI, CS, InitP, PROG, DoneP>
         Ok(write_buffer[1])
     }
 
-    /**
-     * 
-     */
     pub fn set_duty_cycles(&mut self, duty_cycles: &mut [DutyCycle; 5]) 
         -> Result<u8, FpgaError<SpiE, PinE>> 
         {

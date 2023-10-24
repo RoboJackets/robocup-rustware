@@ -42,7 +42,6 @@ use bsp::hal::gpt::ClockSource;
     dispatchers = [GPT2]
 )]
 mod app {
-
     use fpga::{error::FpgaError, structs::DutyCycle};
 
     // this allows us to define our packages outside the app module
@@ -61,7 +60,6 @@ mod app {
 
     // MOTION SPEED in DUTY CYCLE
     const SPEED: i16 = 63;
-
     // timer stuff
     const GPT1_FREQUENCY: u32 = 1_000;
     const GPT1_CLOCK_SOURCE: ClockSource = ClockSource::HighFrequencyReferenceClock;

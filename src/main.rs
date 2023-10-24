@@ -1,3 +1,8 @@
+//!
+//! This demo example shows how a teensy 4 RTIC application can be set up
+//! and spawns a software task that blinks an onboard led.
+//! 
+
 #![no_std]
 #![no_main] // bsp-rt is used as the entry point of the program instead
 #![feature(type_alias_impl_trait)] // this feature is needed for RTIC v2
@@ -282,4 +287,3 @@ mod app {
         }
     }
 }
-

@@ -72,10 +72,7 @@ git checkout -b <first_name>_<last_name>-firmware_tutorial
 OS=MACOSX ./setup/unix.sh
 ```
 
-- Windows:
-```cmd
-TODO:
-```
+- Windows: Check [Windows Setup](setup/WindowsSetup.md) in setup folder
 
 5. Cd into the drivers folder and create a new lib crate
 
