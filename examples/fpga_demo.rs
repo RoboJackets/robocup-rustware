@@ -43,7 +43,6 @@ use bsp::hal::gpt::ClockSource;
 )]
 mod app {
 
-    use alloc::task;
     use fpga::{error::FpgaError, structs::DutyCycle};
 
     // this allows us to define our packages outside the app module
@@ -59,6 +58,9 @@ mod app {
     const TEN_MS_DELAY: u32 = SYST_MONO_FACTOR * 10;            // 10 ms
     const HUNDRED_MS_DELAY: u32 = SYST_MONO_FACTOR * 100;       // 100 ms ms
     const SECOND_DELAY: u32 = SYST_MONO_FACTOR * 1000;    // 1 s delay
+
+    // MOTION SPEED in DUTY CYCLE
+    const SPEED: i16 = 63;
 
     // timer stuff
     const GPT1_FREQUENCY: u32 = 1_000;
@@ -126,10 +128,9 @@ mod app {
         let counter = 0;
 
         // initalize spi
-        // use pin 9 as chop select manially :) maybe it'll fix the issue???
         let mut spi = board::lpspi(lpspi4, 
             board::LpspiPins {
-                pcs0: pins.p10,
+                pcs0: pins.p10, // NOT CURRENTLY USED
                 sck: pins.p13,
                 sdo: pins.p11,
                 sdi: pins.p12,
@@ -162,9 +163,6 @@ mod app {
         // start the init fpga task
         init_fpga::spawn().unwrap();
 
-        // start the toggle task :)
-        toggle::spawn().unwrap();
-
         // return the local, and shared resources to be used from the context
         (
             Shared {counter},
@@ -178,32 +176,6 @@ mod app {
         loop {
             // wfi: wait-for-interrupt
             cortex_m::asm::wfi();
-        }
-    }
-
-    // toggles the led and writes to the serial output
-    #[task(local = [led], shared = [counter], priority = 1)]
-    async fn toggle(cx : toggle::Context) {
-        // just renaming our shared variable into a local variable so it's easier to read
-        let mut counter = cx.shared.counter;
-
-        // infinite loop which is allowed as it contains a delay followed by a ".await"
-        loop {
-            // example locking the shared counter variable and updating it's value!
-            counter.lock(|counter| {
-                // increment the counter using an external function
-                *counter += 1;
-                
-                // prints "blink!" to the usb serial port
-                log::info!("blink # {}!", *counter);
-            });
-
-            // toggle the led
-            cx.local.led.toggle();
-
-            // generate a delay using the initialized systick monotonic
-            // by calling the Systick::delay() function
-            Systick::delay(SECOND_DELAY.millis()).await;
         }
     }
 
@@ -238,16 +210,16 @@ mod app {
 
         // TODO: Verify that each duty cycle corresponds to each respective motor
         loop {
-            // move forward for 5 seconds
+            // move forward for 2 seconds
             log::info!("moving forward!");
             Systick::delay(TEN_MS_DELAY.millis()).await;
-            for _ in 0..50 {
+            for _ in 0..100 {
                 // forward direction duty cycles
-                let mut duty_cycles = [DutyCycle::from(-128 as i16),     // motor 1
-                                DutyCycle::from(-128 as i16),                            // motor 2
-                                DutyCycle::from(128 as i16),                             // motor 3
-                                DutyCycle::from(128 as i16),                             // motor 4
-                                DutyCycle::from(128 as i16)];                            // dribbler
+                let mut duty_cycles = [DutyCycle::from(SPEED as i16),     // motor 1
+                                DutyCycle::from(SPEED as i16),                            // motor 2
+                                DutyCycle::from(-SPEED as i16),                             // motor 3
+                                DutyCycle::from(-SPEED as i16),                             // motor 4
+                                DutyCycle::from(256 as i16)];                            // dribbler
                 // write duty cycle
                 match fpga.set_duty_cycles(&mut duty_cycles) {
                     Ok(status) => log::info!("wrote duty cycles fpga status: {:b}", status),
@@ -256,16 +228,16 @@ mod app {
                 Systick::delay(HUNDRED_MS_DELAY.millis()).await;
             }
 
-            // move backwards for 5 seconds
+            // move backwards for 2 seconds
             log::info!("moving backwards!");
             Systick::delay(TEN_MS_DELAY.millis()).await;
-            for _ in 0..50 {
+            for _ in 0..100 {
                 // forward direction duty cycles
-                let mut duty_cycles = [DutyCycle::from(128 as i16),     // motor 1
-                                DutyCycle::from(128 as i16),                            // motor 2
-                                DutyCycle::from(-128 as i16),                           // motor 3
-                                DutyCycle::from(-128 as i16),                           // motor 4
-                                DutyCycle::from(128 as i16)];                           // dribbler
+                let mut duty_cycles = [DutyCycle::from(-SPEED as i16),     // motor 1
+                                DutyCycle::from(-SPEED as i16),                            // motor 2
+                                DutyCycle::from(SPEED as i16),                           // motor 3
+                                DutyCycle::from(SPEED as i16),                           // motor 4
+                                DutyCycle::from(256 as i16)];                           // dribbler
                 // write duty cycle
                 match fpga.set_duty_cycles(&mut duty_cycles) {
                     Ok(status) => log::info!("wrote duty cycles fpga status: {:b}", status),
@@ -277,13 +249,13 @@ mod app {
             // spin for 5 seconds
             log::info!("spinning!");
             Systick::delay(TEN_MS_DELAY.millis()).await;
-            for _ in 0..50 {
+            for _ in 0..100 {
                 // forward direction duty cycles
-                let mut duty_cycles = [DutyCycle::from(128 as i16), 
-                                DutyCycle::from(128 as i16), 
-                                DutyCycle::from(128 as i16),
-                                DutyCycle::from(128 as i16),
-                                DutyCycle::from(128 as i16)];
+                let mut duty_cycles = [DutyCycle::from(SPEED as i16), 
+                                DutyCycle::from(SPEED as i16), 
+                                DutyCycle::from(SPEED as i16),
+                                DutyCycle::from(SPEED as i16),
+                                DutyCycle::from(256 as i16)];
                 // write duty cycle
                 match fpga.set_duty_cycles(&mut duty_cycles) {
                     Ok(status) => log::info!("wrote duty cycles fpga status: {:b}", status),
@@ -295,13 +267,13 @@ mod app {
             // still for 3 seconds
             log::info!("standby...");
             Systick::delay(TEN_MS_DELAY.millis()).await;
-            for _ in 0..30 {
+            for _ in 0..100 {
                 // forward direction duty cycles
                 let mut duty_cycles = [DutyCycle::from(0 as i16), 
                                 DutyCycle::from(0 as i16), 
                                 DutyCycle::from(0 as i16),
                                 DutyCycle::from(0 as i16),
-                                DutyCycle::from(0 as i16)];
+                                DutyCycle::from(256 as i16)];
                 // write duty cycle
                 match fpga.set_duty_cycles(&mut duty_cycles) {
                     Ok(status) => log::info!("wrote duty cycles fpga status: {:b}", status),

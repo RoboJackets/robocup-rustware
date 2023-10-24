@@ -26,7 +26,7 @@ pub enum FpgaError<SpiError, PinError> {
         ======================
         |   0x1  |   INIT_B  |
         |   0x2  |    DONE   |
-        |   0x3  |  Watchdog |
+        |   0x3  |  Watchdog |  <--- NOT CURRENTLY USED
         ======================
         
     */

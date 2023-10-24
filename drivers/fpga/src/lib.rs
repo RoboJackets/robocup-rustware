@@ -219,7 +219,9 @@ impl<SPI, CS, InitP, PROG, DoneP, SpiE, PinE> FPGA<SPI, CS, InitP, PROG, DoneP>
         self.status
     }
 
-    /// 
+    /**
+     * 
+     */
     pub fn read_halls(&mut self, halls: &mut [u8; 5])
         -> Result<u8, FpgaError<SpiE, PinE>> {
 
@@ -243,7 +245,9 @@ impl<SPI, CS, InitP, PROG, DoneP, SpiE, PinE> FPGA<SPI, CS, InitP, PROG, DoneP>
         Ok(write_buffer[1])
     }
 
-    ///
+    /**
+     * 
+     */
     pub fn read_encs(&mut self, encs: &mut [i16; 5]) 
         -> Result<u8, FpgaError<SpiE, PinE>> {
         
@@ -306,7 +310,9 @@ impl<SPI, CS, InitP, PROG, DoneP, SpiE, PinE> FPGA<SPI, CS, InitP, PROG, DoneP>
         Ok(write_buffer[1])
     }
 
-    ///
+    /**
+     * 
+     */
     pub fn read_duty_cycles(&mut self, duty_cycles: &mut [i16; 5]) 
         -> Result<u8, FpgaError<SpiE, PinE>> {
         
@@ -347,35 +353,71 @@ impl<SPI, CS, InitP, PROG, DoneP, SpiE, PinE> FPGA<SPI, CS, InitP, PROG, DoneP>
         Ok(write_buffer[1])
     }
 
-    ///
+    /**
+     * 
+     */
     pub fn set_duty_cycles(&mut self, duty_cycles: &mut [DutyCycle; 5]) 
         -> Result<u8, FpgaError<SpiE, PinE>> 
         {
 
         // init write buffer
-        let mut write_buffer: [u8; 12] = [0;12];
+        let mut write_buffer: [u8; 12] = [0x0;12];
         
-        // send READ ENC WRITE VEL instruction
-        // we'll only write vel and not read any enc information for this function
+        //send READ ENC WRITE VEL instruction
+        //we'll only write vel and not read any enc information for this function
         write_buffer[0] = Instruction::R_ENC_W_VEL.opcode();
-        write_buffer[1] = 0x00; // all instructions are appended a 0x00 byte
+        
+        // This loop iterates through each duty_cycle and sets the correspondng bytes of the write buffer
+        // However, because of the weird behavior of Dribbler we are currently hardcoding a duty_cycle for it
+        // so we don't manually set dribbler's duty_cycle
+        for i in 0..4 {
+                // first the lower 8 bits first (lsByte)
+                write_buffer[(2 * i) + 1] = duty_cycles[i].lsb();
+                // then we send the upper 8 bits (msByte)
+                write_buffer[(2 * i) + 2] = duty_cycles[i].msb();
+            }
 
-        // for each duty cycle in duty_cycle...
-        for i in 0..5 {
-            // first the lower 8 bits first (lsByte)
-            write_buffer[2 * (i + 1)] = duty_cycles[i].lsb();
-            // then we send the upper 8 bits (msByte)
-            write_buffer[(2 * (i + 1)) + 1] = duty_cycles[i].msb();
-        }
+        // // motor 1
+        // write_buffer[1] = 0x1F; // all instructions are appended a 0x00 byte
+        // write_buffer[2] = 0x00; // duty cycle lsb
+            
+        // // motor 2    
+        // write_buffer[3] = 0x1F; // enc msb
+        // write_buffer[4] = 0x00; // duty cycle msb
+            
+        // // motor 3
+        // write_buffer[5] = 0x1F; // enc lsb
+        // write_buffer[6] = 0x02;
+            
+        // // motor 4
+        // write_buffer[7] = 0x1F;
+        // write_buffer[8] = 0x02;
+            
+        //
+        // Dribbler?
+        // For some unkown reason we need to at least assert the lsb of the higher byte write_buffer[10] = 0x01
+        // for any motors to move... No idea why. It might be because of the mechanism where if an invalid duty_cycle is sent         
+        // it automatically triggers the watchdog or something like that
+        // 
+        // I'll dive deeper into the FPGA verilog code as I am very suspiscious about the fact that our verilog sucks and
+        // the weird motion might be due to a shitty FPGA verilog lol
+        // 
+        write_buffer[9] = 0x00;
+        write_buffer[10] = 0x01;
+            
+        // I have NO IDEA why we need this here. Setting duties doesn't work unless we append a 0x00 at the end :)
+        write_buffer[11] = 0x00;
 
-        // send the ls byte first and then the ms byte
+        // this is the actual SPI transfer what writes the duty_cycles to the FPGA
         self.spi_transfer(&mut write_buffer)?;
 
         // return status code
-        Ok( write_buffer[1] )
+        Ok( write_buffer[0] )
     }
 
-    ///
+    /**
+     * 
+     */
     pub fn set_duty_get_encs(&mut self, duty_cycles: &mut [DutyCycle; 5], encs: &mut [i16; 5]) 
             -> Result<u8, FpgaError<SpiE, PinE>> {
         
@@ -429,63 +471,63 @@ impl<SPI, CS, InitP, PROG, DoneP, SpiE, PinE> FPGA<SPI, CS, InitP, PROG, DoneP>
     //     Ok(hash_2[11] == 0x01)
     // }
 
-    ///
-    pub fn gate_drivers(&mut self, gate_status: &mut [u32; 5]) 
-        -> Result<u8, FpgaError<SpiE, PinE>> {
+    /// TODO: Fix the gate_drivers function
+    // pub fn gate_drivers(&mut self, gate_status: &mut [u32; 5]) 
+    //     -> Result<u8, FpgaError<SpiE, PinE>> {
         
-        // send READ DRV instruction
-        let mut status: [u8; 1] = [Instruction::CHECK_DRV.opcode()];
-        self.spi.transfer(&mut status).map_err(FpgaError::SPI)?;
+    //     // send READ DRV instruction
+    //     let mut status: [u8; 1] = [Instruction::CHECK_DRV.opcode()];
+    //     self.spi.transfer(&mut status).map_err(FpgaError::SPI)?;
 
-        // Each DRV value contains 3 "Nibbles"
-        for i in 0..5 {
-            // buffer used to store all 3 "Nibbles" and the empty "extra" byte
-            let mut empty: [u8;1] = [0x00];
-            let mut nib_0:[u8; 1] = [0x00];
-            let mut nib_1:[u8; 1] = [0x00];
-            let mut nib_2:[u8; 1] = [0x00];
+    //     // Each DRV value contains 3 "Nibbles"
+    //     for i in 0..5 {
+    //         // buffer used to store all 3 "Nibbles" and the empty "extra" byte
+    //         let mut empty: [u8;1] = [0x00];
+    //         let mut nib_0:[u8; 1] = [0x00];
+    //         let mut nib_1:[u8; 1] = [0x00];
+    //         let mut nib_2:[u8; 1] = [0x00];
 
-            self.spi.transfer(&mut nib_1).map_err(FpgaError::SPI)?;
-            self.spi.transfer(&mut nib_0).map_err(FpgaError::SPI)?;
-            self.spi.transfer(&mut empty).map_err(FpgaError::SPI)?;
-            self.spi.transfer(&mut nib_2).map_err(FpgaError::SPI)?;
+    //         self.spi.transfer(&mut nib_1).map_err(FpgaError::SPI)?;
+    //         self.spi.transfer(&mut nib_0).map_err(FpgaError::SPI)?;
+    //         self.spi.transfer(&mut empty).map_err(FpgaError::SPI)?;
+    //         self.spi.transfer(&mut nib_2).map_err(FpgaError::SPI)?;
 
-            // combine all 4 bytes to form a single DRV encoded value
-            gate_status[i] = ((empty[0] << 24) | (nib_2[0] << 16) | (nib_1[0] << 8) | nib_0[0]) as u32;
-        }
+    //         // combine all 4 bytes to form a single DRV encoded value
+    //         gate_status[i] = ((empty[0] << 24) | (nib_2[0] << 16) | (nib_1[0] << 8) | nib_0[0]) as u32;
+    //     }
         
-        Ok(status[0])
+    //     Ok(status[0])
 
-    }
+    // }
 
-    ///
+    /**
+     * 
+     */
     pub fn motors_en(&mut self, state: bool) 
         -> Result<u8, FpgaError<SpiE, PinE>> {
         
-        let mut status: [u8;1] = [0];
+        let mut write_buffer: [u8; 1] = [0x00];
 
         // send either the EN MOTORS or DISABLE MOTORS command based on the passed in state
         match state {
             true => {
-                //status[0] = Instruction::EN_MOTORS.opcode();
-                status[0] = 0x30;
+                write_buffer[0] = Instruction::EN_MOTORS.opcode();
             } 
             false => {
-                //status[0] = Instruction::DIS_MOTORS.opcode();
-                status[0] = 0xB0;
+                write_buffer[0] = Instruction::DIS_MOTORS.opcode();
             }
         }
         
         // spi transfer
-        self.cs.set_low().map_err(FpgaError::CSPin)?;
-        self.spi.transfer(&mut status).map_err(FpgaError::SPI)?;
-        self.cs.set_high().map_err(FpgaError::CSPin)?;
+        self.spi_transfer(&mut write_buffer)?;
 
         // return status code
-        Ok(status[0])
+        Ok(write_buffer[0])
     }
 
-    /// 
+    /**
+     * 
+     */
     pub fn watchdog_reset<D>(&mut self, delay: &mut D) 
         -> Result<(), FpgaError<SpiE, PinE>> 
         where D: DelayMs<u8> + DelayUs<u8> 
@@ -501,7 +543,7 @@ impl<SPI, CS, InitP, PROG, DoneP, SpiE, PinE> FPGA<SPI, CS, InitP, PROG, DoneP>
     }
 
     // Private helper method to abstract the SPI write transaction
-    fn spi_write(&mut self, buffer: &[u8])
+    pub(crate) fn spi_write(&mut self, buffer: &[u8])
         -> Result<(), FpgaError<SpiE, PinE>> {
             
         // pull cs pin low
@@ -517,16 +559,16 @@ impl<SPI, CS, InitP, PROG, DoneP, SpiE, PinE> FPGA<SPI, CS, InitP, PROG, DoneP>
 
     // Private helper method to abstract the SPI transfer transaction
     // NOTE: SPI transfer function uses a Full-Duplex protocol
-    fn spi_transfer(&mut self, buffer: &mut [u8])
+    pub(crate) fn spi_transfer(&mut self, buffer: &mut [u8])
         -> Result<(), FpgaError<SpiE, PinE>> {
             
         // TODO: decide between manually controlled cs and teensy's auto cs
 
-        // pull cs pin low
+        // pull cs pin high
         self.cs.set_low().map_err(FpgaError::CSPin)?;    
         // write  buffer contents and read from spi
         self.spi.transfer(buffer).map_err(FpgaError::SPI)?;
-        // pull cs pin back to high (default satate)
+        // pull cs pin back to low (default satate)
         self.cs.set_high().map_err(FpgaError::CSPin)?;
 
         // return () if spi_write was succesfull

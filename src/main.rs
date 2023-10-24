@@ -56,7 +56,7 @@ mod app {
     const SYST_MONO_FACTOR: u32 = 10;
 
     // delay in miliseconds
-    const DELAY_MS: u32 = SYST_MONO_FACTOR * 150;      // delay in ms
+    const DELAY_MS: u32 = SYST_MONO_FACTOR * 200;      // delay in ms
     const LONG_DELAY: u32 = SYST_MONO_FACTOR * 5000;  // 5 s delay
 
     // timer stuff
@@ -224,13 +224,13 @@ mod app {
             },
         };
 
-        Systick::delay(DELAY_MS.millis()).await;
+        Systick::delay((1 * DELAY_MS).millis()).await;
 
-        let mut duty_cycles = [DutyCycle::from(0 as i16), 
-                        DutyCycle::from(0 as i16), 
-                        DutyCycle::from(0 as i16),
-                        DutyCycle::from(0 as i16),
-                        DutyCycle::from(0 as i16)];
+        let mut duty_cycles = [DutyCycle::from(63 as i16), 
+                        DutyCycle::from(63 as i16), 
+                        DutyCycle::from(63 as i16),
+                        DutyCycle::from(63 as i16),
+                        DutyCycle::from(256 as i16)];
 
         log::info!("delay has been set to: {} ms", DELAY_MS / SYST_MONO_FACTOR);
         
