@@ -176,6 +176,7 @@ name = "fpga-rs"
 version = "0.1.0"
 dependencies = [
  "embedded-hal 0.2.7",
+ "rtic-monotonics",
  "teensy4-bsp",
 ]
 
@@ -464,9 +465,9 @@ checksum = "46b71a9d9206e8b46714c74255adcaea8b11e0350c1d8456165073c3f75fc81a"
 
 [[package]]
 name = "robojackets-robocup-rtp"
-version = "0.1.3"
+version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "977d69f361b0a9f66275f2805b95af5bd692970ac8c4a773970044a84b1f1df3"
+checksum = "6b607a58e67ec857518ec3a639348c5502b9a867be580c4fa3dc5f7db1478dd6"
 dependencies = [
  "packed_struct",
 ]

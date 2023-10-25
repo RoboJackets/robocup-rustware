@@ -2,92 +2,63 @@
 #![no_std]
 #![crate_type = "lib"]
 
-// import instructions & helper/wrapper structs
-pub mod structs;
-use structs::Instruction;
-use structs::DutyCycle;
+pub mod instructions;
+use instructions::Instruction;
 
-// import fpga configuration array
+pub mod duty_cycle;
+use duty_cycle::DutyCycle;
+
 pub mod config_bin;
 use config_bin::FPGA_BYTES;
 
-// import fpga error type
 pub mod error;
 use error::FpgaError;
+
+pub mod status;
+use status::FpgaStatus;
 
 // embedded hal traits
 use embedded_hal::digital::v2::OutputPin; 
 use embedded_hal::blocking::spi::{Transfer, Write};
-use embedded_hal::blocking::delay::{DelayMs, DelayUs};
 use embedded_hal::spi::{self, Mode};
 
-/* 
-* imxrt gpio Input struct definition
-* This is needed because embedded_hal 0.2 default faetures do not
-* support the InputPin trait. This trait is part of the "unproven"
-* features of embedded_hal 0.2
-*/
+/// Input is an unproven feature in the embedded_hal
 use teensy4_bsp as bsp;
 use bsp::hal::gpio::Input;
 
-/// enum for fpga status :)
-// (IMPORTANT): maybe move into the structs module?
-// TODO: do we need this?...could be useful as we can do a quick check before 
-// every fpga call to ensure that it is still working
-#[derive(Clone, Copy)]
-pub enum FpgaStatus {
-    NotReady, // haven't been succesfully init
-    Standby, // init was done succesfully
-}
+/// This Driver is meant to be used with RTIC (Systick Montonics Enabled)
+use rtic_monotonics::systick::{Systick, ExtU32};
 
-/// use this constants when configuring the spi :)
-/// (IMPORTANT): move into the structs module?
+/// FPGA SPI Configuration Options
 pub const FPGA_SPI_FREQUENCY: u32 = 400_000;
 pub const FPGA_SPI_MODE: Mode = spi::Mode{
     polarity: spi::Polarity::IdleLow,
     phase: spi::Phase::CaptureOnFirstTransition,
 };
 
-/**
- * Structure that represents an instance on the FPGA hardware.
- * 
- * Holds all of the necessary hardware instances to enable motor control commands.
- * 
- * NOTES: 
- *  - The FPGA takes ownership of the SPI hardware instance i.e. cannot share the SPI
- *  - InputPin is not supported in the default features of embedded-hal 0.2, so we 
- *    define it using the Input struct and the Pin Number instead -> Input<PinNum>
- */
+/// Driver for the FPGA
+/// 
+/// Notes:
+/// * The FPGA takes ownership of the SPI hardware instance and cannot share the SPI
+/// * InputPin is unproven in the embedded-hal so we need to use the device specific hal
+///     with Input<PinNum>
+/// * prog_b must be OPEN_DRAIN configured
 pub struct FPGA<SPI, CS, InitP, PROG, DoneP> {
     spi: SPI,
     cs: CS,
     init_b: Input<InitP>,
-    prog_b: PROG,   // prog_b output pin "MUST" BE on OPEN_DRAIN configuration!!
+    prog_b: PROG,
     done: Input<DoneP>,
     status: FpgaStatus,
-
-    /* TODO: 
-        [x] check if vTaskDelay() == delay_ms()
-        [x] finish implementing reading functions :)
-    */
 }
 
-/**
-    NOTE: Notice the name used in this impl for the Error types. I intentionally
-    used different names from our custom FpgaError enum defined in the error.rs
-    to outline how we are using our custom error to wrap embedded trait error types
-*/
 impl<SPI, CS, InitP, PROG, DoneP, SpiE, PinE> FPGA<SPI, CS, InitP, PROG, DoneP>
-    where 
-        SPI: Write<u8, Error = SpiE> + Transfer<u8, Error = SpiE>,
-        PROG: OutputPin<Error = PinE>,
-        CS: OutputPin<Error = PinE>,
-{
-    
+    where SPI: Write<u8, Error = SpiE> + Transfer<u8, Error = SpiE>,
+          PROG: OutputPin<Error = PinE>,
+          CS: OutputPin<Error = PinE>, {
     /// Builds and returns a new instance of the FPGA controller. Only one
     /// instance of this FPGA should exist at any time
-    pub fn new(spi: SPI, cs: CS, init_b: Input<InitP>, prog_b: PROG, done: Input<DoneP>) 
-            -> Result<Self, FpgaError<SpiE, PinE>> {
+    pub fn new(spi: SPI, cs: CS, init_b: Input<InitP>, prog_b: PROG, done: Input<DoneP>) -> Result<Self, FpgaError<SpiE, PinE>> {
         
         // create new instance of FPGA and pass in appropriate pins
         let mut fpga = FPGA {
@@ -119,42 +90,10 @@ impl<SPI, CS, InitP, PROG, DoneP, SpiE, PinE> FPGA<SPI, CS, InitP, PROG, DoneP>
     /// Parameters:
     ///    delay: An instance of a blocking delay that implements the DelayUs and
     ///           DelayMs embedded traits
-    pub fn configure<D>(&mut self, delay: &mut D) 
-        -> Result<(), FpgaError<SpiE, PinE>> 
-        where 
-            D: DelayMs<u8> + DelayUs<u8>
-    {
-        /* TODO: maybe move this into some Rust resources compilation file??? 
-        =================================
-        === MAP_ERR BEHIND THE SCENES ===
-        =================================
-
-        For this map_err call I'll demonstrate what's happening behind the scenes
-        
-        1. We're passing in a closure whose parameter is the error from set_low
-        which we named "e" in this case
-        2. This closure is "remapping" the error "e" into our custom error enum
-        3. The Enum::<Generic Type Arguments>::Variant syntax is used when assigning
-        struct or enums that take in generic parameters
-        4. We pass in the pin error from set_low as the argument of ProgPin
-        5. We're also returning this same enum 
-        
-        NOTE: This syntax can be shortened as follows:
-        
-        ```
-        self.prog_b.set_low().map_err(FpgaError::ProgPin)?;
-        
-        ```
-        
-        This simplified syntax will be used throughout the remaining of the driver file
-        */
-
+    pub async fn configure(&mut self) -> Result<(), FpgaError<SpiE, PinE>> {
         // First we toggle the prog_b pin
-        self.prog_b.set_low().map_err(|e| {
-            let new_error = FpgaError::<SpiE, PinE>::ProgPin(e);
-            new_error
-        })?;
-        delay.delay_ms(1); // allow for hardware to latch properly
+        self.prog_b.set_low().map_err(FpgaError::ProgPin)?;
+        Systick::delay(1u32.millis()).await;
         self.prog_b.set_high().map_err(FpgaError::ProgPin)?;
 
         // delay until init_b is ready
@@ -162,7 +101,7 @@ impl<SPI, CS, InitP, PROG, DoneP, SpiE, PinE> FPGA<SPI, CS, InitP, PROG, DoneP>
         while timeout > 0 {
 
             // wait for 10 ms on each cycle
-            delay.delay_ms(10);
+            Systick::delay(10u32.millis()).await;
 
             // if the init_b pin is high => FPGA is ready to be programmed
             if self.init_b.is_set() {
@@ -187,7 +126,7 @@ impl<SPI, CS, InitP, PROG, DoneP, SpiE, PinE> FPGA<SPI, CS, InitP, PROG, DoneP>
         while timeout > 0 {
             
             // wait for 100 ms on each cycle
-            delay.delay_ms(100);
+            Systick::delay(100u32.millis()).await;
 
             // if done pin is high => FPGA is done configuring
             // update status to Standby
@@ -216,14 +155,14 @@ impl<SPI, CS, InitP, PROG, DoneP, SpiE, PinE> FPGA<SPI, CS, InitP, PROG, DoneP>
         self.status
     }
 
-    pub fn read_halls(&mut self, halls: &mut [u8; 5])
-        -> Result<u8, FpgaError<SpiE, PinE>> {
+    /// TODO: Debug This
+    pub fn read_halls(&mut self, halls: &mut [u8; 5]) -> Result<u8, FpgaError<SpiE, PinE>> {
 
         // spi transfer buffer
         let mut write_buffer: [u8; 7] = [0x00; 7];
         
         // send READ HALLS instruction through an SPI transfer transaction
-        write_buffer[0] = Instruction::R_HALLS.opcode();
+        write_buffer[0] = Instruction::ReadHalls.opcode();
         write_buffer[1] = 0x00; // all instructions are appended with a 0x00
 
         // read the halls into the write_buffer
@@ -239,52 +178,21 @@ impl<SPI, CS, InitP, PROG, DoneP, SpiE, PinE> FPGA<SPI, CS, InitP, PROG, DoneP>
         Ok(write_buffer[1])
     }
 
-    pub fn read_encs(&mut self, encs: &mut [i16; 5]) 
-        -> Result<u8, FpgaError<SpiE, PinE>> {
+    /// Read the encoder values from the FPGA
+    /// 
+    /// Format:
+    /// [opcode | status | enc_1 msByte | enc_1 lsByte | ... | enc_5 msByte | enc_5 lsByte ]
+    /// 
+    /// Note: the 5th encoder value encs[4] is the delta time and has an interesting conversion:
+    /// enc_5 * (1/18.432) * 2 * (2^WATCHDOG_TIMER_CLK_WIDTH) = duration since last transmission (ms)
+    pub fn read_encoders(&mut self, encs: &mut [i16; 5]) -> Result<u8, FpgaError<SpiE, PinE>> {
         
         // spi transaction buffer
         let mut write_buffer: [u8; 12] = [0x00; 12];
 
         // send READ ENCODERS instruction through an SPI transfer transaction
-        write_buffer[0] = Instruction::R_ENC.opcode();
-        write_buffer[1] = 0x00; // always append a 0x00 after the instruction
-        
-        /*
-        * Send 0x00 accordingly to read each motor's encoder values
-        * 
-        * Each ecnoder value is obtained from two transfer transactions 
-        *
-        * [opcode | status | enc_1 msByte | enc_1 lsByte | ... | enc_5 msByte | enc_5 lsByte]
-        *
-        * NOTE: the 5th encoder value encs[4] is the delta time and it has a crazy conversion
-        * which is explained below.
-        *
-        * -----------------------------------------------------------------------
-        * -----            DELTA -> DT Explanation                        -------
-        * -----------------------------------------------------------------------
-        * The time since the last update is derived with the value of
-        * WATCHDOG_TIMER_CLK_WIDTH in robocup.v
-        *
-        * The last encoder reading (5th one) from the FPGA is the watchdog
-        * timer's tick since the last SPI transfer.
-        *
-        * Multiply the received tick count by:
-        *     (1/18.432) * 2 * (2^WATCHDOG_TIMER_CLK_WIDTH)
-        *
-        * This will give you the duration since the last SPI transfer in
-        * microseconds (us).
-        *
-        * For example, if WATCHDOG_TIMER_CLK_WIDTH = 6, here's how you would
-        * convert into time assuming the fpga returned a reading of 1265 ticks:
-        *     time_in_us = [ 1265 * (1/18.432) * 2 * (2^6) ] = 8784.7us
-        *
-        * The precision would be in increments of the multiplier. For
-        * this example, that is:
-        *     time_precision = 6.94us
-        *
-        * TODO: UPDATE THIS IN RUST FORMAT
-        * float dt = static_cast<float>(encDeltas[4]) * (1 / 18.432e6) * 2 * 128;
-        */
+        write_buffer[0] = Instruction::ReadEncoders.opcode();
+
         self.spi_transfer(&mut write_buffer)?;
         
         // store each encoder value accordingly
@@ -301,27 +209,20 @@ impl<SPI, CS, InitP, PROG, DoneP, SpiE, PinE> FPGA<SPI, CS, InitP, PROG, DoneP>
         Ok(write_buffer[1])
     }
 
-    pub fn read_duty_cycles(&mut self, duty_cycles: &mut [i16; 5]) 
-        -> Result<u8, FpgaError<SpiE, PinE>> {
-        
-        // spi trasaction buffer
+    /// Read the Duty Cycles from the FPGA
+    /// 
+    /// Format:
+    /// [opcode | status | duty_1 msByte | duty_1 lsByte | ... | duty_5 msByte | duty_5 lsByte ]
+    /// 
+    /// Duty cycles are encoded as 10-bit signed magnitude
+    pub fn read_duty_cycles(&mut self, duty_cycles: &mut [i16; 5]) -> Result<u8, FpgaError<SpiE, PinE>> {
+        // spi transaction buffer
         let mut write_buffer: [u8; 12] = [0x00; 12];
 
         // send READ DUTY CYCLES instruction through SPI transfer transaction
-        write_buffer[0] = Instruction::R_DUTY.opcode();
+        write_buffer[0] = Instruction::ReadDuties.opcode();
         write_buffer[1] = 0x00; // always append 0x00 after instruction
 
-        /*
-         * Each duty cycle is obtained from two transfer transactions
-         * The first transaction returns the MS Byte and the second transanction
-         * returns the LS Byte
-         * 
-         * [opcode | status | duty_1 msByte | duty_1 lsByte | ... | duty_5 msByte | duty_5 lsByte]
-         *  
-         * Duty cycles are encoded as a 10-bit signed magnitude
-         * 
-         * We're using the DutyCycle wrapping struct to hide the bit length conversion
-        */
         self.spi_transfer(&mut write_buffer)?;
 
         // extract the duty cycles accordingly
@@ -341,16 +242,16 @@ impl<SPI, CS, InitP, PROG, DoneP, SpiE, PinE> FPGA<SPI, CS, InitP, PROG, DoneP>
         Ok(write_buffer[1])
     }
 
-    pub fn set_duty_cycles(&mut self, duty_cycles: &mut [DutyCycle; 5]) 
-        -> Result<u8, FpgaError<SpiE, PinE>> 
-        {
-
+    /// Set the duty cycles (i.e. velocities of the motors)
+    /// 
+    /// Note: The transmission must be 12 bytes long
+    pub fn set_duty_cycles(&mut self, duty_cycles: &mut [DutyCycle; 5]) -> Result<u8, FpgaError<SpiE, PinE>> {
         // init write buffer
         let mut write_buffer: [u8; 12] = [0x0;12];
         
         //send READ ENC WRITE VEL instruction
         //we'll only write vel and not read any enc information for this function
-        write_buffer[0] = Instruction::R_ENC_W_VEL.opcode();
+        write_buffer[0] = Instruction::ReadEncodersWriteVelocity.opcode();
         
         // This loop iterates through each duty_cycle and sets the correspondng bytes of the write buffer
         // However, because of the weird behavior of Dribbler we are currently hardcoding a duty_cycle for it
@@ -361,22 +262,6 @@ impl<SPI, CS, InitP, PROG, DoneP, SpiE, PinE> FPGA<SPI, CS, InitP, PROG, DoneP>
                 // then we send the upper 8 bits (msByte)
                 write_buffer[(2 * i) + 2] = duty_cycles[i].msb();
             }
-
-        // // motor 1
-        // write_buffer[1] = 0x1F; // all instructions are appended a 0x00 byte
-        // write_buffer[2] = 0x00; // duty cycle lsb
-            
-        // // motor 2    
-        // write_buffer[3] = 0x1F; // enc msb
-        // write_buffer[4] = 0x00; // duty cycle msb
-            
-        // // motor 3
-        // write_buffer[5] = 0x1F; // enc lsb
-        // write_buffer[6] = 0x02;
-            
-        // // motor 4
-        // write_buffer[7] = 0x1F;
-        // write_buffer[8] = 0x02;
             
         //
         // Dribbler?
@@ -393,36 +278,32 @@ impl<SPI, CS, InitP, PROG, DoneP, SpiE, PinE> FPGA<SPI, CS, InitP, PROG, DoneP>
         // I have NO IDEA why we need this here. Setting duties doesn't work unless we append a 0x00 at the end :)
         write_buffer[11] = 0x00;
 
-        // this is the actual SPI transfer what writes the duty_cycles to the FPGA
         self.spi_transfer(&mut write_buffer)?;
 
         // return status code
         Ok( write_buffer[0] )
     }
 
-    /**
-     * 
-     */
-    pub fn set_duty_get_encs(&mut self, duty_cycles: &mut [DutyCycle; 5], encs: &mut [i16; 5]) 
+    /// Set the duty values of the FPGA and get the encoder values
+    pub fn set_duty_get_encoders(&mut self, duty_cycles: &mut [DutyCycle; 5], encs: &mut [i16; 5]) 
             -> Result<u8, FpgaError<SpiE, PinE>> {
         
         // spi transaction write buffer
         let mut write_buffer: [u8; 12] = [0x00; 12];
 
         // send READ ENC WRITE VEL instruction
-        write_buffer[0] = Instruction::R_ENC_W_VEL.opcode();
-        write_buffer[1] = 0x00;
+        write_buffer[0] = Instruction::ReadEncodersWriteVelocity.opcode();
 
         // for each duty cycle in duty_cycle...
-        for i in 0..5 {
+        for i in 0..4 {
             // first the lower 8 bits first (lsByte)
             write_buffer[2 * (i + 1)] = duty_cycles[i].lsb();
             // then we send the upper 8 bits (msByte)
             write_buffer[(2 * (i + 1)) + 1] = duty_cycles[i].msb();
         }
 
-        // NOTE: that duty cycle bytes are send as Lower bytes first and then Upper bytes
-        // while, the received encoder values are Upper bytes first, and then Lower bytes 
+        write_buffer[10] = 0x01;
+
         self.spi_transfer(&mut write_buffer)?;
 
         // store each encoder value accordingly
@@ -485,21 +366,18 @@ impl<SPI, CS, InitP, PROG, DoneP, SpiE, PinE> FPGA<SPI, CS, InitP, PROG, DoneP>
 
     // }
 
-    /**
-     * 
-     */
-    pub fn motors_en(&mut self, state: bool) 
-        -> Result<u8, FpgaError<SpiE, PinE>> {
+    /// Enable or disable the motors
+    pub fn enable_motors(&mut self, on: bool) -> Result<u8, FpgaError<SpiE, PinE>> {
         
         let mut write_buffer: [u8; 1] = [0x00];
 
         // send either the EN MOTORS or DISABLE MOTORS command based on the passed in state
-        match state {
+        match on {
             true => {
-                write_buffer[0] = Instruction::EN_MOTORS.opcode();
+                write_buffer[0] = Instruction::ReadEncoders.opcode();
             } 
             false => {
-                write_buffer[0] = Instruction::DIS_MOTORS.opcode();
+                write_buffer[0] = Instruction::DisableMotors.opcode();
             }
         }
         
@@ -510,27 +388,19 @@ impl<SPI, CS, InitP, PROG, DoneP, SpiE, PinE> FPGA<SPI, CS, InitP, PROG, DoneP>
         Ok(write_buffer[0])
     }
 
-    /**
-     * 
-     */
-    pub fn watchdog_reset<D>(&mut self, delay: &mut D) 
-        -> Result<(), FpgaError<SpiE, PinE>> 
-        where D: DelayMs<u8> + DelayUs<u8> 
-        {
-        
+    /// Reset the Watchdog Timer
+    pub async fn watchdog_reset(&mut self) -> Result<(), FpgaError<SpiE, PinE>> {
         // the easiest way to perform a watchdog reset is to toggle the motors
-        self.motors_en(false)?;
-        delay.delay_us(1);
-        self.motors_en(true)?;
-        delay.delay_us(1);
+        self.enable_motors(false)?;
+        Systick::delay(1u32.millis()).await;
+        self.enable_motors(true)?;
+        Systick::delay(1u32.millis()).await;
 
         Ok(())
     }
 
     // Private helper method to abstract the SPI write transaction
-    pub(crate) fn spi_write(&mut self, buffer: &[u8])
-        -> Result<(), FpgaError<SpiE, PinE>> {
-            
+    pub(crate) fn spi_write(&mut self, buffer: &[u8]) -> Result<(), FpgaError<SpiE, PinE>> {
         // pull cs pin low
         self.cs.set_low().map_err(FpgaError::CSPin)?;    
         // write buffer contents
@@ -544,8 +414,7 @@ impl<SPI, CS, InitP, PROG, DoneP, SpiE, PinE> FPGA<SPI, CS, InitP, PROG, DoneP>
 
     // Private helper method to abstract the SPI transfer transaction
     // NOTE: SPI transfer function uses a Full-Duplex protocol
-    pub(crate) fn spi_transfer(&mut self, buffer: &mut [u8])
-        -> Result<(), FpgaError<SpiE, PinE>> {
+    pub(crate) fn spi_transfer(&mut self, buffer: &mut [u8]) -> Result<(), FpgaError<SpiE, PinE>> {
             
         // TODO: decide between manually controlled cs and teensy's auto cs
 

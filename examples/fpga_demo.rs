@@ -49,7 +49,7 @@ use bsp::hal::gpt::ClockSource;
     dispatchers = [GPT2]
 )]
 mod app {
-    use fpga::{error::FpgaError, structs::DutyCycle};
+    use fpga::{error::FpgaError, duty_cycle::DutyCycle};
 
     // this allows us to define our packages outside the app module
     // we're essetially "bringing them all in"
@@ -193,7 +193,7 @@ mod app {
         Systick::delay(SECOND_DELAY.millis()).await;
 
         // attempt to configure the fpga :)
-        match fpga.configure(delay) {
+        match fpga.configure().await {
             Ok(_) => log::info!("Configuration worked???"),
             Err(e) => match e {
                 FpgaError::SPI(spi_e) => panic!("SPI error with info: {:?}", spi_e),
@@ -207,7 +207,7 @@ mod app {
         Systick::delay(TEN_MS_DELAY.millis()).await;
 
         // enable motors
-        match fpga.motors_en(true){
+        match fpga.enable_motors(true) {
             Ok(status) => log::info!(" enabled motors fpga status: {:b}", status),
             Err(e) => panic!("error enabling motors... {:?}", e),
         };
