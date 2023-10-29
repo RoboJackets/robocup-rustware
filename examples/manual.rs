@@ -70,12 +70,12 @@ mod app {
     type RadioInterrupt = gpio::Input<P1>;
     type Radio = sx127::LoRa<board::Lpspi4, gpio::Output<P8>, gpio::Output<P9>, Delay>;
     type Gpio1 = Port<1>;
-    // type Fpga = FPGA<Lpspi<>, gpio::Output<P40>, P41, gpio::Output<P21>, P19>;
+    type Fpga = FPGA<Lpspi<board::LpspiPins<P26, P39, P27, P38>, 3>, gpio::Output<P40>, P41, gpio::Output<P21>, P19>;
 
     #[local]
     struct Local {
         led: Led,
-        // fpga: Fpga,
+        fpga: Fpga,
     }
 
     #[shared]
@@ -163,7 +163,7 @@ mod app {
                 sdo: pins.p26,
                 sdi: pins.p39,
             },
-            1_000_000
+            FPGA_SPI_FREQUENCY,
         );
 
         // Configure SPI
@@ -188,7 +188,7 @@ mod app {
 
         blink_led::spawn().ok();
 
-        let initial_robot_status = RobotStatusMessage::new(Team::Blue, 0u8, false, false, true, 0u8, 0u8, true, [0u16; 18]);
+        let initial_robot_status = RobotStatusMessage::new(Team::Blue, 0u8, false, false, true, 0u8, 0u8, false, [0u16; 18]);
 
         (
             Shared {
@@ -203,7 +203,7 @@ mod app {
             },
             Local {
                 led,
-                // fpga,
+                fpga,
             },
         )
     }
@@ -339,11 +339,55 @@ mod app {
     }
 
     #[task(
-        shared = [],
-        local = [],
+        shared = [status, current_control_message],
+        local = [fpga],
         priority = 1,
     )]
-    async fn motor_control(ctx: motor_control::Context) {
+    async fn motor_control(mut ctx: motor_control::Context) {
+        match ctx.local.fpga.configure().await {
+            Ok(_) => log::info!("Configured FPGA"),
+            Err(e) => match e {
+                FpgaError::SPI(spi_e) => panic!("SPI error with info: {:?}", spi_e),
+                FpgaError::CSPin(cs_e) => panic!("CS pin error: {:?}", cs_e), 
+                FpgaError::InitPin(init_e) => panic!("Init pin error: {:?}", init_e),
+                FpgaError::ProgPin(prog_e) => panic!("Prog pin error: {:?}", prog_e),
+                FpgaError::DonePin(done_e) => panic!("Done pin error: {:?}", done_e),
+                FpgaError::FPGATimeout(code) => panic!("Fpga timed out?? code: {:x}", code),
+            }
+        }
 
+        Systick::delay(10u32.millis()).await;
+
+        // enable motors
+        match ctx.local.fpga.enable_motors(true) {
+            Ok(status) => log::info!("Enable Motors FPGA Status: {:b}", status),
+            Err(e) => panic!("Error Enabling Motor... {:?}", e),
+        }
+
+        Systick::delay(10u32.millis()).await;
+
+        ctx.shared.status.lock(|status| { status.fpga_status = true; });
+
+        loop {
+            // Get the Current Control Message
+            let control_message = ctx.shared.current_control_message.lock(|message| { *message });
+
+            // TODO: Convert control_message x, y, and w to motion commands
+            let mut duty_cycles = [
+                DutyCycle::from(0i16),
+                DutyCycle::from(0i16),
+                DutyCycle::from(0i16),
+                DutyCycle::from(0i16),
+                DutyCycle::from(0i16),
+            ];
+
+            // Write Duty Cycles
+            match ctx.local.fpga.set_duty_cycles(&mut duty_cycles) {
+                Ok(status) => log::info!("Wrote Duty Cycles to FPGA. Status: {:b}", status),
+                Err(e) => panic!("error writing duty cycles... {:?}", e),
+            }
+
+            Systick::delay(100u32.millis()).await;
+        }
     }
 }

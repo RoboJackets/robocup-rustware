@@ -39,8 +39,7 @@ mod app {
     use robojackets_robocup_rtp::control_message::ControlMessage;
     use robojackets_robocup_rtp::robot_status_message::RobotStatusMessage;
 
-    const SYST_MONO_FACTOR: u32 = 10;
-    const DELAY_MS: u32 = SYST_MONO_FACTOR * 10_000;
+    const DELAY_MS: u32 = 5_000;
     const FREQUENCY: i64 = 915;
     const GPT1_FREQUENCY: u32 = 1_000;
     const GPT1_CLOCK_SOURCE: ClockSource = ClockSource::HighFrequencyReferenceClock;
@@ -51,7 +50,7 @@ mod app {
 
     type Delay = Blocking<Gpt1, GPT1_FREQUENCY>;
     type BlockingDelay = Blocking<Gpt2, GPT1_FREQUENCY>;
-    type Interrupt = gpio::Input<P1>;
+    type Interrupt = gpio::Input<P4>;
     type Radio = sx127::LoRa<board::Lpspi4, gpio::Output<P8>, gpio::Output<P9>, Delay>;
 
     #[local]
@@ -73,6 +72,7 @@ mod app {
             pins,
             mut gpio1,
             mut gpio2,
+            mut gpio4,
             usb,
             lpspi4,
             mut gpt1,
@@ -85,7 +85,7 @@ mod app {
 
         // systic setup
         let systick_token = rtic_monotonics::create_systick_token!();
-        Systick::start(ctx.core.SYST, 36_000_000, systick_token);
+        Systick::start(ctx.core.SYST, 600_000_000, systick_token);
 
         // gpt 1 as blocking delay
         gpt1.disable();
@@ -99,7 +99,7 @@ mod app {
         let blocking_delay = Blocking::<_, GPT1_FREQUENCY>::from_gpt(gpt2);
 
         // RX DONE Interrupt setup
-        let rx_int = gpio1.input(pins.p1);
+        let rx_int = gpio4.input(pins.p4);
         gpio1.set_interrupt(&rx_int, Some(Trigger::RisingEdge));
 
         // initialize spi
