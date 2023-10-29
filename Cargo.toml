@@ -10,6 +10,7 @@ cortex-m = "0.7"
 embedded-hal = "0.2"
 log = "0.4"
 teensy4-pins = "0.3.1"
+rgb_led_driver = { path = "drivers/rgb_led_driver" }
 
 [dependencies.teensy4-bsp]
 version = "0.4"
@@ -29,7 +30,8 @@ features = ["log"]
 
 [workspace]
 members = [
-    "tools"
+    "tools",
+    "drivers/rgb_led_driver"
 ]
 
 # Don't optimize build dependencies, like proc macros.
