@@ -37,7 +37,7 @@ mod app {
         let b = gpio2.output(pins.p6);
 
         let systick_token = rtic_monotonics::create_systick_token!();
-        Systick::start(ctx.core.SYST, 36_000_000, systick_token);
+        Systick::start(ctx.core.SYST, 600_000_000, systick_token);
 
         blink_led::spawn().ok();
 
@@ -56,16 +56,18 @@ mod app {
 
     #[task(local = [rgb_led], priority = 1)]
     async fn blink_led(ctx: blink_led::Context) {
-        Systick::delay(1_000u32.millis()).await;
+        loop {
+            Systick::delay(1_000u32.millis()).await;
 
-        ctx.local.rgb_led.set_color(Color::Blue);
+            ctx.local.rgb_led.set_color(Color::Blue);
 
-        Systick::delay(1_000u32.millis()).await;
+            Systick::delay(1_000u32.millis()).await;
 
-        ctx.local.rgb_led.set_color(Color::Purple);
+            ctx.local.rgb_led.set_color(Color::Purple);
 
-        Systick::delay(1_000u32.millis()).await;
+            Systick::delay(1_000u32.millis()).await;
 
-        ctx.local.rgb_led.off();
+            ctx.local.rgb_led.off();
+        }
     }
 }
