@@ -11,7 +11,6 @@ mod app {
 
     use bsp::hal as hal;
 
-    use bsp::ral as ral;
     use hal::gpio::Output;
     use rtic_monotonics::systick::{ExtU32, Systick};
     use rgb_led_driver::{Color, RgbLedDriver};
@@ -29,11 +28,12 @@ mod app {
         let board::Resources {
             pins,
             mut gpio2,
+            mut gpio4,
             ..
         } = board::t41(ctx.device);
 
-        let r = gpio2.output(pins.p4);
-        let g = gpio2.output(pins.p5);
+        let r = gpio4.output(pins.p4);
+        let g = gpio4.output(pins.p5);
         let b = gpio2.output(pins.p6);
 
         let systick_token = rtic_monotonics::create_systick_token!();
@@ -62,7 +62,7 @@ mod app {
 
         Systick::delay(1_000u32.millis()).await;
 
-        ctx.local.rgb_led.set_color(Color::Custom {r: 255, g: 200, b: 100});
+        ctx.local.rgb_led.set_color(Color::Purple);
 
         Systick::delay(1_000u32.millis()).await;
 

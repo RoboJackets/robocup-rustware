@@ -1,40 +1,39 @@
 #![no_std]
 
-use embedded_hal::prelude::{_embedded_hal_blocking_spi_Write, _embedded_hal_serial_Write};
-use embedded_hal::serial::Write;
+use embedded_hal::digital::v2::{OutputPin, PinState};
+
 use crate::RgbLedError::{BluePinError, GreenPinError, RedPinError};
 
-pub struct RgbLedDriver<R: Write<u8>, G: Write<u8>, B: Write<u8>> {
+pub struct RgbLedDriver<R: OutputPin, G: OutputPin, B: OutputPin> {
     r: R,
     g: G,
     b: B,
 }
 
-pub enum RgbLedError<R: Write<u8>, G: Write<u8>, B: Write<u8>> {
-    RedPinError(nb::Error<R::Error>),
-    GreenPinError(nb::Error<G::Error>),
-    BluePinError(nb::Error<B::Error>),
+pub enum RgbLedError<R: OutputPin, G: OutputPin, B: OutputPin> {
+    RedPinError(R::Error),
+    GreenPinError(G::Error),
+    BluePinError(B::Error),
 }
 
-impl<R: Write<u8>, G: Write<u8>, B: Write<u8>> RgbLedDriver<R, G, B> {
+impl<R: OutputPin, G: OutputPin, B: OutputPin> RgbLedDriver<R, G, B> {
     pub fn new(r: R, g: G, b: B) -> Self {
-        Self {r, g, b}
+        Self { r, g, b }
     }
 
     pub fn set_color(&mut self, color: Color) -> Result<(), RgbLedError<R, G, B>> {
         let rgb = color.get_rgb();
-        self.r.write(rgb.r)
-            .map_err(|e| RedPinError(e))?;
-        self.g.write(rgb.g)
-            .map_err(GreenPinError)?;
-        self.b.write(rgb.b)
-            .map_err(BluePinError)
+        self.r.set_state(rgb.r).map_err(RedPinError)?;
+        self.g.set_state(rgb.g).map_err(GreenPinError)?;
+        self.b.set_state(rgb.b).map_err(BluePinError)?;
+        Ok(())
     }
 
     pub fn off(&mut self) -> Result<(), RgbLedError<R, G, B>> {
-        self.r.write(0).map_err(RedPinError)?;
-        self.g.write(0).map_err(GreenPinError)?;
-        self.b.write(0).map_err(BluePinError)
+        self.r.set_low().map_err(RedPinError)?;
+        self.g.set_low().map_err(GreenPinError)?;
+        self.b.set_low().map_err(BluePinError)?;
+        Ok(())
     }
 }
 
@@ -45,8 +44,6 @@ pub enum Color {
     Purple,
     Yellow,
     Cyan,
-    Turquoise,
-    Custom { r: u8, g: u8, b: u8 }
 }
 
 impl Color {
@@ -58,43 +55,38 @@ impl Color {
             Color::Purple => RgbColor::purple(),
             Color::Yellow => RgbColor::yellow(),
             Color::Cyan => RgbColor::cyan(),
-            Color::Turquoise => RgbColor::turquoise(),
-            Color::Custom {r, g, b} => RgbColor::new(*r, *g, *b)
         }
     }
 }
 
 struct RgbColor {
-    r: u8,
-    g: u8,
-    b: u8
+    r: PinState,
+    g: PinState,
+    b: PinState,
 }
 
 impl RgbColor {
-
-    fn new(r: u8, g: u8, b: u8) -> Self {
-        Self { r, g, b}
+    fn new(r: PinState, g: PinState, b: PinState) -> Self {
+        Self { r, g, b }
     }
 
     fn red() -> Self {
-        Self::new(255, 0, 0)
+        Self::new(PinState::High, PinState::Low, PinState::Low)
     }
     fn green() -> Self {
-        Self::new(0, 225, 0)
+        Self::new(PinState::Low, PinState::High, PinState::Low)
     }
     fn blue() -> Self {
-        Self::new(0, 0, 255)
+        Self::new(PinState::Low, PinState::Low, PinState::High)
     }
     fn purple() -> Self {
-        Self::new(255,0,255)
+        Self::new(PinState::High, PinState::Low, PinState::High)
     }
     fn yellow() -> Self {
-        Self::new(255, 225, 0)
+        Self::new(PinState::High, PinState::High, PinState::Low)
     }
     fn cyan() -> Self {
-        Self::new(0, 255, 255)
-    }
-    fn turquoise() -> Self {
-        Self::new(64,224,208)
+        Self::new(PinState::Low, PinState::High, PinState::High)
     }
 }
+
