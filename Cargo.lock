@@ -349,6 +349,7 @@ dependencies = [
  "fpga-rs",
  "imxrt-iomuxc",
  "log",
+ "mcp23017-rs",
  "packed_struct",
  "robojackets-robocup-rtp",
  "rtic",
@@ -360,8 +361,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "mcp23017"
+name = "mcp23017-rs"
 version = "0.1.0"
+dependencies = [
+ "embedded-hal 0.2.7",
+]
 
 [[package]]
 name = "nb"

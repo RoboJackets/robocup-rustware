@@ -57,6 +57,13 @@ features = ["log"]
 [dependencies.fpga-rs]
 path = "drivers/fpga"
 
+[dependencies.mcp23017-rs]
+path = "drivers/mcp23017"
+
+[[example]]
+name = "mcp23017-demo"
+path = "examples/mcp23017_demo.rs"
+
 # the root package is also a workspace that holds all of the neccesary "supporting" packages
 # such as driver files, utility files (e.g. tools), etc.
 [workspace]
