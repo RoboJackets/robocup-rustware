@@ -52,6 +52,8 @@ mod app {
     use robojackets_robocup_rtp::control_message::ControlMessage;
     use robojackets_robocup_rtp::robot_status_message::RobotStatusMessage;
 
+    use main::motion_control::MotionControl;
+
     /// Constants
     const DELAY_MS: u32 = 10_000;
     const FREQUENCY: i64 = 915;
@@ -76,6 +78,7 @@ mod app {
     struct Local {
         led: Led,
         fpga: Fpga,
+        motion_controller: MotionControl,
     }
 
     #[shared]
@@ -204,6 +207,7 @@ mod app {
             Local {
                 led,
                 fpga,
+                motion_controller: MotionControl::new(),
             },
         )
     }
@@ -340,7 +344,7 @@ mod app {
 
     #[task(
         shared = [status, current_control_message],
-        local = [fpga],
+        local = [fpga, motion_controller],
         priority = 1,
     )]
     async fn motor_control(mut ctx: motor_control::Context) {
@@ -371,13 +375,25 @@ mod app {
         loop {
             // Get the Current Control Message
             let control_message = ctx.shared.current_control_message.lock(|message| { *message });
+            if control_message.is_none() {
+                log::info!("No Control Message");
+                if ctx.local.fpga.watchdog_reset().await.is_err() {
+                    log::info!("Unable to Reset Watchdog");
+                }
+                Systick::delay(10u32.millis()).await;
+                continue;
+            }
+            let control_message = control_message.unwrap();
+            let target_global_velocity: [f32; 3] = [control_message.body_x.to_be() as f32, control_message.body_y.to_be() as f32, control_message.body_w.to_be() as f32];
+
+            let target_velocity = ctx.local.motion_controller.body_to_wheel(&target_global_velocity);
 
             // TODO: Convert control_message x, y, and w to motion commands
             let mut duty_cycles = [
-                DutyCycle::from(0i16),
-                DutyCycle::from(0i16),
-                DutyCycle::from(0i16),
-                DutyCycle::from(0i16),
+                (target_velocity[0] as i16).into(),
+                (target_velocity[1] as i16).into(),
+                (target_velocity[2] as i16).into(),
+                (target_velocity[3] as i16).into(),
                 DutyCycle::from(0i16),
             ];
 
@@ -387,7 +403,7 @@ mod app {
                 Err(e) => panic!("error writing duty cycles... {:?}", e),
             }
 
-            Systick::delay(100u32.millis()).await;
+            Systick::delay(10u32.millis()).await;
         }
     }
 }

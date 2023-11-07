@@ -184,10 +184,11 @@ mod app {
                     Error::InvalidRegisterBufferSize(register) => log::info!("Invalid Register Buffer Size {:#x} = {}", register, register),
                     Error::InvalidAddressBufferSize => log::info!("Invalid Address Buffer Size"),
                     Error::UnknownRegister => log::info!("Unknown Register"),
-                    Error::UnableToConfigureRegister(register) => log::info!("Unable to Configure Register: {:#x} - {}", register, register),
+                    Error::UnableToConfigureRegister(register, expected, found) => log::info!("Unable to Configure Register: {:#x}\nExpected\n{:#010b}\nFound\n{:#010b}", register, expected, found),
                     Error::GpioError(_) => log::info!("GPIO Error"),
                     Error::SpiError(_) => log::info!("SPI ERROR"),
                     Error::GpioSpiError(_) => log::info!("Gpio + SPI Error"),
+                    _ => log::info!("Unknown Error"),
                 }
                 return;
             }
@@ -235,18 +236,9 @@ mod app {
             Err(_) => log::info!("Unable to Read Status"),
         }
 
-        // Send Hello World
-        let data = b"Hello World";
-        match radio.write_payload_no_ack(data, ctx.local.spi).await {
-            Ok(status) => log::info!("Successfully Sent Data: {:#010b}", status),
-            Err(_) => log::info!("Unable to Send Data"),
-        }
-
-        // Receive Data
-        let mut data_buffer = [0u8; 11];
-        match radio.read_payload(&mut data_buffer, ctx.local.spi).await {
-            Ok(status) => log::info!("Status: {:#010b}\nData: {:?}", status, data_buffer),
-            Err(_) => log::info!("Unable to Receive Data"),
+        match radio.send_data(b"Hello World", false, ctx.local.spi).await {
+            Ok(_) => log::info!("Sent Hello World"),
+            Err(_) => log::info!("Unable to send Hello World"),
         }
     }
 }

@@ -48,6 +48,19 @@ mod app {
     const HEAP_SIZE: usize = 1024;
     static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
 
+    #[cfg(feature = "robot-0")]
+    const ROBOT_ID: u8 = 0;
+    #[cfg(feature = "robot-1")]
+    const ROBOT_ID: u8 = 1;
+    #[cfg(feature = "robot-2")]
+    const ROBOT_ID: u8 = 2;
+    #[cfg(feature = "robot-3")]
+    const ROBOT_ID: u8 = 3;
+    #[cfg(feature = "robot-4")]
+    const ROBOT_ID: u8 = 4;
+    #[cfg(feature = "robot-5")]
+    const ROBOT_ID: u8 = 5;
+
     type Delay = Blocking<Gpt1, GPT1_FREQUENCY>;
     type BlockingDelay = Blocking<Gpt2, GPT1_FREQUENCY>;
     type Interrupt = gpio::Input<P1>;
@@ -182,8 +195,12 @@ mod app {
                         MessageType::ControlCommand => {
                             let control_command_length = <ControlCommand as PackedStruct>::ByteArray::len();
                             let control_command = ControlCommand::unpack_from_slice(&buffer[1..(1+control_command_length)]);
-                            
-                            log::info!("Received Control Command: {:?}", control_command);
+
+                            if let Ok(command) = control_command {
+                                if command.robot_id == ROBOT_ID.into() {
+                                    log::info!("Received Control Command: {:?}", control_command);
+                                }
+                            }
 
                             // Respond with a robot status response
                             let status = RobotStatusMessage::new(
@@ -222,8 +239,14 @@ mod app {
                         MessageType::ControlMessage => {
                             let control_message_length = <ControlMessage as PackedStruct>::ByteArray::len();
                             let control_message = ControlMessage::unpack_from_slice(&buffer[1..(1+control_message_length)]);
-                            
-                            log::info!("Received Control Message: {:?}", control_message);
+
+                            if let Ok(message) = control_message {
+                                if message.robot_id == ROBOT_ID.into() {
+                                    log::info!("Received Message for Correct Robot\nReceived: {:?}", message);
+                                } else {
+                                    log::info!("Received Message for Other Robot\nReceived: {:?}", message);
+                                }
+                            }
 
                             let status = RobotStatusMessage::new(
                                 Team::Blue,
