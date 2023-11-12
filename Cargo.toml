@@ -28,7 +28,7 @@ default-features = false
 features = ["alloc"]
 
 [dependencies.robojackets-robocup-rtp]
-version = "0.1.3"
+version = "0.1.7"
 default-features = false
 features = ["nostd"]
 
@@ -47,7 +47,7 @@ features = ["cortex-m-systick"]
 
 # teensy4-bsp is the board support package for teensy 4.0/4.1
 [dependencies.teensy4-bsp]
-version = "0.4"
+version = "0.4.5"
 features = [
     # Use the BSP's runtime. This lets you write your
     # `main()` function.

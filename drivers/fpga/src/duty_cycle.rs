@@ -19,6 +19,7 @@
  * let duty_cycle = DutyCycle::from(-487 as i16)
  * let value_in_duty_cycle = i16::from(duty_cycle)
  */
+#[derive(Debug, Clone, Copy)]
 pub struct DutyCycle(u16);
 
 impl DutyCycle {

@@ -1,5 +1,5 @@
 //! The manual control example can be run to manually control the robots movements
-//! via software's make _____.
+//! via software's make run-manual.
 
 #![no_std]
 #![no_main]
@@ -26,6 +26,7 @@ mod app {
 
     use teensy4_bsp as bsp;
     use bsp::board;
+    use bsp::board::LPSPI_FREQUENCY;
 
     use bsp::hal as hal;
     use hal::gpio::{self, Output, Trigger, Port};
@@ -47,7 +48,7 @@ mod app {
     use fpga_rs::{FPGA_SPI_MODE, FPGA_SPI_FREQUENCY};
 
     // Communication
-    use robojackets_robocup_rtp::{Team, MessageType};
+    use robojackets_robocup_rtp::{Team, MessageType, RTPHeader};
     use robojackets_robocup_rtp::control_command::{ControlCommand, CommandTypes};
     use robojackets_robocup_rtp::control_message::ControlMessage;
     use robojackets_robocup_rtp::robot_status_message::RobotStatusMessage;
@@ -64,15 +65,28 @@ mod app {
     const HEAP_SIZE: usize = 1024;
     static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
 
+    #[cfg(feature = "robot-0")]
+    const ROBOT_ID: u8 = 0;
+    #[cfg(feature = "robot-1")]
+    const ROBOT_ID: u8 = 1;
+    #[cfg(feature = "robot-2")]
+    const ROBOT_ID: u8 = 2;
+    #[cfg(feature = "robot-3")]
+    const ROBOT_ID: u8 = 3;
+    #[cfg(feature = "robot-4")]
+    const ROBOT_ID: u8 = 4;
+    #[cfg(feature = "robot-5")]
+    const ROBOT_ID: u8 = 5;
+
 
     /// Type Definitions
     type Led = Output<P7>;
     type Delay = Blocking<Gpt1, GPT1_FREQUENCY>;
     type BlockingDelay = Blocking<Gpt2, GPT1_FREQUENCY>;
     type RadioInterrupt = gpio::Input<P1>;
-    type Radio = sx127::LoRa<board::Lpspi4, gpio::Output<P8>, gpio::Output<P9>, Delay>;
+    type Radio = sx127::LoRa<Lpspi<board::LpspiPins<P26, P39, P27, P38>, 3>, gpio::Output<P8>, gpio::Output<P9>, Delay>;
     type Gpio1 = Port<1>;
-    type Fpga = FPGA<Lpspi<board::LpspiPins<P26, P39, P27, P38>, 3>, gpio::Output<P40>, P41, gpio::Output<P21>, P19>;
+    type Fpga = FPGA<board::Lpspi4, gpio::Output<P40>, P41, gpio::Output<P21>, P19>;
 
     #[local]
     struct Local {
@@ -130,23 +144,25 @@ mod app {
         gpio1.set_interrupt(&rx_int, Some(Trigger::RisingEdge));
 
         // initialize spi
-        let spi = board::lpspi(
-            lpspi4,
-            board::LpspiPins {
-                pcs0: pins.p10,
-                sck: pins.p13,
-                sdo: pins.p11,
-                sdi: pins.p12,
-            },
-            1_000_000
-        );
+        let shared_spi_pins = hal::lpspi::Pins {
+            pcs0: pins.p38,
+            sck: pins.p27,
+            sdo: pins.p26,
+            sdi: pins.p39,
+        };
+        let shared_spi_block = unsafe { LPSPI3::instance() };
+        let mut shared_spi = hal::lpspi::Lpspi::new(shared_spi_block, shared_spi_pins);
+
+        shared_spi.disabled(|spi| {
+            spi.set_clock_hz(LPSPI_FREQUENCY, 1_000_000);
+        });
 
         // init fake CS pin (TEMPORARY) and required reset pin
         let fake_cs = gpio2.output(pins.p8);
         let reset = gpio2.output(pins.p9);
 
         // initialize radio
-        let radio = match sx127::LoRa::new(spi, fake_cs, reset, FREQUENCY, delay) {
+        let radio = match sx127::LoRa::new(shared_spi, fake_cs, reset, FREQUENCY, delay) {
             Ok(radio) => radio,
             Err(err) => match err {
                 sx127::Error::VersionMismatch(version) => panic!("Version Mismatch Error {:?}", version),
@@ -159,12 +175,12 @@ mod app {
         };
 
         let mut kicker_spi = board::lpspi(
-            unsafe { LPSPI3::instance() },
+            lpspi4,
             board::LpspiPins {
-                pcs0: pins.p38,
-                sck: pins.p27,
-                sdo: pins.p26,
-                sdi: pins.p39,
+                pcs0: pins.p10,
+                sck: pins.p13,
+                sdo: pins.p11,
+                sdi: pins.p12,
             },
             FPGA_SPI_FREQUENCY,
         );
@@ -272,10 +288,15 @@ mod app {
                                     Err(err) => panic!("Error Occurred Extracting Control Command: {:?}", err),
                                 };
 
-                                match control_command.command_type() {
-                                    CommandTypes::WakeUp => ctx.shared.awake.lock(|awake| { *awake = true; }),
-                                    CommandTypes::PowerDown => ctx.shared.awake.lock(|awake| { *awake = false; }),
-                                    CommandTypes::Unknown => panic!("Unknown Control Command Received"),
+                                if control_command.robot_id == ROBOT_ID.into() {
+                                    match control_command.command_type() {
+                                        CommandTypes::WakeUp => ctx.shared.awake.lock(|awake| { *awake = true; }),
+                                        CommandTypes::PowerDown => ctx.shared.awake.lock(|awake| { *awake = false; }),
+                                        CommandTypes::Unknown => panic!("Unknown Control Command Received"),
+                                    }
+
+                                    // Spawn software task to send robot status and reenable interrupts
+                                    send_robot_status::spawn().ok();
                                 }
                             },
                             MessageType::ControlMessage => {
@@ -285,26 +306,31 @@ mod app {
                                     Err(err) => panic!("Error Occurred Extracting Control Message: {:?}", err),
                                 };
 
-                                ctx.shared.current_control_message.lock(|current_control_message| { *current_control_message = Some(control_message); });
+                                if control_message.robot_id == ROBOT_ID.into() {
+                                    ctx.shared.current_control_message.lock(|current_control_message| { *current_control_message = Some(control_message); });
+
+                                    // Keep Track of Last Received Communication Timestamp
+                                    ctx.shared.last_received_count.lock(|last_count| { 
+                                        if let Some(taken_delay) = delay.take() {
+                                            let gpt = taken_delay.release();
+                                            *last_count = gpt.count();
+                                            *delay = Some(Blocking::<_, GPT1_FREQUENCY>::from_gpt(gpt));
+                                        }
+                                    });
+
+                                    // Spawn software task to send robot status and reenable interrupts
+                                    send_robot_status::spawn().ok();
+                                }
                             },
-                            MessageType::Unknown => todo!(),
+                            // Status Messages will be picked up by robots so this is to allow them to be dropped
+                            _ => {
+                                rx_int.clear_triggered();
+                                gpio1.set_interrupt(rx_int, Some(Trigger::RisingEdge));
+                            },
                         }
                     },
                     Err(_) => panic!("Error while reading data"),
                 }
-
-                // Keep Track of Last Received Communication Timestamp
-                ctx.shared.last_received_count.lock(|last_count| { 
-                    if let Some(taken_delay) = delay.take() {
-                        let gpt = taken_delay.release();
-                        *last_count = gpt.count();
-                        *delay = Some(Blocking::<_, GPT1_FREQUENCY>::from_gpt(gpt));
-                    }
-                });
-
-
-                // Spawn software task to send robot status and reenable interrupts
-                send_robot_status::spawn().ok();
             }
         });
     }
@@ -323,7 +349,8 @@ mod app {
             let packed_data = packed_data.as_bytes_slice();
 
             let mut packet = [0u8; 255];
-            packet[0..packed_data.len()].copy_from_slice(packed_data);
+            packet[0] = RobotStatusMessage::get_header() as u8;
+            packet[1..1+packed_data.len()].copy_from_slice(packed_data);
 
             match radio.transmit_payload_busy(packet, packed_data.len()) {
                 Ok(_) => log::info!("Successfully Sent Status"),
@@ -388,7 +415,7 @@ mod app {
 
             let target_velocity = ctx.local.motion_controller.body_to_wheel(&target_global_velocity);
 
-            // TODO: Convert control_message x, y, and w to motion commands
+            // Convert control_message x, y, and w to motion commands
             let mut duty_cycles = [
                 (target_velocity[0] as i16).into(),
                 (target_velocity[1] as i16).into(),
@@ -397,6 +424,7 @@ mod app {
                 DutyCycle::from(0i16),
             ];
 
+            log::info!("Velocities: {:?}", duty_cycles);
             // Write Duty Cycles
             match ctx.local.fpga.set_duty_cycles(&mut duty_cycles) {
                 Ok(status) => log::info!("Wrote Duty Cycles to FPGA. Status: {:b}", status),
