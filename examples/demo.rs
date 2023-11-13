@@ -40,8 +40,7 @@ mod app {
 
     #[local]
     struct Local {
-        spi_pins: Option<hal::lpspi::Pins<P26, P39, P27, P38>>,
-        spi3: Option<ral::Instance<ral::lpspi::RegisterBlock, 3>>,
+        
     }
 
     #[shared]
@@ -63,22 +62,11 @@ mod app {
         let systick_token = rtic_monotonics::create_systick_token!();
         Systick::start(ctx.core.SYST, 600_000_000, systick_token);
 
-        let spi_pins = hal::lpspi::Pins {
-            pcs0: pins.p38,
-            sck: pins.p27,
-            sdo: pins.p26,
-            sdi: pins.p39
-        };
-        let spi3 = unsafe { LPSPI3::instance() };
-
         blink_led::spawn().ok();
-        shot_in_the_dark::spawn().ok();
 
         (
             Shared {},
             Local {
-                spi_pins: Some(spi_pins),
-                spi3: Some(spi3),
             },
         )
     }
@@ -101,20 +89,5 @@ mod app {
 
             Systick::delay(1_000u32.millis()).await;
         }
-    }
-
-    #[task(local = [spi_pins, spi3], priority = 1)]
-    async fn shot_in_the_dark(ctx: shot_in_the_dark::Context) {
-        Systick::delay(5_000u32.millis()).await;
-
-        log::info!("Initializing the SPI - Hopefully");
-
-        let spi_pins = ctx.local.spi_pins.take().unwrap();
-        let spi3 = ctx.local.spi3.take().unwrap();
-        let mut test_spi = hal::lpspi::Lpspi::without_pins(spi3);
-
-        // let mut test_spi = hal::lpspi::Lpspi::new(spi3, spi_pins);
-
-        log::info!("No Clue How This Worked");
     }
 }

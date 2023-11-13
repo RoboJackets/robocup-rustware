@@ -18,7 +18,7 @@ use teensy4_panic as _; // allows program to panic and print panic messages
 use imxrt_iomuxc::prelude::*;
 
 //// ASSOCIATED TPYES FOR INSTANCES ////
-use teensy4_pins::common::*; // pad to pin definitions
+use teensy4_pins::t41::*; // pad to pin definitions
 use bsp::hal::gpio::{self, Trigger}; // gpio module
 use bsp::hal::gpt::Gpt1; // tpye definition for GPT1
 use bsp::hal::timer::Blocking;
@@ -76,7 +76,7 @@ mod app {
     // this simplifies local and shared resource definitions
     type Led = gpio::Output<P6>;
     type Delay = Blocking<Gpt1, GPT1_FREQUENCY>;
-    type Fpga = FPGA<board::Lpspi4, gpio::Output<P9>, P15, gpio::Output<P16>, P14>;
+    type Fpga = FPGA<board::Lpspi4, gpio::Output<P40>, P2, gpio::Output<P3>, P1>;
 
     // struct that holds local resources which can be accessed via the context
     #[local]
@@ -104,6 +104,8 @@ mod app {
             // used to control any pin from the gpio2 register
             // (e.g. pin13 for the on board LED)
             mut gpio2,
+            mut gpio3,
+            mut gpio4,
             // for usb logging :)
             usb,
             // resources to control spi
@@ -111,7 +113,7 @@ mod app {
             // for blocking delays :)
             mut gpt1,
             ..
-        } = board::t40(cx.device);
+        } = board::t41(cx.device);
 
         // usb logging setup
         bsp::LoggingFrontend::default_log().register_usb(usb);
@@ -143,7 +145,7 @@ mod app {
             FPGA_SPI_FREQUENCY);
         
         // custom CS pin to test. Maybe self asserted pcs = pin.10 is not working as intended
-        let cs = gpio2.output(pins.p9);
+        let cs = gpio1.output(pins.p40);
 
         // configure SPI
         spi.disabled(|spi| {
@@ -151,14 +153,14 @@ mod app {
         });
 
         // initialize pins for FPGA
-        let init_b = gpio1.input(pins.p15);
+        let init_b = gpio4.input(pins.p2);
 
         // configure prog pin to open drain configuration
         let config = Config::zero().set_open_drain(OpenDrain::Enabled);
-        configure(&mut pins.p16, config);
-        let prog_b = gpio1.output(pins.p16);
+        configure(&mut pins.p3, config);
+        let prog_b = gpio4.output(pins.p3);
         
-        let done = gpio1.input(pins.p14);
+        let done = gpio1.input(pins.p1);
 
         let fpga = match FPGA::new(spi, cs, init_b, prog_b, done) {
             Ok(instance) => instance,

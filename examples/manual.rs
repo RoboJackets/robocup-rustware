@@ -83,10 +83,10 @@ mod app {
     type Led = Output<P7>;
     type Delay = Blocking<Gpt1, GPT1_FREQUENCY>;
     type BlockingDelay = Blocking<Gpt2, GPT1_FREQUENCY>;
-    type RadioInterrupt = gpio::Input<P1>;
-    type Radio = sx127::LoRa<Lpspi<board::LpspiPins<P26, P39, P27, P38>, 3>, gpio::Output<P8>, gpio::Output<P9>, Delay>;
+    type RadioInterrupt = gpio::Input<P29>;
+    type Radio = sx127::LoRa<Lpspi<board::LpspiPins<P26, P39, P27, P38>, 3>, gpio::Output<P8>, gpio::Output<P28>, Delay>;
     type Gpio1 = Port<1>;
-    type Fpga = FPGA<board::Lpspi4, gpio::Output<P40>, P41, gpio::Output<P21>, P19>;
+    type Fpga = FPGA<board::Lpspi4, gpio::Output<P40>, P2, gpio::Output<P3>, P1>;
 
     #[local]
     struct Local {
@@ -115,6 +115,8 @@ mod app {
             mut pins,
             mut gpio1,
             mut gpio2,
+            mut gpio3,
+            mut gpio4,
             usb,
             lpspi4,
             mut gpt1,
@@ -140,7 +142,7 @@ mod app {
         let blocking_delay = Blocking::<_, GPT1_FREQUENCY>::from_gpt(gpt2);
 
         // RX DONE Interrupt setup
-        let rx_int = gpio1.input(pins.p1);
+        let rx_int = gpio4.input(pins.p29);
         gpio1.set_interrupt(&rx_int, Some(Trigger::RisingEdge));
 
         // initialize spi
@@ -159,7 +161,7 @@ mod app {
 
         // init fake CS pin (TEMPORARY) and required reset pin
         let fake_cs = gpio2.output(pins.p8);
-        let reset = gpio2.output(pins.p9);
+        let reset = gpio3.output(pins.p28);
 
         // initialize radio
         let radio = match sx127::LoRa::new(shared_spi, fake_cs, reset, FREQUENCY, delay) {
@@ -192,11 +194,11 @@ mod app {
 
         // Initialize Pins
         let cs = gpio1.output(pins.p40);
-        let init_b = gpio1.input(pins.p41);
+        let init_b = gpio4.input(pins.p2);
         let config = Config::zero().set_open_drain(OpenDrain::Enabled);
-        configure(&mut pins.p21, config);
-        let prog_b = gpio1.output(pins.p21);
-        let done = gpio1.input(pins.p19);
+        configure(&mut pins.p3, config);
+        let prog_b = gpio4.output(pins.p3);
+        let done = gpio1.input(pins.p1);
 
         let fpga = match FPGA::new(kicker_spi, cs, init_b, prog_b, done) {
             Ok(instance) => instance,
