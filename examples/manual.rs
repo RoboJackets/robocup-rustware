@@ -86,7 +86,7 @@ mod app {
     type RadioInterrupt = gpio::Input<P29>;
     type Radio = sx127::LoRa<Lpspi<board::LpspiPins<P26, P39, P27, P38>, 3>, gpio::Output<P8>, gpio::Output<P28>, Delay>;
     type Gpio1 = Port<1>;
-    type Fpga = FPGA<board::Lpspi4, gpio::Output<P40>, P2, gpio::Output<P3>, P1>;
+    type Fpga = FPGA<board::Lpspi4, gpio::Output<P9>, P15, gpio::Output<P16>, P14>;
 
     #[local]
     struct Local {
@@ -143,7 +143,7 @@ mod app {
 
         // RX DONE Interrupt setup
         let rx_int = gpio4.input(pins.p29);
-        gpio1.set_interrupt(&rx_int, Some(Trigger::RisingEdge));
+        gpio4.set_interrupt(&rx_int, Some(Trigger::RisingEdge));
 
         // initialize spi
         let shared_spi_pins = hal::lpspi::Pins {
@@ -193,12 +193,12 @@ mod app {
         });
 
         // Initialize Pins
-        let cs = gpio1.output(pins.p40);
-        let init_b = gpio4.input(pins.p2);
+        let cs = gpio2.output(pins.p9);
+        let init_b = gpio1.input(pins.p15);
         let config = Config::zero().set_open_drain(OpenDrain::Enabled);
-        configure(&mut pins.p3, config);
-        let prog_b = gpio4.output(pins.p3);
-        let done = gpio1.input(pins.p1);
+        configure(&mut pins.p16, config);
+        let prog_b = gpio1.output(pins.p16);
+        let done = gpio1.input(pins.p14);
 
         let fpga = match FPGA::new(kicker_spi, cs, init_b, prog_b, done) {
             Ok(instance) => instance,
@@ -210,6 +210,9 @@ mod app {
         blink_led::spawn().ok();
 
         let initial_robot_status = RobotStatusMessage::new(Team::Blue, 0u8, false, false, true, 0u8, 0u8, false, [0u16; 18]);
+
+        init_radio::spawn().ok();
+        motor_control::spawn().ok();
 
         (
             Shared {
@@ -270,10 +273,11 @@ mod app {
     }
 
     #[task(
-        binds = GPIO1_COMBINED_0_15,
+        binds = GPIO4_COMBINED_16_31,
         shared = [radio, blocking_delay, rx_int, gpio1, awake, current_control_message, last_received_count]
     )]
     fn receive_data(mut ctx: receive_data::Context) {
+        log::info!("Interrupt");
         (ctx.shared.rx_int, ctx.shared.radio, ctx.shared.blocking_delay, ctx.shared.gpio1).lock(|rx_int, radio, delay, gpio1| {
             if rx_int.is_triggered() {
                 // Disable Radio Interrupt
@@ -289,6 +293,8 @@ mod app {
                                     Ok(control_command) => control_command,
                                     Err(err) => panic!("Error Occurred Extracting Control Command: {:?}", err),
                                 };
+
+                                log::info!("Received {:?}", control_command);
 
                                 if control_command.robot_id == ROBOT_ID.into() {
                                     match control_command.command_type() {
@@ -372,27 +378,34 @@ mod app {
     }
 
     #[task(
-        shared = [status, current_control_message],
+        shared = [status, current_control_message, blocking_delay],
         local = [fpga, motion_controller],
         priority = 1,
     )]
     async fn motor_control(mut ctx: motor_control::Context) {
-        match ctx.local.fpga.configure().await {
-            Ok(_) => log::info!("Configured FPGA"),
-            Err(e) => match e {
-                FpgaError::SPI(spi_e) => panic!("SPI error with info: {:?}", spi_e),
-                FpgaError::CSPin(cs_e) => panic!("CS pin error: {:?}", cs_e), 
-                FpgaError::InitPin(init_e) => panic!("Init pin error: {:?}", init_e),
-                FpgaError::ProgPin(prog_e) => panic!("Prog pin error: {:?}", prog_e),
-                FpgaError::DonePin(done_e) => panic!("Done pin error: {:?}", done_e),
-                FpgaError::FPGATimeout(code) => panic!("Fpga timed out?? code: {:x}", code),
+        ctx.shared.blocking_delay.lock(|delay| {
+            if let Some(mut taken_delay) = delay.take() {
+                match ctx.local.fpga.configure(&mut taken_delay) {
+                    Ok(_) => log::info!("Configured FPGA"),
+                    Err(e) => match e {
+                        FpgaError::SPI(spi_e) => panic!("SPI error with info: {:?}", spi_e),
+                        FpgaError::CSPin(cs_e) => panic!("CS pin error: {:?}", cs_e), 
+                        FpgaError::InitPin(init_e) => panic!("Init pin error: {:?}", init_e),
+                        FpgaError::ProgPin(prog_e) => panic!("Prog pin error: {:?}", prog_e),
+                        FpgaError::DonePin(done_e) => panic!("Done pin error: {:?}", done_e),
+                        FpgaError::FPGATimeout(code) => panic!("Fpga timed out?? code: {:x}", code),
+                    }
+                }
+                *delay = Some(taken_delay);
+            } else {
+                panic!("Unable to Initialize FPGA");
             }
-        }
+        });
 
         Systick::delay(10u32.millis()).await;
 
         // enable motors
-        match ctx.local.fpga.enable_motors(true) {
+        match ctx.local.fpga.motors_en(true) {
             Ok(status) => log::info!("Enable Motors FPGA Status: {:b}", status),
             Err(e) => panic!("Error Enabling Motor... {:?}", e),
         }
@@ -406,9 +419,14 @@ mod app {
             let control_message = ctx.shared.current_control_message.lock(|message| { *message });
             if control_message.is_none() {
                 log::info!("No Control Message");
-                if ctx.local.fpga.watchdog_reset().await.is_err() {
-                    log::info!("Unable to Reset Watchdog");
-                }
+                ctx.shared.blocking_delay.lock(|delay| {
+                    if let Some(mut taken_delay) = delay.take() {
+                        if ctx.local.fpga.watchdog_reset(&mut taken_delay).is_err() {
+                            log::info!("Unable to Reset Watchdog");
+                        }
+                        *delay = Some(taken_delay);
+                    }
+                });
                 Systick::delay(10u32.millis()).await;
                 continue;
             }
@@ -417,12 +435,16 @@ mod app {
 
             let target_velocity = ctx.local.motion_controller.body_to_wheel(&target_global_velocity);
 
+            log::info!("Target Velocity: {:?}", target_velocity);
+            log::info!("Control Message: {:?}", control_message);
+            log::info!("Velocity: [{}, {}, {}, {}]", target_velocity[0] as i16, target_velocity[1] as i16, target_velocity[2] as i16, target_velocity[3] as i16);
+
             // Convert control_message x, y, and w to motion commands
             let mut duty_cycles = [
-                (target_velocity[0] as i16).into(),
-                (target_velocity[1] as i16).into(),
-                (target_velocity[2] as i16).into(),
-                (target_velocity[3] as i16).into(),
+                DutyCycle::from(target_velocity[0] as i16),
+                DutyCycle::from(target_velocity[1] as i16),
+                DutyCycle::from(target_velocity[2] as i16),
+                DutyCycle::from(target_velocity[3] as i16),
                 DutyCycle::from(0i16),
             ];
 

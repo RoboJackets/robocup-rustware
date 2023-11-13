@@ -67,7 +67,7 @@ mod app {
 
     type Delay = Blocking<Gpt1, GPT1_FREQUENCY>;
     type BlockingDelay = Blocking<Gpt2, GPT1_FREQUENCY>;
-    type Interrupt = gpio::Input<P1>;
+    type Interrupt = gpio::Input<P29>;
     type Radio = sx127::LoRa<Lpspi<board::LpspiPins<P26, P39, P27, P38>, 3>, gpio::Output<P8>, gpio::Output<P28>, Delay>;
 
     #[local]
@@ -90,6 +90,7 @@ mod app {
             mut gpio1,
             mut gpio2,
             mut gpio3,
+            mut gpio4,
             usb,
             lpspi4,
             mut gpt1,
@@ -116,8 +117,8 @@ mod app {
         let blocking_delay = Blocking::<_, GPT1_FREQUENCY>::from_gpt(gpt2);
 
         // RX DONE Interrupt setup
-        let rx_int = gpio1.input(pins.p1);
-        gpio1.set_interrupt(&rx_int, Some(Trigger::RisingEdge));
+        let rx_int = gpio4.input(pins.p29);
+        gpio4.set_interrupt(&rx_int, Some(Trigger::RisingEdge));
 
         // initialize spi
         let test = unsafe { LPSPI3::instance() };
@@ -190,7 +191,7 @@ mod app {
         });
     }
 
-    #[task(binds = GPIO1_COMBINED_0_15, local = [rx_int], shared = [radio, blocking_delay])]
+    #[task(binds = GPIO4_COMBINED_16_31, local = [rx_int], shared = [radio, blocking_delay])]
     fn receive_data(mut ctx: receive_data::Context) {
         log::info!("Interrupt Triggered");
 

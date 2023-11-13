@@ -42,7 +42,7 @@ use bsp::hal::gpt::ClockSource;
     dispatchers = [GPT2]
 )]
 mod app {
-    use fpga::{error::FpgaError, structs::DutyCycle};
+    use fpga::{error::FpgaError, duty_cycle::DutyCycle};
 
     // this allows us to define our packages outside the app module
     // we're essetially "bringing them all in"

@@ -10,13 +10,6 @@ const FRONT_WHEEL_DIST: f32 = 0.078089;
 const FRONT_ANGLE: f32 = 30.0;
 const BACK_ANGLE: f32 = 45.0;
 
-const WHEEL_ANGLES: [f32; 4] = [
-    (180.0 - FRONT_ANGLE) * PI / 180.0,
-    (180.0 + BACK_ANGLE) * PI / 180.0,
-    (360.0 - BACK_ANGLE) * PI / 180.0,
-    (0.0 + FRONT_ANGLE) * PI / 180.0,
-];
-
 const WHEEL_DIST: f32 = (FRONT_WHEEL_DIST + READ_WHEEL_DIST) / 2.0;
 
 const BODY_KP: Vector3<f32> = Vector3::new(0.8, 0.8, 1.5);
@@ -30,12 +23,20 @@ pub struct MotionControl {
 
 impl MotionControl {
     pub fn new() -> Self {
+        let wheel_angles: [f32; 4] = [
+            f32::to_radians(180.0 - FRONT_ANGLE),
+            f32::to_radians(180.0 + BACK_ANGLE),
+            f32::to_radians(360.0 - BACK_ANGLE),
+            f32::to_radians(0.0 + FRONT_ANGLE),
+        ];
+
         let bot_to_wheel = Matrix4x3::new(
-            -sinf(WHEEL_ANGLES[0]), cosf(WHEEL_ANGLES[1]), WHEEL_DIST,
-            -sinf(WHEEL_ANGLES[1]), cosf(WHEEL_ANGLES[1]), WHEEL_DIST,
-            -sinf(WHEEL_ANGLES[2]), cosf(WHEEL_ANGLES[2]), WHEEL_DIST,
-            -sinf(WHEEL_ANGLES[3]), cosf(WHEEL_ANGLES[3]), WHEEL_DIST,
+            -sinf(wheel_angles[0]), cosf(wheel_angles[0]), WHEEL_DIST,
+            -sinf(wheel_angles[1]), cosf(wheel_angles[1]), WHEEL_DIST,
+            -sinf(wheel_angles[2]), cosf(wheel_angles[2]), WHEEL_DIST,
+            -sinf(wheel_angles[3]), cosf(wheel_angles[3]), WHEEL_DIST,
         );
+
         // Invert because the wheels spin opposite of paper
         let bot_to_wheel = bot_to_wheel.map(|a| a * -1.0 / WHEEL_RADIUS);
         
@@ -52,6 +53,11 @@ impl MotionControl {
     pub fn body_to_wheel(&self, body_velocity: &[f32; 3]) -> Vector4<f32> {
         let body_velocity = Vector3::from_row_slice(body_velocity);
 
-        return self.bot_to_wheel * body_velocity;
+        let wheel_velocities = self.bot_to_wheel * body_velocity;
+
+        // TODO: Fix scaling in motion control
+        let wheel_velocities = wheel_velocities.map(|a| a / 1000.0);
+
+        return wheel_velocities;
     }
 }
