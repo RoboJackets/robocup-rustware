@@ -1,0 +1,18 @@
+[package]
+name = "battery_module"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+# always needed for device drivers :)
+[dependencies.embedded-hal]
+version = "~0.2"
+features = ["unproven"]
+
+# we use the imxrt::gpio::Input struct from this dependency
+[dependencies.teensy4-bsp]
+version = "0.4"
+
+[dependencies.nb]
+verstion = "^0.1.3"
