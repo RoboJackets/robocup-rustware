@@ -1,6 +1,7 @@
 #![no_std]
 #![no_main]
-#![feature(type_alias_impl_trait)]
+//#![feature(type_alias_impl_trait)]
+#![allow(dead_code)]
 
 use teensy4_panic as _;
 

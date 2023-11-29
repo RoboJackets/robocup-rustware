@@ -374,6 +374,7 @@ dependencies = [
  "cortex-m",
  "embedded-hal",
  "log",
+ "rgb_driver_firmware_tutorial",
  "rtic",
  "rtic-monotonics",
  "teensy4-bsp",

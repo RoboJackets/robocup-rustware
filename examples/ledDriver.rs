@@ -1,7 +1,8 @@
 #![no_std]
+#![no_main]
 
-use rbgLED::rbg_LED_Driver;
 use teensy4_panic as _;
+use rbgLED::rbg_LED_Driver;
 
 #[rtic::app(device = teensy4_bsp, peripherals = true, dispatchers = [GPT2])]
 mod app {
@@ -17,13 +18,13 @@ mod app {
 
     //local because this is currently the only place where this LED is used
     #[local]
-    struct local {
-        //idk if pin 7 is the right pin or not? Ask Nate
-        led: rbg_LED_Driver<Output<P7>> 
+    struct Local {
+        //Why are these the pins?
+        led: rbg_LED_Driver<Output<P0>, Output<P8>, Output<P31>>
     }
 
     #[shared]
-    struct shared {
+    struct Shared {
         //empty because LED currently isn't shared with anything
     }
 
@@ -38,8 +39,11 @@ mod app {
         let systick_token = rtic_monotonics::create_systick_token!();
         Systick::start(ctx.core.SYST, 36_000_000, systick_token);
 
-        //if pin 7 isn't the correct PIN then I need to make sure to change it here as well
-        let led = gpio2.output(pins.p7);
+        let led = rbg_LED_Driver::new(
+            gpio2.output(pins.p0),
+            gpio2.output(pins.p8),
+            gpio2.output(pins.p31),
+        );
 
         blink_led::spawn().ok();
 
@@ -49,5 +53,40 @@ mod app {
                 led,
             },
         )
+    }
+
+    //when idle wait for interrupt
+    #[idle]
+    fn idle(_: idle::Context) -> ! {
+        loop {
+            cortex_m::asm::wfi();
+        }
+    }
+
+    #[task(local = [ led ], priority = 1)]
+    async fn blink_led(ctx: blink_led::Context) {
+        ctx.local.led.red().unwrap();
+
+        Systick::delay(1000u32.millis()).await;
+
+        ctx.local.led.green().unwrap();
+
+        Systick::delay(1000u32.millis()).await;
+
+        ctx.local.led.blue().unwrap();
+
+        Systick::delay(1000u32.millis()).await;
+
+        ctx.local.led.yellow().unwrap();
+
+        Systick::delay(1000u32.millis()).await;
+
+        ctx.local.led.purple().unwrap();
+
+        Systick::delay(1000u32.millis()).await;
+
+        ctx.local.led.cyan().unwrap();
+
+        Systick::delay(1000u32.millis()).await;
     }
 }
