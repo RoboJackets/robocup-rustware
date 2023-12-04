@@ -57,6 +57,9 @@ features = ["log"]
 [dependencies.fpga-rs]
 path = "drivers/fpga"
 
+[dependencies.battery_module]
+path = "drivers/battery_module"
+
 # the root package is also a workspace that holds all of the neccesary "supporting" packages
 # such as driver files, utility files (e.g. tools), etc.
 [workspace]

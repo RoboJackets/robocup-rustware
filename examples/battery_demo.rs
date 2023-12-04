@@ -7,7 +7,6 @@
 #![no_main]
 #![feature(type_alias_impl_trait)]
 
-use rtic;
 ///
 /// This is a demo example file that turns on and off the onboard led.
 ///
@@ -24,12 +23,12 @@ mod app {
     use bsp::hal;
     use hal::gpio::Output;
 
-    use battery_module::Battery;
+    use battery_module::{Battery, BatteryAdc};
     use rtic_monotonics::systick::*;
 
     #[local]
     struct Local {
-        battery: Battery,
+        battery: Battery<1>,
     }
 
     #[shared]
@@ -38,8 +37,14 @@ mod app {
     #[init]
     fn init(ctx: init::Context) -> (Shared, Local) {
         let board::Resources {
-            pins, mut gpio2, mut adc1, ..
+            pins, 
+            gpio2, 
+            adc1,
+            usb,
+            ..
         } = board::t41(ctx.device);
+
+        bsp::LoggingFrontend::default_log().register_usb(usb);
 
         let systick_token = rtic_monotonics::create_systick_token!();
         Systick::start(ctx.core.SYST, 600_000_000, systick_token);
@@ -59,8 +64,12 @@ mod app {
     #[task(local = [battery], priority = 1)]
     async fn blink_led(ctx: blink_led::Context) {
         loop {
+            Systick::delay(1_000u32.millis()).await;
+
             let _ = ctx.local.battery.update();
-            ctx.local.battery.get_percentage();
+            let percentage = ctx.local.battery.get_percentage();
+
+            log::info!("Red {}", percentage);
         }
     }
 }

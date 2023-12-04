@@ -1,3 +1,6 @@
+#![no_std]
+#![crate_type = "lib"]
+
 use embedded_hal::adc::{Channel, OneShot};
 use teensy4_bsp::hal::adc::Adc;
 
