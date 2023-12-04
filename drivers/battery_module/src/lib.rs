@@ -18,6 +18,12 @@ pub struct BatteryAdc<const T: u8> {
     adc: Adc<T>,
 }
 
+impl<const T: u8> BatteryAdc<T> {
+    pub fn new(adc: Adc<T>) -> Self {
+        Self { adc }
+    }
+}
+
 struct AdcChannel<const T: u8>;
 
 impl<const T: u8> Channel<Adc<T>> for AdcChannel<T> {
