@@ -14,8 +14,8 @@ const ADC_MAX: f32 = 4096.0;
 
 const ADC_RATIO: f32 = 3.3 / ADC_MAX;
 
-struct BatteryAdc<const T: u8> {
-    adc: Adc<T>
+pub struct BatteryAdc<const T: u8> {
+    adc: Adc<T>,
 }
 
 struct AdcChannel<const T: u8>;
@@ -32,16 +32,16 @@ impl<const T: u8> OneShot<Adc<T>, f32, AdcChannel<T>> for BatteryAdc<T> {
     type Error = BatteryError;
 
     fn read(&mut self, _channel: &mut AdcChannel<T>) -> nb::Result<f32, Self::Error> {
-        let reading = self.adc.read_blocking_channel(AdcChannel::<T>::channel()); 
+        let reading = self.adc.read_blocking_channel(AdcChannel::<T>::channel());
         Ok(reading as f32 * ADC_RATIO)
     }
 }
 
-enum BatteryError {
+pub enum BatteryError {
     ReadError,
 }
 
-struct Battery<const T: u8> {
+pub struct Battery<const T: u8> {
     last_percentage: f32,
     raw_reading: u8,
     adc: BatteryAdc<T>,
@@ -72,8 +72,6 @@ impl<const T: u8> Battery<T> {
     }
 
     pub fn is_critical(&self) -> bool {
-        return self.last_percentage < 0.05 || self.last_percentage > 1.0;
+        self.last_percentage < 0.05 || self.last_percentage > 1.0
     }
 }
-
-struct BatteryModule {}
