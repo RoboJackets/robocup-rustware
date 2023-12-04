@@ -13,6 +13,7 @@
 /// Please follow this example for future examples and sanity tests
 ///
 use teensy4_panic as _;
+
 #[rtic::app(device = teensy4_bsp, peripherals = true, dispatchers = [GPT2])]
 mod app {
     use teensy4_pins::common::*;
@@ -21,14 +22,13 @@ mod app {
     use teensy4_bsp as bsp;
 
     use bsp::hal;
-    use hal::gpio::Output;
 
     use battery_module::{Battery, BatteryAdc};
     use rtic_monotonics::systick::*;
 
     #[local]
     struct Local {
-        battery: Battery<1, P17>,
+        battery: Battery<P17, 1>,
     }
 
     #[shared]
@@ -38,7 +38,6 @@ mod app {
     fn init(ctx: init::Context) -> (Shared, Local) {
         let board::Resources {
             pins, 
-            gpio1,
             adc1,
             usb,
             ..
@@ -49,7 +48,9 @@ mod app {
         let systick_token = rtic_monotonics::create_systick_token!();
         Systick::start(ctx.core.SYST, 600_000_000, systick_token);
 
-        let battery = Battery::new(BatteryAdc::new(adc1), gpio1.p17);
+        let a1 = hal::adc::AnalogInput::new(pins.p17);
+
+        let battery = Battery::new(BatteryAdc::new(adc1), a1);
 
         (Shared {}, Local { battery })
     }
