@@ -28,7 +28,7 @@ mod app {
 
     #[local]
     struct Local {
-        battery: Battery<1>,
+        battery: Battery<1, P17>,
     }
 
     #[shared]
@@ -38,7 +38,7 @@ mod app {
     fn init(ctx: init::Context) -> (Shared, Local) {
         let board::Resources {
             pins, 
-            gpio2, 
+            gpio1,
             adc1,
             usb,
             ..
@@ -49,7 +49,7 @@ mod app {
         let systick_token = rtic_monotonics::create_systick_token!();
         Systick::start(ctx.core.SYST, 600_000_000, systick_token);
 
-        let battery = Battery::new(BatteryAdc::new(adc1));
+        let battery = Battery::new(BatteryAdc::new(adc1), gpio1.p17);
 
         (Shared {}, Local { battery })
     }

@@ -2,7 +2,8 @@
 #![crate_type = "lib"]
 
 use embedded_hal::adc::{Channel, OneShot};
-use teensy4_bsp::hal::adc::Adc;
+use teensy4_bsp::hal::adc::{Adc, AnalogInput};
+use teensy4_bsp::pins::imxrt_iomuxc::adc::Pin;
 
 const MAX_SAFE_VOLTAGE_READ: f32 = 2.692;
 const MIN_SAFE_VOLTAGE_READ: f32 = 1.923;
@@ -27,9 +28,11 @@ impl<const T: u8> BatteryAdc<T> {
     }
 }
 
-struct AdcChannel<const T: u8>;
+struct AdcChannel<P, const T: u8> {
+    pin: AnalogInput<P, T>
+}
 
-impl<const T: u8> Channel<Adc<T>> for AdcChannel<T> {
+impl<P: Pin<T>, const T: u8> Channel<Adc<T>> for AdcChannel<P, T> {
     type ID = u32;
 
     fn channel() -> u32 {
@@ -37,11 +40,11 @@ impl<const T: u8> Channel<Adc<T>> for AdcChannel<T> {
     }
 }
 
-impl<const T: u8> OneShot<Adc<T>, f32, AdcChannel<T>> for BatteryAdc<T> {
+impl<P: Pin<T>, const T: u8> OneShot<Adc<T>, f32, AdcChannel<P, T>> for BatteryAdc<T> {
     type Error = BatteryError;
 
-    fn read(&mut self, _channel: &mut AdcChannel<T>) -> nb::Result<f32, Self::Error> {
-        let reading = self.adc.read_blocking_channel(AdcChannel::<T>::channel());
+    fn read(&mut self, channel: &mut AdcChannel<P, T>) -> nb::Result<f32, Self::Error> {
+        let reading = self.adc.read_blocking(&mut channel.pin);
         Ok(reading as f32 * ADC_RATIO)
     }
 }
@@ -50,26 +53,27 @@ pub enum BatteryError {
     ReadError,
 }
 
-pub struct Battery<const T: u8> {
+pub struct Battery<P, const T: u8> {
     last_percentage: f32,
     raw_reading: u8,
     adc: BatteryAdc<T>,
+    channel: AdcChannel<P, T>,
 }
 
-impl<const T: u8> Battery<T> {
-    pub fn new(adc: BatteryAdc<T>) -> Self {
+impl<P: Pin<T>, const T: u8> Battery<P, T> {
+    pub fn new(adc: BatteryAdc<T>, pin: AnalogInput<P, T>) -> Self {
         Self {
             last_percentage: 0.0,
             raw_reading: 0,
             adc,
+            channel: AdcChannel { pin }
         }
     }
 
     pub fn update(&mut self) -> Result<(), BatteryError> {
-        let mut pin = AdcChannel {};
         let result = self
             .adc
-            .read(&mut pin)
+            .read(&mut self.channel)
             .map_err(|_e| BatteryError::ReadError)?;
         self.last_percentage = (result - MIN_SAFE_VOLTAGE_READ) / VOLTAGE_READ_RANGE;
         self.raw_reading = (self.last_percentage * 255.0) as u8;
