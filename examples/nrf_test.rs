@@ -30,6 +30,7 @@ mod app {
     use rtic_nrf24l01::error::Error;
     use rtic_nrf24l01::register::ConfigRegister;
     use rtic_nrf24l01::state::State;
+    use teensy4_bsp::hal::lpspi::LpspiError;
     use teensy4_pins::common::*;
 
     use teensy4_bsp as bsp;
@@ -172,10 +173,7 @@ mod app {
         let cs = ctx.local.fake_cs.take().unwrap();
 
         let mut radio = match NRF24L01::new(Some(cs), ce, config, ctx.local.spi).await {
-            Ok(radio) => {
-                log::info!("Successfully Created Radio");
-                radio
-            },
+            Ok(radio) => radio,
             Err(err) => {
                 match err {
                     Error::InvalidPipeId => log::info!("Invalid Pipe ID"),
@@ -186,10 +184,15 @@ mod app {
                     Error::UnknownRegister => log::info!("Unknown Register"),
                     Error::UnableToConfigureRegister(register, expected, found) => log::info!("Unable to Configure Register: {:#x}\nExpected\n{:#010b}\nFound\n{:#010b}", register, expected, found),
                     Error::GpioError(_) => log::info!("GPIO Error"),
-                    Error::SpiError(_) => log::info!("SPI ERROR"),
+                    Error::SpiError(err) => match err {
+                        LpspiError::FrameSize => log::info!("SPI Error Frame Size"),
+                        LpspiError::Fifo(direction) => log::info!("SPI Error Direction: {:?}", direction),
+                        LpspiError::Busy => log::info!("SPI Error Busy"),
+                        LpspiError::NoData => log::info!("SPI Error No Data"),
+                    },
                     Error::GpioSpiError(_) => log::info!("Gpio + SPI Error"),
                     _ => log::info!("Unknown Error"),
-                }
+                };
                 return;
             }
         };
@@ -197,48 +200,71 @@ mod app {
         // Read all of the registers
         for register in 0x00..=0x06 {
             let mut config = [0u8];
-            match radio.read_register(register, &mut config, ctx.local.spi) {
+            match radio.read_register(register, &mut config, ctx.local.spi).await {
                 Ok(_) => log::info!("Register {:#x} --- {:#010b}", register, config[0]),
                 Err(_) => log::info!("Error Reading Register {:#x}", register),
             }
         }
 
         let mut base_rx = [0u8; 5];
-        match radio.read_register(0x0A, &mut base_rx, ctx.local.spi) {
+        match radio.read_register(0x0A, &mut base_rx, ctx.local.spi).await {
             Ok(_) => log::info!("Base Read --- {:#x?}", base_rx),
             Err(_) => log::info!("Error Reading Base Read Address"),
         }
 
         for register in 0x0B..=0x0F {
             let mut config = [0u8];
-            match radio.read_register(register, &mut config, ctx.local.spi) {
+            match radio.read_register(register, &mut config, ctx.local.spi).await {
                 Ok(_) => log::info!("RX Register {:#x} --- {:#x}", register, config[0]),
                 Err(_) => log::info!("Error Reading Register {:#x}", register),
             }
         }
 
         let mut tx = [0u8; 5];
-        match radio.read_register(0x10, &mut tx, ctx.local.spi) {
+        match radio.read_register(0x10, &mut tx, ctx.local.spi).await {
             Ok(_) => log::info!("Tx --- {:#x?}", tx),
             Err(_) => log::info!("Error Reading Tx Address"),
         }
 
         for register in 0x1C..=0x1D {
             let mut config = [0u8];
-            match radio.read_register(register, &mut config, ctx.local.spi) {
+            match radio.read_register(register, &mut config, ctx.local.spi).await {
                 Ok(_) => log::info!("Register {:#x} --- {:#010b}", register, config[0]),
                 Err(_) => log::info!("Error Reading Register {:#x}", register),
             }
         }
 
-        match radio.read_status(ctx.local.spi) {
+        match radio.read_status(ctx.local.spi).await {
             Ok(status) => log::info!("Status {:#010b}", status),
             Err(_) => log::info!("Unable to Read Status"),
         }
 
-        match radio.send_data(b"Hello World", false, ctx.local.spi).await {
-            Ok(_) => log::info!("Sent Hello World"),
-            Err(_) => log::info!("Unable to send Hello World"),
+        for _ in 0..=10 {
+            Systick::delay(1_000u32.millis()).await;
+
+            log::info!("Sending Hello World");
+
+            match radio.send_data(b"Hello World ", false, ctx.local.spi).await {
+                Ok(_) => log::info!("Sent Hello World"),
+                Err(err) => match err {
+                    Error::InvalidPipeId => log::info!("Invalid Pipe ID"),
+                    Error::TooLargeAckPayload => log::info!("Too Large Ack Payload"),
+                    Error::InvalidBufferSize => log::info!("Invalid Buffer Size"),
+                    Error::InvalidRegisterBufferSize(register) => log::info!("Invalid Register Buffer Size {:#x} = {}", register, register),
+                    Error::InvalidAddressBufferSize => log::info!("Invalid Address Buffer Size"),
+                    Error::UnknownRegister => log::info!("Unknown Register"),
+                    Error::UnableToConfigureRegister(register, expected, found) => log::info!("Unable to Configure Register: {:#x}\nExpected\n{:#010b}\nFound\n{:#010b}", register, expected, found),
+                    Error::GpioError(_) => log::info!("GPIO Error"),
+                    Error::SpiError(err) => match err {
+                        LpspiError::FrameSize => log::info!("SPI Error Frame Size"),
+                        LpspiError::Fifo(direction) => log::info!("SPI Error Direction: {:?}", direction),
+                        LpspiError::Busy => log::info!("SPI Error Busy"),
+                        LpspiError::NoData => log::info!("SPI Error No Data"),
+                    },
+                    Error::GpioSpiError(_) => log::info!("Gpio + SPI Error"),
+                    _ => log::info!("Unknown Error"),
+                },
+            }
         }
     }
 }
