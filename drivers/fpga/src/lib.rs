@@ -449,7 +449,7 @@ impl<SPI, CS, InitP, PROG, DoneP, SpiE, PinE> FPGA<SPI, CS, InitP, PROG, DoneP>
             self.spi.transfer(&mut nib_2).map_err(FpgaError::SPI)?;
 
             // combine all 4 bytes to form a single DRV encoded value
-            gate_status[i] = ((empty[0] << 24) | (nib_2[0] << 16) | (nib_1[0] << 8) | nib_0[0]) as u32;
+            gate_status[i] = ((empty[0] as u32) << 24) | ((nib_2[0] as u32) << 16) | ((nib_1[0] as u32) << 8) | (nib_0[0]) as u32;
         }
         
         Ok(status[0])

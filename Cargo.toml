@@ -14,16 +14,6 @@ imxrt-iomuxc = "0.2.2"
 sx127 = { git = "https://github.com/N8BWert/sx127" }
 embedded-alloc = "0.5.0"
 
-[dependencies.packed_struct]
-version = "0.10.1"
-default-features = false
-features = ["alloc"]
-
-[dependencies.robojackets-robocup-rtp]
-version = "0.1.3"
-default-features = false
-features = ["nostd"]
-
 [dependencies.embedded-hal]
 version = "~0.2"
 features = ["unproven"]
@@ -63,6 +53,10 @@ path = "drivers/mcp23017"
 [[example]]
 name = "mcp23017-demo"
 path = "examples/mcp23017_demo.rs"
+
+[[example]]
+name = "demo"
+path = "examples/demo.rs"
 
 # the root package is also a workspace that holds all of the neccesary "supporting" packages
 # such as driver files, utility files (e.g. tools), etc.
