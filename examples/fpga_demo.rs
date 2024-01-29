@@ -71,7 +71,7 @@ mod app {
     // this simplifies local and shared resource definitions
     type Led = gpio::Output<P6>;
     type Delay = Blocking<Gpt1, GPT1_FREQUENCY>;
-    type Fpga = FPGA<board::Lpspi4, gpio::Output<P9>, P15, gpio::Output<P16>, P14>;
+    type Fpga = FPGA<board::Lpspi4, gpio::Output<P9>, P29, gpio::Output<P28>, P30>;
 
     // struct that holds local resources which can be accessed via the context
     #[local]
@@ -99,6 +99,8 @@ mod app {
             // used to control any pin from the gpio2 register
             // (e.g. pin13 for the on board LED)
             mut gpio2,
+            mut gpio3,
+            mut gpio4,
             // for usb logging :)
             usb,
             // resources to control spi
@@ -128,9 +130,10 @@ mod app {
         let counter = 0;
 
         // initalize spi
+        // use pin 9 as chop select manially :) maybe it'll fix the issue???
         let mut spi = board::lpspi(lpspi4, 
             board::LpspiPins {
-                pcs0: pins.p10, // NOT CURRENTLY USED
+                pcs0: pins.p10,
                 sck: pins.p13,
                 sdo: pins.p11,
                 sdi: pins.p12,
@@ -146,14 +149,14 @@ mod app {
         });
 
         // initialize pins for FPGA
-        let init_b = gpio1.input(pins.p15);
+        let init_b = gpio4.input(pins.p29);
 
         // configure prog pin to open drain configuration
         let config = Config::zero().set_open_drain(OpenDrain::Enabled);
-        configure(&mut pins.p16, config);
-        let prog_b = gpio1.output(pins.p16);
+        configure(&mut pins.p28, config);
+        let prog_b = gpio3.output(pins.p28);
         
-        let done = gpio1.input(pins.p14);
+        let done = gpio3.input(pins.p30);
 
         let fpga = match FPGA::new(spi, cs, init_b, prog_b, done) {
             Ok(instance) => instance,
