@@ -14,15 +14,11 @@ enum Colors {
     CYAN,
 }
 
-pub struct RGB_LED<P1, P2, P3>
-where
+pub struct RGB_LED<OutputPin>
+{
     P1: OutputPin,
     P2: OutputPin,
     P3: OutputPin,
-{
-    r: P1,
-    g: P2,
-    b: P3,
 }
 
 impl<OutputPin> RGB_LED<OutputPin>
