@@ -63,6 +63,7 @@ path = "drivers/fpga"
 members = [
     "drivers/fpga",
     "tools",
+    "drivers/rgb_led_driver"
 ]
 
 # overrides the release build optimization level
