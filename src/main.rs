@@ -32,6 +32,7 @@ use fpga_rs as fpga;
 use fpga::FPGA_SPI_FREQUENCY;
 use fpga::FPGA_SPI_MODE;
 use fpga::FPGA;
+use led::RGB_LED;
 
 
 // spi traits to use the transfer and write transactions

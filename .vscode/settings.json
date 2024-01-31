@@ -3,8 +3,11 @@
     "rust-analyzer.check.allTargets": false,
     "rust-analyzer.linkedProjects": [
         "./Cargo.toml",
+        "./drivers/aalind_rgb_driver/Cargo.toml",
+        "./drivers/aalind_rgb_driver/Cargo.toml"
     ],
     "rust-analyzer.check.extraArgs": [
         "--examples",
     ],
+    "rust-analyzer.showUnlinkedFileNotification": false,
 }
