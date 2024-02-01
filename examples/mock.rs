@@ -296,7 +296,7 @@ mod app {
 
                                 log::info!("Received {:?}", control_command);
 
-                                if control_command.robot_id == ROBOT_ID.into() {
+                                if control_command.robot_id == main::ROBOT_ID.into() {
                                     match control_command.command_type() {
                                         CommandTypes::WakeUp => ctx.shared.awake.lock(|awake| { *awake = true; }),
                                         CommandTypes::PowerDown => ctx.shared.awake.lock(|awake| { *awake = false; }),
@@ -314,7 +314,7 @@ mod app {
                                     Err(err) => panic!("Error Occurred Extracting Control Message: {:?}", err),
                                 };
 
-                                if control_message.robot_id == ROBOT_ID.into() {
+                                if control_message.robot_id == main::ROBOT_ID.into() {
                                     ctx.shared.current_control_message.lock(|current_control_message| { *current_control_message = Some(control_message); });
 
                                     // Keep Track of Last Received Communication Timestamp

@@ -18,6 +18,8 @@ use teensy4_panic as _;
 mod app {
     use super::*;
 
+    use main::{BASE_STATION_ADDRESS, ROBOT_RADIO_ADDRESSES, ROBOT_ID};
+
     use embedded_hal::spi::MODE_0;
     use embedded_hal::digital::v2::InputPin;
     use teensy4_bsp::hal::lpspi::LpspiError;
@@ -33,7 +35,7 @@ mod app {
     use bsp::board::LPSPI_FREQUENCY;
 
     use bsp::hal as hal;
-    use hal::gpio::{self, Output, Input, Trigger, Port};
+    use hal::gpio::{Output, Input, Trigger, Port};
     use hal::gpt::{ClockSource, Gpt1, Gpt2};
     use hal::timer::Blocking;
     use hal::lpspi::Lpspi;
@@ -46,21 +48,18 @@ mod app {
     use rtic_monotonics::systick::*;
 
     use packed_struct::prelude::*;
-    use packed_struct::types::bits::ByteArray;
 
     use fpga_rs::{error::FpgaError, duty_cycle::DutyCycle, FPGA};
     use fpga_rs::{FPGA_SPI_MODE, FPGA_SPI_FREQUENCY};
 
     // Communication
-    use robojackets_robocup_rtp::{Team, MessageType, RTPHeader};
-    use robojackets_robocup_rtp::control_command::{ControlCommand, CommandTypes};
+    use robojackets_robocup_rtp::Team;
     use robojackets_robocup_rtp::control_message::ControlMessage;
     use robojackets_robocup_rtp::robot_status_message::RobotStatusMessage;
 
     use main::motion_control::MotionControl;
 
     /// Constants
-    const DELAY_MS: u32 = 10_000;
     const GPT_FREQUENCY: u32 = 1_000;
     const GPT_CLOCK_SOURCE: ClockSource = ClockSource::HighFrequencyReferenceClock;
     const GPT_DIVIDER: u32 = board::PERCLK_FREQUENCY / GPT_FREQUENCY;
@@ -97,6 +96,8 @@ mod app {
         delay2: Delay2,
         rx_int: RadioInterrupt,
         gpio1: Gpio1,
+        robot_status: RobotStatusMessage,
+        control_command: Option<ControlMessage>,
     }
 
     #[init]
@@ -107,7 +108,6 @@ mod app {
             mut pins,
             mut gpio1,
             mut gpio2,
-            mut gpio3,
             mut gpio4,
             usb,
             lpspi4,
@@ -176,8 +176,8 @@ mod app {
         }
         radio.set_pa_level(power_amplifier::PowerAmplifier::PALow, &mut shared_spi, &mut delay2);
         radio.set_payload_size(4, &mut shared_spi, &mut delay2);
-        radio.open_writing_pipe([0xE7, 0xE7, 0xE7, 0xE7, 0xE7], &mut shared_spi, &mut delay2);
-        radio.open_reading_pipe(1, [0xC3, 0xC3, 0xC3, 0xC3, 0xC3], &mut shared_spi, &mut delay2);
+        radio.open_writing_pipe(BASE_STATION_ADDRESS, &mut shared_spi, &mut delay2);
+        radio.open_reading_pipe(1, ROBOT_RADIO_ADDRESSES[ROBOT_ID as usize], &mut shared_spi, &mut delay2);
         radio.start_listening(&mut shared_spi, &mut delay2);
 
         // Configure SPI
@@ -207,6 +207,8 @@ mod app {
                 delay2,
                 rx_int,
                 gpio1,
+                robot_status: initial_robot_status,
+                control_command: None,
             },
             Local {
                 fpga,
@@ -237,20 +239,33 @@ mod app {
         }
     }
 
-    #[task(shared = [rx_int, gpio1, shared_spi, delay2], local = [radio], priority = 2)]
-    async fn radio_handler(mut ctx: radio_handler::Context) {
-        (ctx.shared.shared_spi, ctx.shared.delay2).lock(|spi, delay| {
-            let mut read_buffer = [0u8; 33];
+    #[task(shared = [rx_int, gpio1, shared_spi, delay2, control_command, robot_status], local = [radio], priority = 2)]
+    async fn radio_handler(ctx: radio_handler::Context) {
+        (
+            ctx.shared.shared_spi,
+            ctx.shared.delay2,
+            ctx.shared.control_command,
+            ctx.shared.robot_status,
+        ).lock(|spi, delay, command, robot_status| {
+            let mut read_buffer = [0u8; 10];
             ctx.local.radio.read(&mut read_buffer, spi, delay);
-            // TODO: Convert the command from slice
+
+            // Convert the slice into a ControlMessage
+            // TODO: Can Panic so we should check this
+            let control_command = ControlMessage::unpack_from_slice(&read_buffer[..]).unwrap();
+            *command = Some(control_command);
 
             ctx.local.radio.stop_listening(spi, delay);
 
-            // TODO: Get Radio Data
-            let message = [0u8; 33];
+            // TODO: Fix encoder deltas to not be 18 u16s long
+            let packed_data = match robot_status.pack() {
+                Ok(bytes) => bytes,
+                Err(err) => panic!("Could not pack robot status message: {:?}", err),
+            };
+
             // Retry Transmission 5 Times
             for _ in 0..5 {
-                let report = ctx.local.radio.write(&message, spi, delay);
+                let report = ctx.local.radio.write(&packed_data, spi, delay);
                 if report {
                     break;
                 }
@@ -258,9 +273,14 @@ mod app {
 
             ctx.local.radio.start_listening(spi, delay);
         });
+
+        (ctx.shared.rx_int, ctx.shared.gpio1).lock(|rx_int, gpio1| {
+            rx_int.clear_triggered();
+            gpio1.set_interrupt(&rx_int, Some(Trigger::RisingEdge));
+        });
     }
 
-    #[task(shared = [delay1], local=[fpga, initialized: bool = false], priority = 1)]
+    #[task(shared = [delay1], local=[fpga, motion_controller, initialized: bool = false], priority = 1)]
     async fn fpga(mut ctx: fpga::Context) {
         if !*ctx.local.initialized {
             ctx.shared.delay1.lock(|delay| {
@@ -279,36 +299,4 @@ mod app {
 
         // TODO: Motion Controlled Move
     }
-
-    // #[task(local = [led], priority = 1)]
-    // async fn blink_led(ctx: blink_led::Context) {
-    //     Systick::delay(1_000u32.millis()).await;
-
-    //     ctx.local.led.toggle();
-
-    //     Systick::delay(1_000u32.millis()).await;
-
-    //     ctx.local.led.toggle();
-    // }
-
-    // #[task(shared = [radio], priority = 1)]
-    // async fn init_radio(mut ctx: init_radio::Context) {
-    //     Systick::delay(DELAY_MS.millis()).await;
-
-    //     ctx.shared.radio.lock(|radio| {
-    //         log::info!("Lora Version: {:#04x}", radio.get_radio_version().unwrap());
-
-    //         match radio.set_tx_power(17, 1) {
-    //             Ok(_) => log::info!("Successfully set TX power"),
-    //             Err(_) => panic!("Error setting tx power"),
-    //         };
-
-    //         log::info!("Successfully Initialized Radio");
-
-    //         match radio.set_mode(RadioMode::RxContinuous) {
-    //             Ok(_) => log::info!("Radio Listening..."),
-    //             Err(_) => panic!("Couldn't set radio to listening"),
-    //         }
-    //     });
-    // }
 }
