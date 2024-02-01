@@ -2,85 +2,53 @@
 #![no_main]
 #![feature(type_alias_impl_trait)]
 
-extern crate alloc;
-
-use embedded_alloc::Heap;
-
-#[global_allocator]
-static HEAP: Heap = Heap::empty();
-
 use teensy4_panic as _;
 
 #[rtic::app(device = teensy4_bsp, peripherals = true, dispatchers = [GPT2])]
 mod app {
-    use super::*;
+    use embedded_hal::spi::{Mode, MODE_0};
+    use rtic_nrf24l01::config::data_pipe::DataPipeConfig;
+    use rtic_nrf24l01::{Radio, config::*};
+    use rtic_nrf24l01::register::Register;
 
-    use core::mem::MaybeUninit;
-
-    use sx127::RadioMode;
-    use teensy4_bsp::hal::gpt::Gpt2;
-    use teensy4_pins::common::*;
+    use teensy4_bsp::hal::gpio::Output;
+    use teensy4_bsp::hal::lpspi::Lpspi;
+    use teensy4_pins::t41::*;
 
     use teensy4_bsp as bsp;
     use bsp::board;
 
     use bsp::hal as hal;
-    use hal::gpio::{self, Trigger};
     use hal::gpt::{Gpt1, ClockSource};
     use hal::timer::Blocking;
 
     use rtic_monotonics::systick::*;
 
-    use packed_struct::prelude::*;
-    use packed_struct::types::bits::ByteArray;
-
-    use robojackets_robocup_rtp::{Team, MessageType};
-    use robojackets_robocup_rtp::control_command::ControlCommand;
-    use robojackets_robocup_rtp::control_message::ControlMessage;
-    use robojackets_robocup_rtp::robot_status_message::RobotStatusMessage;
-
     const DELAY_MS: u32 = 5_000;
-    const FREQUENCY: i64 = 915;
     const GPT1_FREQUENCY: u32 = 1_000;
     const GPT1_CLOCK_SOURCE: ClockSource = ClockSource::HighFrequencyReferenceClock;
     const GPT1_DIVIDER: u32 = board::PERCLK_FREQUENCY / GPT1_FREQUENCY;
 
-    const HEAP_SIZE: usize = 1024;
-    static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
-
-    #[cfg(feature = "robot-0")]
-    const ROBOT_ID: u8 = 0;
-    #[cfg(feature = "robot-1")]
-    const ROBOT_ID: u8 = 1;
-    #[cfg(feature = "robot-2")]
-    const ROBOT_ID: u8 = 2;
-    #[cfg(feature = "robot-3")]
-    const ROBOT_ID: u8 = 3;
-    #[cfg(feature = "robot-4")]
-    const ROBOT_ID: u8 = 4;
-    #[cfg(feature = "robot-5")]
-    const ROBOT_ID: u8 = 5;
-
     type Delay = Blocking<Gpt1, GPT1_FREQUENCY>;
-    type BlockingDelay = Blocking<Gpt2, GPT1_FREQUENCY>;
-    type Interrupt = gpio::Input<P1>;
-    type Radio = sx127::LoRa<board::Lpspi4, gpio::Output<P8>, gpio::Output<P9>, Delay>;
+    type SPI = Lpspi<board::LpspiPins<P11, P12, P13, P10>, 4>;
+    type CE = Output<P0>;
+    type CSN = Output<P9>;
 
     #[local]
     struct Local {
-        rx_int: Interrupt,
+        spi: SPI,
+        delay: Delay,
+        ce: Option<CE>,
+        csn: Option<CSN>
     }
 
     #[shared]
     struct Shared {
-        radio: Radio,
-        blocking_delay: BlockingDelay,
+
     }
 
     #[init]
     fn init(ctx: init::Context) -> (Shared, Local) {
-        unsafe { HEAP.init(HEAP_MEM.as_ptr() as usize, HEAP_SIZE); }
-
         let board::Resources {
             pins,
             mut gpio1,
@@ -88,7 +56,6 @@ mod app {
             usb,
             lpspi4,
             mut gpt1,
-            mut gpt2,
             ..
         } = board::t41(ctx.device);
 
@@ -105,17 +72,8 @@ mod app {
         gpt1.set_clock_source(GPT1_CLOCK_SOURCE);
         let delay = Blocking::<_, GPT1_FREQUENCY>::from_gpt(gpt1);
 
-        gpt2.disable();
-        gpt2.set_divider(GPT1_DIVIDER);
-        gpt2.set_clock_source(GPT1_CLOCK_SOURCE);
-        let blocking_delay = Blocking::<_, GPT1_FREQUENCY>::from_gpt(gpt2);
-
-        // RX DONE Interrupt setup
-        let rx_int = gpio1.input(pins.p1);
-        gpio1.set_interrupt(&rx_int, Some(Trigger::RisingEdge));
-
         // initialize spi
-        let spi = board::lpspi(
+        let mut spi = board::lpspi(
             lpspi4,
             board::LpspiPins {
                 pcs0: pins.p10,
@@ -123,35 +81,30 @@ mod app {
                 sdo: pins.p11,
                 sdi: pins.p12,
             },
-            1_000_000
+            10_000_000
         );
 
-        // init fake CS pin (TEMPORARY) and required reset pin
-        let fake_cs = gpio2.output(pins.p8);
-        let reset = gpio2.output(pins.p9);
+        spi.disabled(|spi| {
+            spi.set_clock_hz(board::LPSPI_FREQUENCY, 10_000_000u32);
+            spi.set_mode(MODE_0);
+        });
 
-        // initialize radio
-        let radio = match sx127::LoRa::new(spi, fake_cs, reset, FREQUENCY, delay) {
-            Ok(radio) => radio,
-            Err(err) => match err {
-                sx127::Error::VersionMismatch(version) => panic!("Version Mismatch Error {:?}", version),
-                sx127::Error::CS(_) => panic!("Chip select issue"),
-                sx127::Error::Reset(_) => panic!("Rest Issue"),
-                sx127::Error::SPI(_) => panic!("SPI problem"),
-                sx127::Error::Transmitting => panic!("Error during spi transmission"),
-                sx127::Error::Uninformative => panic!("Uninformative error RIP"),
-            }
-        };
+        let ce = gpio1.output(pins.p0);
+        let csn = gpio2.output(pins.p9);
+
+        // init fake CS pin (TEMPORARY) and required reset pin
 
         init_radio::spawn().unwrap();
 
         (
             Shared {
-                radio,
-                blocking_delay,
+
             },
             Local {
-                rx_int
+                delay,
+                spi,
+                ce: Some(ce),
+                csn: Some(csn),
             },
         )
     }
@@ -163,137 +116,61 @@ mod app {
         }
     }
 
-    #[task(shared = [radio], priority = 1)]
-    async fn init_radio(mut ctx: init_radio::Context) {
-        Systick::delay(DELAY_MS.millis()).await;
+    #[task(local = [delay, spi, ce, csn], priority = 1)]
+    async fn init_radio(ctx: init_radio::Context) {
+        Systick::delay(2_000u32.millis()).await;
 
-        ctx.shared.radio.lock(|radio| {
-            log::info!("Lora Version: {:#04x}", radio.get_radio_version().unwrap());
+        let csn = ctx.local.csn.take().unwrap();
+        let ce = ctx.local.ce.take().unwrap();
 
-            match radio.set_tx_power(17, 1) {
-                Ok(_) => log::info!("Successfully set TX power"),
-                Err(_) => panic!("Error setting tx power"),
-            };
+        let mut radio = Radio::new(ce, csn);
 
-            log::info!("Successfully Initialized Radio");
+        if radio.begin(ctx.local.spi, ctx.local.delay).is_err() {
+            panic!("Unable to Initialize the radio");
+        }
 
-            match radio.set_mode(RadioMode::RxContinuous) {
-                Ok(_) => log::info!("Radio Listening..."),
-                Err(_) => panic!("Couldn't set radio to listening"),
+        radio.set_pa_level(power_amplifier::PowerAmplifier::PALow, ctx.local.spi, ctx.local.delay);
+
+        radio.set_payload_size(4, ctx.local.spi, ctx.local.delay);
+
+        radio.open_writing_pipe([0xE7, 0xE7, 0xE7, 0xE7, 0xE7], ctx.local.spi, ctx.local.delay);
+
+        radio.open_reading_pipe(1, [0xC3, 0xC3, 0xC3, 0xC3, 0xC3], ctx.local.spi, ctx.local.delay);
+
+        radio.start_listening(ctx.local.spi, ctx.local.delay);
+
+        Systick::delay(1_000u32.millis()).await;
+
+        radio.stop_listening(ctx.local.spi, ctx.local.delay);
+
+        log::info!("Configuration: {:?}", radio.get_registers(ctx.local.spi, ctx.local.delay));
+
+        let mut payload = 0u32;
+        loop {
+            let p = crate::to_bytes(&payload);
+            log::info!("Sending P: {:?}", p);
+            let report = radio.write(&p, ctx.local.spi, ctx.local.delay);
+
+            if report {
+                log::info!("Sent Successfully");
+                log::info!("Sent {:?}", payload);
+                payload += 1;
+            } else {
+                log::info!("Transmission Failed");
             }
-        });
+
+            Systick::delay(1_000u32.millis()).await;
+
+            log::info!("Configuration: {:?}", radio.get_registers(ctx.local.spi, ctx.local.delay));
+        }
     }
+}
 
-    #[task(binds = GPIO1_COMBINED_0_15, local = [rx_int], shared = [radio, blocking_delay])]
-    fn receive_data(mut ctx: receive_data::Context) {
-        log::info!("Interrupt Triggered");
-
-        (ctx.shared.radio, ctx.shared.blocking_delay).lock(|radio, blocking_delay| {
-            match radio.read_packet() {
-                Ok(buffer) => {
-                    match MessageType::from(buffer[0]) {
-                        MessageType::ControlCommand => {
-                            let control_command_length = <ControlCommand as PackedStruct>::ByteArray::len();
-                            let control_command = ControlCommand::unpack_from_slice(&buffer[1..(1+control_command_length)]);
-
-                            if let Ok(command) = control_command {
-                                if command.robot_id == ROBOT_ID.into() {
-                                    log::info!("Received Control Command: {:?}", control_command);
-                                }
-                            }
-
-                            // Respond with a robot status response
-                            let status = RobotStatusMessage::new(
-                                Team::Blue,
-                                0u8,
-                                false,
-                                false,
-                                false,
-                                255u8,
-                                0u8,
-                                false,
-                                [0u16; 18],
-                            );
-
-                            let packed_data = match status.pack() {
-                                Ok(bytes) => bytes,
-                                Err(err) => panic!("Unable to Send Data {:?}", err),
-                            };
-
-                            let packed_data = packed_data.as_bytes_slice();
-
-                            let mut packet = [0u8; 255];
-                            packet[0..packed_data.len()].copy_from_slice(packed_data);
-
-                            match radio.transmit_payload_busy(packet, packed_data.len()) {
-                                Ok(_) => log::info!("Successfully Sent Response"),
-                                Err(_) => panic!("Unable to Send Response"),
-                            }
-
-                            if radio.set_mode(RadioMode::Stdby).is_err() {
-                                panic!("Unable to set to standby");
-                            }
-
-                            blocking_delay.block_ms(100);
-                        },
-                        MessageType::ControlMessage => {
-                            let control_message_length = <ControlMessage as PackedStruct>::ByteArray::len();
-                            let control_message = ControlMessage::unpack_from_slice(&buffer[1..(1+control_message_length)]);
-
-                            if let Ok(message) = control_message {
-                                if message.robot_id == ROBOT_ID.into() {
-                                    log::info!("Received Message for Correct Robot\nReceived: {:?}", message);
-                                } else {
-                                    log::info!("Received Message for Other Robot\nReceived: {:?}", message);
-                                }
-                            }
-
-                            let status = RobotStatusMessage::new(
-                                Team::Blue,
-                                0u8,
-                                true,
-                                true,
-                                true,
-                                255u8,
-                                0u8,
-                                true,
-                                [255u16; 18],
-                            );
-
-                            let packed_data = match status.pack() {
-                                Ok(bytes) => bytes,
-                                Err(err) => panic!("Unable to Send Data {:?}", err),
-                            };
-
-                            let packed_data = packed_data.as_bytes_slice();
-
-                            let mut packet = [0u8; 255];
-                            packet[0..packed_data.len()].copy_from_slice(packed_data);
-
-                            match radio.transmit_payload_busy(packet, packed_data.len()) {
-                                Ok(_) => log::info!("Successfully Sent Response"),
-                                Err(_) => panic!("Unable to Send Response"),
-                            }
-
-                            if radio.set_mode(RadioMode::Stdby).is_err() {
-                                panic!("Unable to set to standby");
-                            }
-
-                            blocking_delay.block_ms(100);
-                        },
-                        _ => log::info!("Unknown Packet Found: {:?}", buffer),
-                    }
-                },
-                Err(_) => panic!("Error while reading data"),
-            }
-
-            if radio.set_mode(RadioMode::RxContinuous).is_err() {
-                panic!("Unable to Set to Receive");
-            }
-
-            ctx.local.rx_int.clear_triggered();
-
-            blocking_delay.block_ms(10);
-        });
-    }
+fn to_bytes(value: &u32) -> [u8; 4] {
+    [
+        (value & 0xFF) as u8,
+        ((value & (0xFF << 8)) >> 8) as u8,
+        ((value & (0xFF << 16)) >> 16) as u8,
+        ((value & (0xFF << 24)) >> 24) as u8,
+    ]
 }
