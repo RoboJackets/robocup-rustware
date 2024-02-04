@@ -6,10 +6,8 @@ use teensy4_panic as _;
 
 #[rtic::app(device = teensy4_bsp, peripherals = true, dispatchers = [GPT2])]
 mod app {
-    use embedded_hal::spi::{Mode, MODE_0};
-    use rtic_nrf24l01::config::data_pipe::DataPipeConfig;
+    use embedded_hal::spi::MODE_0;
     use rtic_nrf24l01::{Radio, config::*};
-    use rtic_nrf24l01::register::Register;
 
     use teensy4_bsp::hal::gpio::Output;
     use teensy4_bsp::hal::lpspi::Lpspi;
@@ -24,7 +22,6 @@ mod app {
 
     use rtic_monotonics::systick::*;
 
-    const DELAY_MS: u32 = 5_000;
     const GPT1_FREQUENCY: u32 = 1_000;
     const GPT1_CLOCK_SOURCE: ClockSource = ClockSource::HighFrequencyReferenceClock;
     const GPT1_DIVIDER: u32 = board::PERCLK_FREQUENCY / GPT1_FREQUENCY;

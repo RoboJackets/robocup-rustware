@@ -24,17 +24,8 @@ use teensy4_panic as _;
 
 #[rtic::app(device = teensy4_bsp, peripherals = true, dispatchers = [GPT2])]
 mod app {
-    use teensy4_pins::t41::{Pins, *};
-
     use teensy4_bsp as bsp;
     use bsp::board;
-    use bsp::board::LPSPI_FREQUENCY;
-
-    use bsp::hal as hal;
-    use hal::gpio::Output;
-
-    use bsp::ral as ral;
-    use ral::lpspi::{LPSPI1, LPSPI2, LPSPI3, LPSPI4};
 
     use rtic_monotonics::systick::*;
 
@@ -51,8 +42,6 @@ mod app {
     #[init]
     fn init(ctx: init::Context) -> (Shared, Local) {
         let board::Resources {
-            pins,
-            mut gpio2,
             usb,
             ..
         } = board::t41(ctx.device);
@@ -79,7 +68,7 @@ mod app {
     }
 
     #[task(local = [], priority = 1)]
-    async fn blink_led(ctx: blink_led::Context) {
+    async fn blink_led(_ctx: blink_led::Context) {
         loop {
             log::info!("On");
 

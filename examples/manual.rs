@@ -55,7 +55,7 @@ mod app {
     // Communication
     use robojackets_robocup_rtp::Team;
     use robojackets_robocup_rtp::control_message::ControlMessage;
-    use robojackets_robocup_rtp::robot_status_message::RobotStatusMessage;
+    use robojackets_robocup_rtp::robot_status_message::{RobotStatusMessage, RobotStatusMessageBuilder};
 
     use main::motion_control::MotionControl;
 
@@ -198,7 +198,7 @@ mod app {
             Err(_) => panic!("Couldn't initialize instance of FPGA"),
         };
 
-        let initial_robot_status = RobotStatusMessage::new(Team::Blue, 0u8, false, false, true, 0u8, 0u8, false, [0u16; 18]);
+        let initial_robot_status = RobotStatusMessageBuilder::new().build();
 
         (
             Shared {
