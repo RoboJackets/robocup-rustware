@@ -18,7 +18,7 @@ const MAX_ACCELERATION: Vector3<f32> = Vector3::new(4.0, 3.0, 30.0);
 
 pub struct MotionControl {
     bot_to_wheel: Matrix4x3<f32>,
-    wheel_to_bot: Matrix3x4<f32>,
+    _wheel_to_bot: Matrix3x4<f32>,
 }
 
 impl MotionControl {
@@ -46,18 +46,11 @@ impl MotionControl {
 
         Self {
             bot_to_wheel,
-            wheel_to_bot,
+            _wheel_to_bot: wheel_to_bot,
         }
     }
 
-    pub fn body_to_wheel(&self, body_velocity: &[f32; 3]) -> Vector4<f32> {
-        let body_velocity = Vector3::from_row_slice(body_velocity);
-
-        let wheel_velocities = self.bot_to_wheel * body_velocity;
-
-        // TODO: Fix scaling in motion control
-        let wheel_velocities = wheel_velocities.map(|a| a / 1000.0);
-
-        return wheel_velocities;
+    pub fn body_to_wheels(&self, body_velocity: Vector3<f32>) -> Vector4<f32> {
+        self.bot_to_wheel * body_velocity
     }
 }

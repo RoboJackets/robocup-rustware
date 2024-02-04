@@ -1,6 +1,7 @@
 //!
-//! Manual Control is an example that should be pretty close to the fully-working program.  However,
-//! it is currently considered a work in progress so it is still considered a test.
+//! Mock Manual is an example that has everything except for the FPGA moving.
+//! 
+//! Any motion controls will be logged to the console
 //! 
 
 #![no_std]
@@ -20,9 +21,6 @@ mod app {
 
     use core::convert::Infallible;
     use core::mem::MaybeUninit;
-
-    use fpga::duty_cycle::DutyCycle;
-    use imxrt_iomuxc::prelude::*;
 
     use main::{BASE_STATION_ADDRESS, ROBOT_RADIO_ADDRESSES, ROBOT_ID};
 
@@ -54,11 +52,6 @@ mod app {
 
     use main::motion_control::MotionControl;
 
-    use fpga_rs as fpga;
-    use fpga::FPGA_SPI_FREQUENCY;
-    use fpga::FPGA_SPI_MODE;
-    use fpga::FPGA;
-
     // Constants
     const GPT_FREQUENCY: u32 = 1_000;
     const GPT_CLOCK_SOURCE: ClockSource = ClockSource::HighFrequencyReferenceClock;
@@ -71,8 +64,7 @@ mod app {
 
     // Type Definitions
     // FPGA Spi
-    type SPI = Lpspi<board::LpspiPins<P11, P12, P13, P10>, 4>;
-    type Fpga = FPGA<SPI, Output<P9>, P15, Output<P16>, P14>;
+    type _SPI = Lpspi<board::LpspiPins<P11, P12, P13, P10>, 4>;
     // Shared Spi
     type SharedSPI = Lpspi<board::LpspiPins<P26, P39, P27, P38>, 3>;
     type RadioCE = Output<P0>;
@@ -88,7 +80,6 @@ mod app {
     struct Local {
         radio: Radio<RadioCE, RadioCSN, SharedSPI, Delay2, Infallible, LpspiError>,
         motion_controller: MotionControl,
-        fpga: Fpga,
     }
 
     #[shared]
@@ -143,35 +134,6 @@ mod app {
         let rx_int = gpio1.input(pins.p1);
         gpio1.set_interrupt(&rx_int, Some(Trigger::RisingEdge));
 
-        // Initialize Fpga SPI
-        let mut spi = board::lpspi(
-            lpspi4,
-            board::LpspiPins {
-                pcs0: pins.p10,
-                sck: pins.p13,
-                sdo: pins.p11,
-                sdi: pins.p12,
-            },
-            FPGA_SPI_FREQUENCY,
-        );
-        spi.disabled(|spi| {
-            spi.set_mode(FPGA_SPI_MODE);
-        });
-
-        // Initialize pins for the FPGA
-        let cs = gpio2.output(pins.p9);
-        let init_b = gpio1.input(pins.p15);
-        let config = Config::zero().set_open_drain(OpenDrain::Enabled);
-        configure(&mut pins.p16, config);
-        let prog_b = gpio1.output(pins.p16);
-        let done = gpio1.input(pins.p14);
-
-        // Initialize the FPGA
-        let fpga = match FPGA::new(spi, cs, init_b, prog_b, done) {
-            Ok(fpga) => fpga,
-            Err(_) => panic!("Unable to initialize the FPGA"),
-        };
-
         // Initialize Shared SPI
         let shared_spi_pins = Pins {
             pcs0: pins.p38,
@@ -219,7 +181,6 @@ mod app {
             Local {
                 radio,
                 motion_controller: MotionControl::new(),
-                fpga,
             }
         )
     }
@@ -293,18 +254,8 @@ mod app {
         });
     }
 
-    #[task(shared = [delay1, control_message], local = [fpga, motion_controller, initialized: bool = false], priority = 1)]
+    #[task(shared = [delay1, control_message], local = [motion_controller], priority = 1)]
     async fn motion_control_loop(ctx: motion_control_loop::Context) {
-        if !ctx.local.initialized {
-            ctx.local.delay1.lock(|delay| {
-                match ctx.local.fpga.configure(delay) {
-                    Ok(_) => log::info!("Fpga Configured"),
-                    Err(_) => panic!("Unable to Configure Fpga"),
-                }
-            });
-            *ctx.local.initialized = true;
-        }
-
         let body_velocities = ctx.shared.control_message.lock(|control_message| {
             match control_message {
                 Some(control_message) => control_message.get_velocity(),
@@ -313,22 +264,6 @@ mod app {
         });
 
         let wheel_velocities = ctx.local.motion_controller.body_to_wheel(body_velocities);
-
-        let duty_cycles = [
-            DutyCycle::from(wheel_velocities[0]),
-            DutyCycle::from(wheel_velocities[1]),
-            DutyCycle::from(wheel_velocities[2]),
-            DutyCycle::from(wheel_velocities[3]),
-            DutyCycle::from(256 as i16),
-        ];
-
-        let status = match ctx.local.fpga.set_duty_cycles(&mut duty_cycles) {
-            Ok(status) => status,
-            Err(_) => {
-                log::info!("Unable to set duty cycles");
-                return;
-            }
-        };
 
         log::info!("Wheel Velocities: {:?}", wheel_velocities);
 
