@@ -371,11 +371,11 @@ impl<SPI, CS, InitP, PROG, DoneP, SpiE, PinE> FPGA<SPI, CS, InitP, PROG, DoneP>
         // However, because of the weird behavior of Dribbler we are currently hardcoding a duty_cycle for it
         // so we don't manually set dribbler's duty_cycle
         for i in 0..4 {
-                // first the lower 8 bits first (lsByte)
-                write_buffer[(2 * i) + 1] = duty_cycles[i].lsb();
-                // then we send the upper 8 bits (msByte)
-                write_buffer[(2 * i) + 2] = duty_cycles[i].msb();
-            }
+            // first the lower 8 bits first (lsByte)
+            write_buffer[(2 * i) + 1] = duty_cycles[i].lsb();
+            // then we send the upper 8 bits (msByte)
+            write_buffer[(2 * i) + 2] = duty_cycles[i].msb();
+        }
 
         // // motor 1
         // write_buffer[1] = 0x1F; // all instructions are appended a 0x00 byte
@@ -409,7 +409,7 @@ impl<SPI, CS, InitP, PROG, DoneP, SpiE, PinE> FPGA<SPI, CS, InitP, PROG, DoneP>
         write_buffer[11] = 0x00;
 
         // this is the actual SPI transfer what writes the duty_cycles to the FPGA
-        self.spi_transfer(&mut write_buffer)?;
+        self.spi_transfer(&mut write_buffer)?;        
 
         // return status code
         Ok( write_buffer[0] )
@@ -421,20 +421,38 @@ impl<SPI, CS, InitP, PROG, DoneP, SpiE, PinE> FPGA<SPI, CS, InitP, PROG, DoneP>
     pub fn set_duty_get_encs(&mut self, duty_cycles: &mut [DutyCycle; 5], encs: &mut [i16; 5]) 
             -> Result<u8, FpgaError<SpiE, PinE>> {
         
-        // spi transaction write buffer
-        let mut write_buffer: [u8; 12] = [0x00; 12];
-
-        // send READ ENC WRITE VEL instruction
+         // init write buffer
+        let mut write_buffer: [u8; 12] = [0x0;12];
+        
+        //send READ ENC WRITE VEL instruction
+        //we'll only write vel and not read any enc information for this function
         write_buffer[0] = Instruction::R_ENC_W_VEL.opcode();
-        write_buffer[1] = 0x00;
-
-        // for each duty cycle in duty_cycle...
-        for i in 0..5 {
+        
+        // This loop iterates through each duty_cycle and sets the correspondng bytes of the write buffer
+        // However, because of the weird behavior of Dribbler we are currently hardcoding a duty_cycle for it
+        // so we don't manually set dribbler's duty_cycle
+        for i in 0..4 {
             // first the lower 8 bits first (lsByte)
-            write_buffer[2 * (i + 1)] = duty_cycles[i].lsb();
+            write_buffer[(2 * i) + 1] = duty_cycles[i].lsb();
             // then we send the upper 8 bits (msByte)
-            write_buffer[(2 * (i + 1)) + 1] = duty_cycles[i].msb();
+            write_buffer[(2 * i) + 2] = duty_cycles[i].msb();
         }
+
+        //
+        // Dribbler?
+        // For some unkown reason we need to at least assert the lsb of the higher byte write_buffer[10] = 0x01
+        // for any motors to move... No idea why. It might be because of the mechanism where if an invalid duty_cycle is sent         
+        // it automatically triggers the watchdog or something like that
+        // 
+        // I'll dive deeper into the FPGA verilog code as I am very suspiscious about the fact that our verilog sucks and
+        // the weird motion might be due to a shitty FPGA verilog lol
+        // 
+        write_buffer[9] = 0x00;
+        write_buffer[10] = 0x01;
+            
+        // I have NO IDEA why we need this here. Setting duties doesn't work unless we append a 0x00 at the end :)
+        write_buffer[11] = 0x00;
+
 
         // NOTE: that duty cycle bytes are send as Lower bytes first and then Upper bytes
         // while, the received encoder values are Upper bytes first, and then Lower bytes 
@@ -443,15 +461,15 @@ impl<SPI, CS, InitP, PROG, DoneP, SpiE, PinE> FPGA<SPI, CS, InitP, PROG, DoneP>
         // store each encoder value accordingly
         for i in 0..5 {
             // store each byte and convert them into u16 to avoid bit truncation
-            let ms_byte: u16 = write_buffer[2 * (i + 1)] as u16;
-            let ls_byte: u16 = write_buffer[2 * (i + 1) + 1] as u16;
+            let ms_byte: u16 = write_buffer[(2 * i) + 1] as u16;
+            let ls_byte: u16 = write_buffer[(2 * i) + 2] as u16;
 
             // combine the two bytes into a single i16 value
             encs[i] = (ms_byte << 8 | ls_byte) as i16; 
         }
 
         // return status code 
-        Ok(write_buffer[1])
+        Ok(write_buffer[0])
     }
 
     /// TODO: Fix get git_hash function
