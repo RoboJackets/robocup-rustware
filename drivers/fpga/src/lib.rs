@@ -3,11 +3,9 @@
 #![crate_type = "lib"]
 
 // import instructions & helper/wrapper structs
-pub mod instructions;
-use instructions::Instruction;
-
-pub mod duty_cycle;
-use duty_cycle::DutyCycle;
+pub mod structs;
+use structs::Instruction;
+use structs::DutyCycle;
 
 // import fpga configuration array
 pub mod config_bin;
@@ -44,7 +42,7 @@ pub enum FpgaStatus {
 
 /// use this constants when configuring the spi :)
 /// (IMPORTANT): move into the structs module?
-pub const FPGA_SPI_FREQUENCY: u32 = 400_000;
+pub const FPGA_SPI_FREQUENCY: u32 = 100_000;
 pub const FPGA_SPI_MODE: Mode = spi::Mode{
     polarity: spi::Polarity::IdleLow,
     phase: spi::Phase::CaptureOnFirstTransition,
@@ -107,20 +105,22 @@ impl<SPI, CS, InitP, PROG, DoneP, SpiE, PinE> FPGA<SPI, CS, InitP, PROG, DoneP>
         // initialize cs pin to be high (idle state)
         fpga.cs.set_high().map_err(FpgaError::CSPin)?;
 
-        // return the instance
+        // returnt the instance
         Ok(fpga)
     }
 
-    /// Configures the FPGA as follows:
-    ///    1. Toggles the prog_b pin to clear out anything prior
-    ///    2. Awaits for the FPGA init_b pin
-    ///    3. Sends config
-    ///    4. Awaits for the FPGA done pin
-    ///    5. Returns Ok if no errors or timeout
-    ///
-    /// Parameters:
-    ///    delay: An instance of a blocking delay that implements the DelayUs and
-    ///           DelayMs embedded traits
+    /**
+    * Configures the FPGA as follows:
+    *    1. Toggles the prog_b pin to clear out anything prior
+    *    2. Awaits for the FPGA init_b pin
+    *    3. Sends config
+    *    4. Awaits for the FPGA done pin
+    *    5. Returns Ok if no errors or timeout
+    *
+    * Parameters:
+    *    delay: An instance of a blocking delay that implements the DelayUs and
+    *           DelayMs embedded traits
+    */
     pub fn configure<D>(&mut self, delay: &mut D) 
         -> Result<(), FpgaError<SpiE, PinE>> 
         where 
@@ -218,6 +218,9 @@ impl<SPI, CS, InitP, PROG, DoneP, SpiE, PinE> FPGA<SPI, CS, InitP, PROG, DoneP>
         self.status
     }
 
+    /**
+     * 
+     */
     pub fn read_halls(&mut self, halls: &mut [u8; 5])
         -> Result<u8, FpgaError<SpiE, PinE>> {
 
@@ -225,7 +228,7 @@ impl<SPI, CS, InitP, PROG, DoneP, SpiE, PinE> FPGA<SPI, CS, InitP, PROG, DoneP>
         let mut write_buffer: [u8; 7] = [0x00; 7];
         
         // send READ HALLS instruction through an SPI transfer transaction
-        write_buffer[0] = Instruction::ReadHalls.opcode();
+        write_buffer[0] = Instruction::R_HALLS.opcode();
         write_buffer[1] = 0x00; // all instructions are appended with a 0x00
 
         // read the halls into the write_buffer
@@ -241,6 +244,9 @@ impl<SPI, CS, InitP, PROG, DoneP, SpiE, PinE> FPGA<SPI, CS, InitP, PROG, DoneP>
         Ok(write_buffer[1])
     }
 
+    /**
+     * 
+     */
     pub fn read_encs(&mut self, encs: &mut [i16; 5]) 
         -> Result<u8, FpgaError<SpiE, PinE>> {
         
@@ -248,7 +254,7 @@ impl<SPI, CS, InitP, PROG, DoneP, SpiE, PinE> FPGA<SPI, CS, InitP, PROG, DoneP>
         let mut write_buffer: [u8; 12] = [0x00; 12];
 
         // send READ ENCODERS instruction through an SPI transfer transaction
-        write_buffer[0] = Instruction::ReadEncoders.opcode();
+        write_buffer[0] = Instruction::R_ENC.opcode();
         write_buffer[1] = 0x00; // always append a 0x00 after the instruction
         
         /*
@@ -303,6 +309,9 @@ impl<SPI, CS, InitP, PROG, DoneP, SpiE, PinE> FPGA<SPI, CS, InitP, PROG, DoneP>
         Ok(write_buffer[1])
     }
 
+    /**
+     * 
+     */
     pub fn read_duty_cycles(&mut self, duty_cycles: &mut [i16; 5]) 
         -> Result<u8, FpgaError<SpiE, PinE>> {
         
@@ -310,7 +319,7 @@ impl<SPI, CS, InitP, PROG, DoneP, SpiE, PinE> FPGA<SPI, CS, InitP, PROG, DoneP>
         let mut write_buffer: [u8; 12] = [0x00; 12];
 
         // send READ DUTY CYCLES instruction through SPI transfer transaction
-        write_buffer[0] = Instruction::ReadDuties.opcode();
+        write_buffer[0] = Instruction::R_DUTY.opcode();
         write_buffer[1] = 0x00; // always append 0x00 after instruction
 
         /*
@@ -343,6 +352,9 @@ impl<SPI, CS, InitP, PROG, DoneP, SpiE, PinE> FPGA<SPI, CS, InitP, PROG, DoneP>
         Ok(write_buffer[1])
     }
 
+    /**
+     * 
+     */
     pub fn set_duty_cycles(&mut self, duty_cycles: &mut [DutyCycle; 5]) 
         -> Result<u8, FpgaError<SpiE, PinE>> 
         {
@@ -352,17 +364,17 @@ impl<SPI, CS, InitP, PROG, DoneP, SpiE, PinE> FPGA<SPI, CS, InitP, PROG, DoneP>
         
         //send READ ENC WRITE VEL instruction
         //we'll only write vel and not read any enc information for this function
-        write_buffer[0] = Instruction::ReadEncodersWriteVelocity.opcode();
+        write_buffer[0] = Instruction::R_ENC_W_VEL.opcode();
         
         // This loop iterates through each duty_cycle and sets the correspondng bytes of the write buffer
         // However, because of the weird behavior of Dribbler we are currently hardcoding a duty_cycle for it
         // so we don't manually set dribbler's duty_cycle
         for i in 0..4 {
-                // first the lower 8 bits first (lsByte)
-                write_buffer[(2 * i) + 1] = duty_cycles[i].lsb();
-                // then we send the upper 8 bits (msByte)
-                write_buffer[(2 * i) + 2] = duty_cycles[i].msb();
-            }
+            // first the lower 8 bits first (lsByte)
+            write_buffer[(2 * i) + 1] = duty_cycles[i].lsb();
+            // then we send the upper 8 bits (msByte)
+            write_buffer[(2 * i) + 2] = duty_cycles[i].msb();
+        }
 
         // // motor 1
         // write_buffer[1] = 0x1F; // all instructions are appended a 0x00 byte
@@ -396,7 +408,7 @@ impl<SPI, CS, InitP, PROG, DoneP, SpiE, PinE> FPGA<SPI, CS, InitP, PROG, DoneP>
         write_buffer[11] = 0x00;
 
         // this is the actual SPI transfer what writes the duty_cycles to the FPGA
-        self.spi_transfer(&mut write_buffer)?;
+        self.spi_transfer(&mut write_buffer)?;        
 
         // return status code
         Ok( write_buffer[0] )
@@ -408,20 +420,38 @@ impl<SPI, CS, InitP, PROG, DoneP, SpiE, PinE> FPGA<SPI, CS, InitP, PROG, DoneP>
     pub fn set_duty_get_encs(&mut self, duty_cycles: &mut [DutyCycle; 5], encs: &mut [i16; 5]) 
             -> Result<u8, FpgaError<SpiE, PinE>> {
         
-        // spi transaction write buffer
-        let mut write_buffer: [u8; 12] = [0x00; 12];
-
-        // send READ ENC WRITE VEL instruction
-        write_buffer[0] = Instruction::ReadEncodersWriteVelocity.opcode();
-        write_buffer[1] = 0x00;
-
-        // for each duty cycle in duty_cycle...
-        for i in 0..5 {
+         // init write buffer
+        let mut write_buffer: [u8; 12] = [0x0;12];
+        
+        //send READ ENC WRITE VEL instruction
+        //we'll only write vel and not read any enc information for this function
+        write_buffer[0] = Instruction::R_ENC_W_VEL.opcode();
+        
+        // This loop iterates through each duty_cycle and sets the correspondng bytes of the write buffer
+        // However, because of the weird behavior of Dribbler we are currently hardcoding a duty_cycle for it
+        // so we don't manually set dribbler's duty_cycle
+        for i in 0..4 {
             // first the lower 8 bits first (lsByte)
-            write_buffer[2 * (i + 1)] = duty_cycles[i].lsb();
+            write_buffer[(2 * i) + 1] = duty_cycles[i].lsb();
             // then we send the upper 8 bits (msByte)
-            write_buffer[(2 * (i + 1)) + 1] = duty_cycles[i].msb();
+            write_buffer[(2 * i) + 2] = duty_cycles[i].msb();
         }
+
+        //
+        // Dribbler?
+        // For some unkown reason we need to at least assert the lsb of the higher byte write_buffer[10] = 0x01
+        // for any motors to move... No idea why. It might be because of the mechanism where if an invalid duty_cycle is sent         
+        // it automatically triggers the watchdog or something like that
+        // 
+        // I'll dive deeper into the FPGA verilog code as I am very suspiscious about the fact that our verilog sucks and
+        // the weird motion might be due to a shitty FPGA verilog lol
+        // 
+        write_buffer[9] = 0x00;
+        write_buffer[10] = 0x01;
+            
+        // I have NO IDEA why we need this here. Setting duties doesn't work unless we append a 0x00 at the end :)
+        write_buffer[11] = 0x00;
+
 
         // NOTE: that duty cycle bytes are send as Lower bytes first and then Upper bytes
         // while, the received encoder values are Upper bytes first, and then Lower bytes 
@@ -430,15 +460,15 @@ impl<SPI, CS, InitP, PROG, DoneP, SpiE, PinE> FPGA<SPI, CS, InitP, PROG, DoneP>
         // store each encoder value accordingly
         for i in 0..5 {
             // store each byte and convert them into u16 to avoid bit truncation
-            let ms_byte: u16 = write_buffer[2 * (i + 1)] as u16;
-            let ls_byte: u16 = write_buffer[2 * (i + 1) + 1] as u16;
+            let ms_byte: u16 = write_buffer[(2 * i) + 1] as u16;
+            let ls_byte: u16 = write_buffer[(2 * i) + 2] as u16;
 
             // combine the two bytes into a single i16 value
             encs[i] = (ms_byte << 8 | ls_byte) as i16; 
         }
 
         // return status code 
-        Ok(write_buffer[1])
+        Ok(write_buffer[0])
     }
 
     /// TODO: Fix get git_hash function
@@ -498,10 +528,10 @@ impl<SPI, CS, InitP, PROG, DoneP, SpiE, PinE> FPGA<SPI, CS, InitP, PROG, DoneP>
         // send either the EN MOTORS or DISABLE MOTORS command based on the passed in state
         match state {
             true => {
-                write_buffer[0] = Instruction::EnableMotors.opcode();
+                write_buffer[0] = Instruction::EN_MOTORS.opcode();
             } 
             false => {
-                write_buffer[0] = Instruction::DisableMotors.opcode();
+                write_buffer[0] = Instruction::DIS_MOTORS.opcode();
             }
         }
         

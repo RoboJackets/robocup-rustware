@@ -12,16 +12,16 @@ use embedded_alloc::Heap;
 #[global_allocator]
 static HEAP: Heap = Heap::empty();
 
-use teensy4_bsp as _;
+use teensy4_panic as _;
 
-#[rtic::app(device = teensy4_bsp, peripherals = true, dispatchers = [GPIO1_INT0, GPIO_INT2])]
+#[rtic::app(device = teensy4_bsp, peripherals = true, dispatchers = [GPIO1_INT0, GPIO1_INT1])]
 mod app {
     use super::*;
 
     use core::convert::Infallible;
     use core::mem::MaybeUninit;
 
-    use fpga::duty_cycle::DutyCycle;
+    use fpga::structs::DutyCycle;
     use imxrt_iomuxc::prelude::*;
 
     use main::{BASE_STATION_ADDRESS, ROBOT_RADIO_ADDRESSES, ROBOT_ID};
@@ -72,7 +72,7 @@ mod app {
     // Type Definitions
     // FPGA Spi
     type SPI = Lpspi<board::LpspiPins<P11, P12, P13, P10>, 4>;
-    type Fpga = FPGA<SPI, Output<P9>, P15, Output<P16>, P14>;
+    type Fpga = FPGA<SPI, Output<P9>, P29, Output<P28>, P30>;
     // Shared Spi
     type SharedSPI = Lpspi<board::LpspiPins<P26, P39, P27, P38>, 3>;
     type RadioCE = Output<P0>;
@@ -112,6 +112,7 @@ mod app {
             mut pins,
             mut gpio1,
             mut gpio2,
+            mut gpio3,
             mut gpio4,
             usb,
             lpspi4,
@@ -141,7 +142,7 @@ mod app {
 
         // Setup Rx Interrupt
         let rx_int = gpio1.input(pins.p1);
-        gpio1.set_interrupt(&rx_int, Some(Trigger::RisingEdge));
+        gpio1.set_interrupt(&rx_int, Some(Trigger::FallingEdge));
 
         // Initialize Fpga SPI
         let mut spi = board::lpspi(
@@ -160,11 +161,11 @@ mod app {
 
         // Initialize pins for the FPGA
         let cs = gpio2.output(pins.p9);
-        let init_b = gpio1.input(pins.p15);
+        let init_b = gpio4.input(pins.p29);
         let config = Config::zero().set_open_drain(OpenDrain::Enabled);
-        configure(&mut pins.p16, config);
-        let prog_b = gpio1.output(pins.p16);
-        let done = gpio1.input(pins.p14);
+        configure(&mut pins.p28, config);
+        let prog_b = gpio3.output(pins.p28);
+        let done = gpio3.input(pins.p30);
 
         // Initialize the FPGA
         let fpga = match FPGA::new(spi, cs, init_b, prog_b, done) {
@@ -198,13 +199,17 @@ mod app {
         }
 
         radio.set_pa_level(power_amplifier::PowerAmplifier::PALow, &mut shared_spi, &mut delay2);
-        radio.set_payload_size(4, &mut shared_spi, &mut delay2);
+        radio.set_payload_size(CONTROL_MESSAGE_SIZE as u8, &mut shared_spi, &mut delay2);
         radio.open_writing_pipe(BASE_STATION_ADDRESS, &mut shared_spi, &mut delay2);
         radio.open_reading_pipe(1, ROBOT_RADIO_ADDRESSES[ROBOT_ID as usize], &mut shared_spi, &mut delay2);
         radio.start_listening(&mut shared_spi, &mut delay2);
 
         // Set an initial robot status
         let initial_robot_status = RobotStatusMessageBuilder::new().build();
+
+        rx_int.clear_triggered();
+
+        motion_control_loop::spawn().ok();
 
         (
             Shared {
@@ -237,6 +242,7 @@ mod app {
             if rx_int.is_triggered() {
                 rx_int.clear_triggered();
                 gpio1.set_interrupt(&rx_int, None);
+                return true;
             }
             false
         }) {
@@ -262,6 +268,8 @@ mod app {
                     return;
                 },
             };
+
+            log::info!("Control Command Received: {:?}", control_message);
 
             *command = Some(control_message);
 
@@ -289,19 +297,24 @@ mod app {
 
         (ctx.shared.rx_int, ctx.shared.gpio1).lock(|rx_int, gpio1| {
             rx_int.clear_triggered();
-            gpio1.set_interrupt(&rx_int, Some(Trigger::RisingEdge));
+            gpio1.set_interrupt(&rx_int, Some(Trigger::FallingEdge));
         });
     }
 
     #[task(shared = [delay1, control_message], local = [fpga, motion_controller, initialized: bool = false], priority = 1)]
-    async fn motion_control_loop(ctx: motion_control_loop::Context) {
-        if !ctx.local.initialized {
-            ctx.local.delay1.lock(|delay| {
+    async fn motion_control_loop(mut ctx: motion_control_loop::Context) {
+        if !*ctx.local.initialized {
+            ctx.shared.delay1.lock(|delay| {
                 match ctx.local.fpga.configure(delay) {
                     Ok(_) => log::info!("Fpga Configured"),
                     Err(_) => panic!("Unable to Configure Fpga"),
                 }
             });
+
+            match ctx.local.fpga.motors_en(true) {
+                Ok(status) => log::info!("Enabled motors fpga: {:010b}", status),
+                Err(_) => panic!("Unable to Enable Motors"),
+            }
             *ctx.local.initialized = true;
         }
 
@@ -312,15 +325,17 @@ mod app {
             }
         });
 
-        let wheel_velocities = ctx.local.motion_controller.body_to_wheel(body_velocities);
+        let wheel_velocities = ctx.local.motion_controller.body_to_wheels(body_velocities);
 
-        let duty_cycles = [
-            DutyCycle::from(wheel_velocities[0]),
-            DutyCycle::from(wheel_velocities[1]),
-            DutyCycle::from(wheel_velocities[2]),
-            DutyCycle::from(wheel_velocities[3]),
+        let mut duty_cycles = [
+            DutyCycle::from(wheel_velocities[0] as i16),
+            DutyCycle::from(wheel_velocities[1] as i16),
+            DutyCycle::from(wheel_velocities[2] as i16),
+            DutyCycle::from(wheel_velocities[3] as i16),
             DutyCycle::from(256 as i16),
         ];
+
+        log::info!("Duty Cycles: {:?}", duty_cycles);
 
         let status = match ctx.local.fpga.set_duty_cycles(&mut duty_cycles) {
             Ok(status) => status,
