@@ -42,7 +42,8 @@ pub enum FpgaStatus {
 
 /// use this constants when configuring the spi :)
 /// (IMPORTANT): move into the structs module?
-pub const FPGA_SPI_FREQUENCY: u32 = 100_000;
+pub const FPGA_INIT_FREQUENCY: u32 = 100_000;
+pub const FPGA_SPI_FREQUENCY: u32 = 10_000_000;
 pub const FPGA_SPI_MODE: Mode = spi::Mode{
     polarity: spi::Polarity::IdleLow,
     phase: spi::Phase::CaptureOnFirstTransition,
@@ -58,13 +59,16 @@ pub const FPGA_SPI_MODE: Mode = spi::Mode{
  *  - InputPin is not supported in the default features of embedded-hal 0.2, so we 
  *    define it using the Input struct and the Pin Number instead -> Input<PinNum>
  */
-pub struct FPGA<SPI, CS, InitP, PROG, DoneP> {
+pub struct FPGA<SPI, CS, InitP, PROG, DoneP,
+    DELAY: DelayMs<u32> + DelayUs<u32>>
+{
     spi: SPI,
     cs: CS,
     init_b: Input<InitP>,
     prog_b: PROG,   // prog_b output pin "MUST" BE on OPEN_DRAIN configuration!!
     done: Input<DoneP>,
     status: FpgaStatus,
+    delay: DELAY,
 
     /* TODO: 
         [x] check if vTaskDelay() == delay_ms()
@@ -77,16 +81,17 @@ pub struct FPGA<SPI, CS, InitP, PROG, DoneP> {
     used different names from our custom FpgaError enum defined in the error.rs
     to outline how we are using our custom error to wrap embedded trait error types
 */
-impl<SPI, CS, InitP, PROG, DoneP, SpiE, PinE> FPGA<SPI, CS, InitP, PROG, DoneP>
+impl<SPI, CS, InitP, PROG, DoneP, SpiE, PinE, DELAY> FPGA<SPI, CS, InitP, PROG, DoneP, DELAY>
     where 
         SPI: Write<u8, Error = SpiE> + Transfer<u8, Error = SpiE>,
         PROG: OutputPin<Error = PinE>,
         CS: OutputPin<Error = PinE>,
+        DELAY: DelayMs<u32> + DelayUs<u32>,
 {
     
     /// Builds and returns a new instance of the FPGA controller. Only one
     /// instance of this FPGA should exist at any time
-    pub fn new(spi: SPI, cs: CS, init_b: Input<InitP>, prog_b: PROG, done: Input<DoneP>) 
+    pub fn new(spi: SPI, cs: CS, init_b: Input<InitP>, prog_b: PROG, done: Input<DoneP>, delay: DELAY) 
             -> Result<Self, FpgaError<SpiE, PinE>> {
         
         // create new instance of FPGA and pass in appropriate pins
@@ -97,6 +102,7 @@ impl<SPI, CS, InitP, PROG, DoneP, SpiE, PinE> FPGA<SPI, CS, InitP, PROG, DoneP>
             prog_b,
             done,
             status: FpgaStatus::NotReady,
+            delay,
         };
 
         // initialize prob_b pin to be high (idle state)
@@ -121,10 +127,8 @@ impl<SPI, CS, InitP, PROG, DoneP, SpiE, PinE> FPGA<SPI, CS, InitP, PROG, DoneP>
     *    delay: An instance of a blocking delay that implements the DelayUs and
     *           DelayMs embedded traits
     */
-    pub fn configure<D>(&mut self, delay: &mut D) 
+    pub fn configure(&mut self) 
         -> Result<(), FpgaError<SpiE, PinE>> 
-        where 
-            D: DelayMs<u8> + DelayUs<u8>
     {
         /* TODO: maybe move this into some Rust resources compilation file??? 
         =================================
@@ -156,7 +160,7 @@ impl<SPI, CS, InitP, PROG, DoneP, SpiE, PinE> FPGA<SPI, CS, InitP, PROG, DoneP>
             let new_error = FpgaError::<SpiE, PinE>::ProgPin(e);
             new_error
         })?;
-        delay.delay_ms(1); // allow for hardware to latch properly
+        self.delay.delay_ms(1); // allow for hardware to latch properly
         self.prog_b.set_high().map_err(FpgaError::ProgPin)?;
 
         // delay until init_b is ready
@@ -164,7 +168,7 @@ impl<SPI, CS, InitP, PROG, DoneP, SpiE, PinE> FPGA<SPI, CS, InitP, PROG, DoneP>
         while timeout > 0 {
 
             // wait for 10 ms on each cycle
-            delay.delay_ms(10);
+            self.delay.delay_ms(10);
 
             // if the init_b pin is high => FPGA is ready to be programmed
             if self.init_b.is_set() {
@@ -189,7 +193,7 @@ impl<SPI, CS, InitP, PROG, DoneP, SpiE, PinE> FPGA<SPI, CS, InitP, PROG, DoneP>
         while timeout > 0 {
             
             // wait for 100 ms on each cycle
-            delay.delay_ms(100);
+            self.delay.delay_ms(100);
 
             // if done pin is high => FPGA is done configuring
             // update status to Standby
@@ -319,8 +323,8 @@ impl<SPI, CS, InitP, PROG, DoneP, SpiE, PinE> FPGA<SPI, CS, InitP, PROG, DoneP>
         let mut write_buffer: [u8; 12] = [0x00; 12];
 
         // send READ DUTY CYCLES instruction through SPI transfer transaction
-        write_buffer[0] = Instruction::R_DUTY.opcode();
-        write_buffer[1] = 0x00; // always append 0x00 after instruction
+        write_buffer[0] = 0x00;
+        write_buffer[1] = Instruction::R_DUTY.opcode(); // always append 0x00 after instruction
 
         /*
          * Each duty cycle is obtained from two transfer transactions
@@ -360,7 +364,8 @@ impl<SPI, CS, InitP, PROG, DoneP, SpiE, PinE> FPGA<SPI, CS, InitP, PROG, DoneP>
         {
 
         // init write buffer
-        let mut write_buffer: [u8; 12] = [0x0;12];
+        let mut write_buffer = [0x0u8; 11];
+
         
         //send READ ENC WRITE VEL instruction
         //we'll only write vel and not read any enc information for this function
@@ -405,10 +410,12 @@ impl<SPI, CS, InitP, PROG, DoneP, SpiE, PinE> FPGA<SPI, CS, InitP, PROG, DoneP>
         write_buffer[10] = 0x01;
             
         // I have NO IDEA why we need this here. Setting duties doesn't work unless we append a 0x00 at the end :)
-        write_buffer[11] = 0x00;
+        // write_buffer[11] = 0x00;
+        self.spi_transfer(&mut [write_buffer[0]])?;
+        self.spi_transfer(&mut write_buffer[1..])?;
 
         // this is the actual SPI transfer what writes the duty_cycles to the FPGA
-        self.spi_transfer(&mut write_buffer)?;        
+        // self.spi_transfer(&mut write_buffer)?;        
 
         // return status code
         Ok( write_buffer[0] )
@@ -570,6 +577,8 @@ impl<SPI, CS, InitP, PROG, DoneP, SpiE, PinE> FPGA<SPI, CS, InitP, PROG, DoneP>
         // pull cs pin back to high (default satate)
         self.cs.set_high().map_err(FpgaError::CSPin)?;
 
+        self.delay.delay_us(1);
+
         // return () if spi_write was succesfull
         Ok(())
     }
@@ -587,6 +596,8 @@ impl<SPI, CS, InitP, PROG, DoneP, SpiE, PinE> FPGA<SPI, CS, InitP, PROG, DoneP>
         self.spi.transfer(buffer).map_err(FpgaError::SPI)?;
         // pull cs pin back to low (default satate)
         self.cs.set_high().map_err(FpgaError::CSPin)?;
+
+        self.delay.delay_us(1);
 
         // return () if spi_write was succesfull
         Ok(())

@@ -97,7 +97,7 @@ mod app {
         radio.set_pa_level(power_amplifier::PowerAmplifier::PALow, &mut shared_spi, &mut delay);
         radio.set_payload_size(4, &mut shared_spi, &mut delay);
         radio.open_writing_pipe([0xE7, 0xE7, 0xE7, 0xE7, 0xE7], &mut shared_spi, &mut delay);
-        radio.open_reading_pipe(1, [0xC3, 0xC3, 0xC3 ,0xC3, 0xC3], &mut shared_spi, &mut delay);
+        radio.open_reading_pipe(1, [0xC3, 0xC3, 0xC3 ,0xC3, 0xC1], &mut shared_spi, &mut delay);
         radio.start_listening(&mut shared_spi, &mut delay);
 
         ping_pong::spawn().unwrap();
@@ -127,7 +127,7 @@ mod app {
         ping_pong::spawn().ok();
     }
 
-    #[task(local=[radio, listening: bool =true, payload: u32 =0], shared=[delay, shared_spi], priority = 1)]
+    #[task(local=[radio, listening: bool = true, payload: u32 =0], shared=[delay, shared_spi], priority = 1)]
     async fn ping_pong(ctx: ping_pong::Context) {
         if *ctx.local.listening {
             (ctx.shared.delay, ctx.shared.shared_spi).lock(|delay, spi| {

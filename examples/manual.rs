@@ -67,12 +67,13 @@ mod app {
     const HEAP_SIZE: usize = 1024;
     static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
 
-    const MOTION_CONTROL_DELAY_MS: u32 = 10;
+    const MOTION_CONTROL_DELAY_MS: u32 = 1;
+    const MOTION_CONTROL_DELAY_US: u32 = 200;
 
     // Type Definitions
     // FPGA Spi
     type SPI = Lpspi<board::LpspiPins<P11, P12, P13, P10>, 4>;
-    type Fpga = FPGA<SPI, Output<P9>, P29, Output<P28>, P30>;
+    type Fpga = FPGA<SPI, Output<P9>, P29, Output<P28>, P30, Delay1>;
     // Shared Spi
     type SharedSPI = Lpspi<board::LpspiPins<P26, P39, P27, P38>, 3>;
     type RadioCE = Output<P0>;
@@ -94,7 +95,6 @@ mod app {
     #[shared]
     struct Shared {
         shared_spi: SharedSPI,
-        delay1: Delay1,
         delay2: Delay2,
         rx_int: RadioInterrupt,
         gpio1: Gpio1,
@@ -168,7 +168,7 @@ mod app {
         let done = gpio3.input(pins.p30);
 
         // Initialize the FPGA
-        let fpga = match FPGA::new(spi, cs, init_b, prog_b, done) {
+        let fpga = match FPGA::new(spi, cs, init_b, prog_b, done, delay1) {
             Ok(fpga) => fpga,
             Err(_) => panic!("Unable to initialize the FPGA"),
         };
@@ -214,7 +214,6 @@ mod app {
         (
             Shared {
                 shared_spi,
-                delay1,
                 delay2,
                 rx_int,
                 gpio1,
@@ -269,7 +268,7 @@ mod app {
                 },
             };
 
-            log::info!("Control Command Received: {:?}", control_message);
+            // log::info!("Control Command Received: {:?}", control_message);
 
             *command = Some(control_message);
 
@@ -301,15 +300,13 @@ mod app {
         });
     }
 
-    #[task(shared = [delay1, control_message], local = [fpga, motion_controller, initialized: bool = false], priority = 1)]
+    #[task(shared = [control_message], local = [fpga, motion_controller, initialized: bool = false], priority = 1)]
     async fn motion_control_loop(mut ctx: motion_control_loop::Context) {
         if !*ctx.local.initialized {
-            ctx.shared.delay1.lock(|delay| {
-                match ctx.local.fpga.configure(delay) {
-                    Ok(_) => log::info!("Fpga Configured"),
-                    Err(_) => panic!("Unable to Configure Fpga"),
-                }
-            });
+            match ctx.local.fpga.configure() {
+                Ok(_) => log::info!("Fpga Configured"),
+                Err(_) => panic!("Unable to Configure Fpga"),
+            }
 
             match ctx.local.fpga.motors_en(true) {
                 Ok(status) => log::info!("Enabled motors fpga: {:010b}", status),
@@ -345,14 +342,14 @@ mod app {
             }
         };
 
-        log::info!("Wheel Velocities: {:?}", wheel_velocities);
+        log::info!("Wheel Velocities: {:?} --- status: {:08b}", wheel_velocities, status);
 
         motion_control_delay::spawn().ok();
     }
 
     #[task(priority = 1)]
     async fn motion_control_delay(ctx: motion_control_delay::Context) {
-        Systick::delay(MOTION_CONTROL_DELAY_MS.millis()).await;
+        Systick::delay(MOTION_CONTROL_DELAY_US.micros()).await;
 
         motion_control_loop::spawn().ok();
     }

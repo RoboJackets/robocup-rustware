@@ -41,7 +41,6 @@ impl DutyCycle {
 
 impl From<i16> for DutyCycle {
     fn from(value: i16) -> Self {
-
         // check that value is not outside of the allowed range
         if (value > 511) || (value < -511) {
             return DutyCycle(0);
@@ -49,13 +48,12 @@ impl From<i16> for DutyCycle {
 
         // check if the value is negative and assign accordingly
         let duty_cycle:u16 = match value < 0 {
-            true => ((-value) | (1 << 9)) as u16,
-            false => value as u16,
+            true => ((-value) & 0xFF) as u16,
+            false => (value & 0xFF) as u16,
         };
 
         // returns struct
         DutyCycle(duty_cycle)
-
     }
 }
 

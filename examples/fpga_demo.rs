@@ -70,14 +70,13 @@ mod app {
     // this simplifies local and shared resource definitions
     type Led = gpio::Output<P6>;
     type Delay = Blocking<Gpt1, GPT1_FREQUENCY>;
-    type Fpga = FPGA<board::Lpspi4, gpio::Output<P9>, P29, gpio::Output<P28>, P30>;
+    type Fpga = FPGA<board::Lpspi4, gpio::Output<P9>, P29, gpio::Output<P28>, P30, Delay>;
 
     // struct that holds local resources which can be accessed via the context
     #[local]
     struct Local {
         led: Led,
         fpga: Fpga,
-        delay: Delay,
     }
 
     // struct that holds shared resources which can be accessed via the context
@@ -157,7 +156,7 @@ mod app {
         
         let done = gpio3.input(pins.p30);
 
-        let fpga = match FPGA::new(spi, cs, init_b, prog_b, done) {
+        let fpga = match FPGA::new(spi, cs, init_b, prog_b, done, delay) {
             Ok(instance) => instance,
             Err(_) => panic!("Couldn't initialize instance of FPGA"),
         };
@@ -168,7 +167,7 @@ mod app {
         // return the local, and shared resources to be used from the context
         (
             Shared {counter},
-            Local {led, fpga, delay}
+            Local {led, fpga}
         )
     }
 
@@ -182,15 +181,14 @@ mod app {
     }
 
     // init fpga task
-    #[task(local = [fpga, delay], priority = 1)]
+    #[task(local = [fpga], priority = 1)]
     async fn init_fpga(cx: init_fpga::Context) {
         // acquire fpga instance from local resources
         let fpga = cx.local.fpga;
-        let delay = cx.local.delay;
         Systick::delay(SECOND_DELAY.millis()).await;
 
         // attempt to configure the fpga :)
-        match fpga.configure(delay) {
+        match fpga.configure() {
             Ok(_) => log::info!("Configuration worked???"),
             Err(e) => match e {
                 FpgaError::SPI(spi_e) => panic!("SPI error with info: {:?}", spi_e),
