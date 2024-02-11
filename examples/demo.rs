@@ -13,25 +13,25 @@
 /// Please follow this example for future examples and sanity tests
 /// 
 
+extern crate alloc;
+
+use embedded_alloc::Heap;
+
+#[global_allocator]
+static HEAP: Heap = Heap::empty();
+
 use teensy4_panic as _;
 
 #[rtic::app(device = teensy4_bsp, peripherals = true, dispatchers = [GPT2])]
 mod app {
-    use teensy4_pins::common::*;
-
     use teensy4_bsp as bsp;
     use bsp::board;
 
-    use bsp::hal as hal;
-    use hal::gpio::Output;
-
     use rtic_monotonics::systick::*;
-
-    type Led = Output<P7>;
 
     #[local]
     struct Local {
-        led: Led,
+        
     }
 
     #[shared]
@@ -42,22 +42,20 @@ mod app {
     #[init]
     fn init(ctx: init::Context) -> (Shared, Local) {
         let board::Resources {
-            pins,
-            mut gpio2,
+            usb,
             ..
         } = board::t41(ctx.device);
 
-        let systick_token = rtic_monotonics::create_systick_token!();
-        Systick::start(ctx.core.SYST, 36_000_000, systick_token);
+        bsp::LoggingFrontend::default_log().register_usb(usb);
 
-        let led = gpio2.output(pins.p7);
+        let systick_token = rtic_monotonics::create_systick_token!();
+        Systick::start(ctx.core.SYST, 600_000_000, systick_token);
 
         blink_led::spawn().ok();
 
         (
             Shared {},
             Local {
-                led,
             },
         )
     }
@@ -69,14 +67,16 @@ mod app {
         }
     }
 
-    #[task(local = [led], priority = 1)]
-    async fn blink_led(ctx: blink_led::Context) {
-        Systick::delay(1_000u32.millis()).await;
+    #[task(local = [], priority = 1)]
+    async fn blink_led(_ctx: blink_led::Context) {
+        loop {
+            log::info!("On");
 
-        ctx.local.led.toggle();
+            Systick::delay(1_000u32.millis()).await;
 
-        Systick::delay(1_000u32.millis()).await;
+            log::info!("Off");
 
-        ctx.local.led.toggle();
+            Systick::delay(1_000u32.millis()).await;
+        }
     }
 }

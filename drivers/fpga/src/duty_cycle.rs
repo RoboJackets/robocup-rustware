@@ -1,24 +1,32 @@
-/**
- * Helper structure that wraps a duty cycle value for the FPGA
- * 
- * Duty cycles are sent and stored as a 10-bit signed magnitude value
- * | bit_9 | bit_8 ~ bit_0 |
- * | SIGN  |   MAGNITUDE   |
- * 
- * Where SIGN = 0 is positive and SIGN = 1 is negative
- * 
- * For reference check the following link:
- * https://www.electronics-tutorials.ws/binary/signed-binary-numbers.html
- * 
- * The available range of duty cycles is: [-511, 511]
- * 
- * Use the from function to generate a DutyCycle from an i16 value. Ensure that
- * the passed in i16 value is within the provided range
- * 
- * Example:
- * let duty_cycle = DutyCycle::from(-487 as i16)
- * let value_in_duty_cycle = i16::from(duty_cycle)
- */
+//!
+//! The duty cycles are sent to the Fpga in 10-bit signed magnitude.
+//! 
+//! Note: These are not velocities and encoder + IMU data is needed to
+//! determine the correct duty cycles to the wheels (per velocity)
+//! 
+
+///
+/// Helper structure that wraps a duty cycle value for the FPGA
+/// 
+/// Duty cycles are sent and stored as a 10-bit signed magnitude value
+/// | bit_9 | bit_8 ~ bit_0 |
+/// | SIGN  |   MAGNITUDE   |
+/// 
+/// Where SIGN = 0 is positive and SIGN = 1 is negative
+/// 
+/// For reference check the following link:
+/// https://www.electronics-tutorials.ws/binary/signed-binary-numbers.html
+/// 
+/// The available range of duty cycles is: [-511, 511]
+/// 
+/// Use the from function to generate a DutyCycle from an i16 value. Ensure that
+/// the passed in i16 value is within the provided range
+/// 
+/// Example:
+/// let duty_cycle = DutyCycle::from(-487 as i16)
+/// let value_in_duty_cycle = i16::from(duty_cycle)
+/// 
+#[derive(core::fmt::Debug)]
 pub struct DutyCycle(u16);
 
 impl DutyCycle {

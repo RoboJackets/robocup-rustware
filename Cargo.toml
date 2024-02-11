@@ -11,8 +11,15 @@ cortex-m = "0.7" # basic hal package for cortex m microcontroller boards
 log = "0.4" # allows for the logging feautre (a.k.a printing to the serial port)
 teensy4-pins = "0.3.1"
 imxrt-iomuxc = "0.2.2"
-sx127 = { git = "https://github.com/N8BWert/sx127" }
+rtic-nrf24l01 = { git = "https://github.com/N8BWert/rtic-nrf24l01.git" }
 embedded-alloc = "0.5.0"
+defmt = "0.3.5"
+libm = "0.2.8"
+
+[dependencies.nalgebra]
+version = "0.32.3"
+default-features = false
+features = ["libm", "nalgebra-macros", "alloc"]
 
 [dependencies.packed_struct]
 version = "0.10.1"
@@ -20,7 +27,7 @@ default-features = false
 features = ["alloc"]
 
 [dependencies.robojackets-robocup-rtp]
-version = "0.1.3"
+version = "0.2.2"
 default-features = false
 features = ["nostd"]
 
@@ -39,7 +46,7 @@ features = ["cortex-m-systick"]
 
 # teensy4-bsp is the board support package for teensy 4.0/4.1
 [dependencies.teensy4-bsp]
-version = "0.4"
+version = "0.4.5"
 features = [
     # Use the BSP's runtime. This lets you write your
     # `main()` function.
@@ -70,3 +77,13 @@ members = [
 # NOTE: lower optimization yields a faster build time
 [profile.release.build-override]
 opt-level = 0
+
+[features]
+default = []
+# The robot id features are more for testing than anything else
+robot-0 = []
+robot-1 = []
+robot-2 = []
+robot-3 = []
+robot-4 = []
+robot-5 = []
