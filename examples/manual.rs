@@ -24,7 +24,7 @@ mod app {
     use fpga::DutyCycle;
     use imxrt_iomuxc::prelude::*;
 
-    use main::{BASE_STATION_ADDRESS, ROBOT_RADIO_ADDRESSES, ROBOT_ID};
+    use main::ROBOT_ID;
 
     use embedded_hal::spi::MODE_0;
 
@@ -49,8 +49,9 @@ mod app {
 
     use packed_struct::prelude::*;
 
-    use robojackets_robocup_rtp::control_message::{ControlMessage, CONTROL_MESSAGE_SIZE};
-    use robojackets_robocup_rtp::robot_status_message::{RobotStatusMessage, RobotStatusMessageBuilder, ROBOT_STATUS_SIZE};
+    use robojackets_robocup_rtp::{ControlMessage, CONTROL_MESSAGE_SIZE};
+    use robojackets_robocup_rtp::{RobotStatusMessage, RobotStatusMessageBuilder, ROBOT_STATUS_SIZE};
+    use robojackets_robocup_rtp::{BASE_STATION_ADDRESS, ROBOT_RADIO_ADDRESSES};
 
     use main::motion_control::MotionControl;
 

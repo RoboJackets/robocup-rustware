@@ -13,8 +13,6 @@
 /// Please follow this example for future examples and sanity tests
 /// 
 
-extern crate alloc;
-
 use embedded_alloc::Heap;
 
 #[global_allocator]
@@ -54,8 +52,11 @@ mod app {
         blink_led::spawn().ok();
 
         (
-            Shared {},
+            Shared {
+
+            },
             Local {
+                
             },
         )
     }

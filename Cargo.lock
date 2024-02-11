@@ -553,9 +553,9 @@ checksum = "46b71a9d9206e8b46714c74255adcaea8b11e0350c1d8456165073c3f75fc81a"
 
 [[package]]
 name = "robojackets-robocup-rtp"
-version = "0.2.2"
+version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "73e60f91e3c2a7b6a30bbc78d0e03a1b6f4935eb1ab1e3e9e22c30c905bd006f"
+checksum = "297505bf155ed49586c74cbce69a595b246f313a514fb1ab3140daa507959e62"
 dependencies = [
  "nalgebra",
  "packed_struct",
