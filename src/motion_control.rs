@@ -1,3 +1,5 @@
+#![allow(unused)]
+
 use libm::{sinf, cosf};
 
 use nalgebra::base::*;
