@@ -51,17 +51,6 @@ impl MotionControl {
     }
 
     pub fn body_to_wheels(&self, body_velocity: Vector3<f32>) -> Vector4<f32> {
-        // if body_velocity[0] < 0.0 {
-        //     Vector4::from([20.0, 20.0, 20.0, 20.0])
-        // } else if body_velocity[0] > 0.0 {
-        //     Vector4::from([20.0, 20.0, 20.0, 20.0])
-        // } else if body_velocity[1] < 0.0 {
-        //     Vector4::from([20.0, 20.0, 20.0, 20.0])
-        // } else if body_velocity[1] > 0.0 {
-        //     Vector4::from([20.0, 20.0, 20.0, 20.0])
-        // } else {
-        //     Vector4::from([0.0, 0.0, 0.0, 0.0])
-        // }
         self.bot_to_wheel * body_velocity
     }
 }
