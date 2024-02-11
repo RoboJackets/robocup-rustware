@@ -100,12 +100,10 @@ mod app {
 
         // Grab the board peripherals
         let board::Resources {
-            mut pins,
+            pins,
             mut gpio1,
-            mut gpio2,
             mut gpio4,
             usb,
-            lpspi4,
             mut gpt1,
             mut gpt2,
             ..
@@ -282,7 +280,7 @@ mod app {
     }
 
     #[task(priority = 1)]
-    async fn motion_control_delay(ctx: motion_control_delay::Context) {
+    async fn motion_control_delay(_ctx: motion_control_delay::Context) {
         Systick::delay(MOTION_CONTROL_DELAY_MS.millis()).await;
 
         motion_control_loop::spawn().ok();

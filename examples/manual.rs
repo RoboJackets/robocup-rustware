@@ -67,7 +67,6 @@ mod app {
     const HEAP_SIZE: usize = 1024;
     static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
 
-    const MOTION_CONTROL_DELAY_MS: u32 = 1;
     const MOTION_CONTROL_DELAY_US: u32 = 200;
 
     // Type Definitions
@@ -348,7 +347,7 @@ mod app {
     }
 
     #[task(priority = 1)]
-    async fn motion_control_delay(ctx: motion_control_delay::Context) {
+    async fn motion_control_delay(_ctx: motion_control_delay::Context) {
         Systick::delay(MOTION_CONTROL_DELAY_US.micros()).await;
 
         motion_control_loop::spawn().ok();

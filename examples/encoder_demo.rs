@@ -12,7 +12,7 @@ use imxrt_iomuxc::prelude::*;
 
 //// ASSOCIATED TPYES FOR INSTANCES ////
 use teensy4_pins::common::*; // pad to pin definitions
-use bsp::hal::gpio::{self, Trigger}; // gpio module
+use bsp::hal::gpio; // gpio module
 use bsp::hal::gpt::Gpt1; // tpye definition for GPT1
 use bsp::hal::timer::Blocking;
 ////////////////////////////////////////
@@ -29,7 +29,6 @@ use fpga::FPGA_SPI_MODE;
 use fpga::FPGA;
 
 // spi traits to use the transfer and write transactions
-use embedded_hal::blocking::spi::{Transfer, Write};
 use bsp::hal::gpt::ClockSource;
 
 //// THE APP MODULE ////
@@ -44,7 +43,6 @@ use bsp::hal::gpt::ClockSource;
 mod app {
 
     use fpga::{error::FpgaError, DutyCycle};
-    use log::info;
 
     // this allows us to define our packages outside the app module
     // we're essetially "bringing them all in"
@@ -70,23 +68,20 @@ mod app {
     const GPT1_CLOCK_SOURCE: ClockSource = ClockSource::HighFrequencyReferenceClock;
     const GPT1_DIVIDER: u32 = board::PERCLK_FREQUENCY / GPT1_FREQUENCY;
 
-    // type definition for Led :)
-    // this simplifies local and shared resource definitions
-    type Led = gpio::Output<P6>;
+    // type definitions to simplify calling conventions
     type Delay = Blocking<Gpt1, GPT1_FREQUENCY>;
     type Fpga = FPGA<board::Lpspi4, gpio::Output<P9>, P29, gpio::Output<P28>, P30, Delay>;
 
     // struct that holds local resources which can be accessed via the context
     #[local]
     struct Local {
-        led: Led,
         fpga: Fpga,
     }
 
     // struct that holds shared resources which can be accessed via the context
     #[shared]
     struct Shared {
-        counter: u32,
+
     }
 
     // entry point of the "program"
@@ -96,8 +91,6 @@ mod app {
         let board::Resources {
             // usedd to acces pin names
             mut pins,
-            // gpio1 for pin 1
-            mut gpio1,
             // used to control any pin from the gpio2 register
             // (e.g. pin13 for the on board LED)
             mut gpio2,
@@ -123,13 +116,7 @@ mod app {
         gpt1.disable();
         gpt1.set_divider(GPT1_DIVIDER);
         gpt1.set_clock_source(GPT1_CLOCK_SOURCE);
-        let mut delay = Blocking::<_, GPT1_FREQUENCY>::from_gpt(gpt1);
-
-        // init led from gpio2 pin 7
-        let led = gpio2.output(pins.p6);
-
-        // init counter shared variable
-        let counter = 0;
+        let delay = Blocking::<_, GPT1_FREQUENCY>::from_gpt(gpt1);
 
         // initalize spi
         // use pin 9 as chop select manially :) maybe it'll fix the issue???
@@ -170,8 +157,12 @@ mod app {
 
         // return the local, and shared resources to be used from the context
         (
-            Shared {counter},
-            Local {led, fpga}
+            Shared {
+
+            },
+            Local {
+                fpga
+            }
         )
     }
 
@@ -259,41 +250,41 @@ mod app {
                 Systick::delay(HUNDRED_MS_DELAY.millis()).await;
             }
 
-            // // move forward at FAST_SPEED
-            // log::info!("spinning!");
-            // Systick::delay(TEN_MS_DELAY.millis()).await;
-            // for _ in 0..100 {
-            //     // forward direction duty cycles
-            //     let mut duty_cycles = [DutyCycle::from(FAST_SPEED as i16), 
-            //                     DutyCycle::from(FAST_SPEED as i16), 
-            //                     DutyCycle::from(FAST_SPEED as i16),
-            //                     DutyCycle::from(FAST_SPEED as i16),
-            //                     DutyCycle::from(256 as i16)];
-            //     // write duty cycle
-            //     match fpga.set_duty_get_encs(&mut duty_cycles, &mut encs_value) {
-            //         Ok(status) => log::info!("wrote duty cycles fpga status: {:b}", status),
-            //         Err(e) => panic!("error writing duty cycles... {:?}", e),
-            //     };
-            //     Systick::delay(HUNDRED_MS_DELAY.millis()).await;
-            // }
+            // move forward at FAST_SPEED
+            log::info!("spinning!");
+            Systick::delay(TEN_MS_DELAY.millis()).await;
+            for _ in 0..100 {
+                // forward direction duty cycles
+                let mut duty_cycles = [DutyCycle::from(FAST_SPEED as i16), 
+                                DutyCycle::from(FAST_SPEED as i16), 
+                                DutyCycle::from(FAST_SPEED as i16),
+                                DutyCycle::from(FAST_SPEED as i16),
+                                DutyCycle::from(256 as i16)];
+                // write duty cycle
+                match fpga.set_duty_get_encs(&mut duty_cycles, &mut encs_value) {
+                    Ok(status) => log::info!("wrote duty cycles fpga status: {:b}", status),
+                    Err(e) => panic!("error writing duty cycles... {:?}", e),
+                };
+                Systick::delay(HUNDRED_MS_DELAY.millis()).await;
+            }
 
-            // // stand still
-            // log::info!("standby...");
-            // Systick::delay(TEN_MS_DELAY.millis()).await;
-            // for _ in 0..100 {
-            //     // forward direction duty cycles
-            //     let mut duty_cycles = [DutyCycle::from(0 as i16), 
-            //                     DutyCycle::from(0 as i16), 
-            //                     DutyCycle::from(0 as i16),
-            //                     DutyCycle::from(0 as i16),
-            //                     DutyCycle::from(256 as i16)];
-            //     // write duty cycle
-            //     match fpga.set_duty_get_encs(&mut duty_cycles, &mut encs_value) {
-            //         Ok(status) => log::info!("wrote duty cycles fpga status: {:b}", status),
-            //         Err(e) => panic!("error writing duty cycles... {:?}", e),
-            //     };
-            //     Systick::delay(HUNDRED_MS_DELAY.millis()).await;
-            // }
+            // stand still
+            log::info!("standby...");
+            Systick::delay(TEN_MS_DELAY.millis()).await;
+            for _ in 0..100 {
+                // forward direction duty cycles
+                let mut duty_cycles = [DutyCycle::from(0 as i16), 
+                                DutyCycle::from(0 as i16), 
+                                DutyCycle::from(0 as i16),
+                                DutyCycle::from(0 as i16),
+                                DutyCycle::from(256 as i16)];
+                // write duty cycle
+                match fpga.set_duty_get_encs(&mut duty_cycles, &mut encs_value) {
+                    Ok(status) => log::info!("wrote duty cycles fpga status: {:b}", status),
+                    Err(e) => panic!("error writing duty cycles... {:?}", e),
+                };
+                Systick::delay(HUNDRED_MS_DELAY.millis()).await;
+            }
         }
     }
 
