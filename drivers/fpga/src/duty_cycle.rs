@@ -1,25 +1,32 @@
-/**
- * Helper structure that wraps a duty cycle value for the FPGA
- * 
- * Duty cycles are sent and stored as a 10-bit signed magnitude value
- * | bit_9 | bit_8 ~ bit_0 |
- * | SIGN  |   MAGNITUDE   |
- * 
- * Where SIGN = 0 is positive and SIGN = 1 is negative
- * 
- * For reference check the following link:
- * https://www.electronics-tutorials.ws/binary/signed-binary-numbers.html
- * 
- * The available range of duty cycles is: [-511, 511]
- * 
- * Use the from function to generate a DutyCycle from an i16 value. Ensure that
- * the passed in i16 value is within the provided range
- * 
- * Example:
- * let duty_cycle = DutyCycle::from(-487 as i16)
- * let value_in_duty_cycle = i16::from(duty_cycle)
- */
-#[derive(Debug, Clone, Copy)]
+//!
+//! The duty cycles are sent to the Fpga in 10-bit signed magnitude.
+//! 
+//! Note: These are not velocities and encoder + IMU data is needed to
+//! determine the correct duty cycles to the wheels (per velocity)
+//! 
+
+///
+/// Helper structure that wraps a duty cycle value for the FPGA
+/// 
+/// Duty cycles are sent and stored as a 10-bit signed magnitude value
+/// | bit_9 | bit_8 ~ bit_0 |
+/// | SIGN  |   MAGNITUDE   |
+/// 
+/// Where SIGN = 0 is positive and SIGN = 1 is negative
+/// 
+/// For reference check the following link:
+/// https://www.electronics-tutorials.ws/binary/signed-binary-numbers.html
+/// 
+/// The available range of duty cycles is: [-511, 511]
+/// 
+/// Use the from function to generate a DutyCycle from an i16 value. Ensure that
+/// the passed in i16 value is within the provided range
+/// 
+/// Example:
+/// let duty_cycle = DutyCycle::from(-487 as i16)
+/// let value_in_duty_cycle = i16::from(duty_cycle)
+/// 
+#[derive(core::fmt::Debug)]
 pub struct DutyCycle(u16);
 
 impl DutyCycle {
@@ -41,6 +48,7 @@ impl DutyCycle {
 
 impl From<i16> for DutyCycle {
     fn from(value: i16) -> Self {
+
         // check that value is not outside of the allowed range
         if (value > 511) || (value < -511) {
             return DutyCycle(0);
@@ -48,12 +56,13 @@ impl From<i16> for DutyCycle {
 
         // check if the value is negative and assign accordingly
         let duty_cycle:u16 = match value < 0 {
-            true => ((-value) & 0xFF) as u16,
-            false => (value & 0xFF) as u16,
+            true => ((-value) | (1 << 9)) as u16,
+            false => value as u16,
         };
 
         // returns struct
         DutyCycle(duty_cycle)
+
     }
 }
 

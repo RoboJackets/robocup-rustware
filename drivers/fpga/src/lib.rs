@@ -3,9 +3,12 @@
 #![crate_type = "lib"]
 
 // import instructions & helper/wrapper structs
-pub mod structs;
-use structs::Instruction;
-use structs::DutyCycle;
+pub mod instructions;
+use instructions::Instruction;
+
+// import helper/wrapper for DutyCycles
+pub mod duty_cycle;
+pub use duty_cycle::DutyCycle;
 
 // import fpga configuration array
 pub mod config_bin;

@@ -21,7 +21,7 @@ mod app {
     use core::convert::Infallible;
     use core::mem::MaybeUninit;
 
-    use fpga::structs::DutyCycle;
+    use fpga::DutyCycle;
     use imxrt_iomuxc::prelude::*;
 
     use main::{BASE_STATION_ADDRESS, ROBOT_RADIO_ADDRESSES, ROBOT_ID};
