@@ -8,5 +8,4 @@ edition = "2021"
 [dependencies]
 bitflags = "2.4.1"
 embedded-hal = "0.2.7"
-nb = "1.1.0"
-rtic-monotonics = { version = "1.2.0", features = ["cortex-m-systick"] }
+log = "0.4"

@@ -85,6 +85,8 @@ bitflags! {
         const ACCEL_ODR_1_5625Hz = 0b1110;
         const ACCEL_ODR_500Hz = 0b1111;
     }
+
+    
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]

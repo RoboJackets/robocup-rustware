@@ -200,8 +200,7 @@ version = "0.1.0"
 dependencies = [
  "bitflags 2.4.1",
  "embedded-hal 0.2.7",
- "nb 1.1.0",
- "rtic-monotonics",
+ "log",
 ]
 
 [[package]]
@@ -388,6 +387,7 @@ version = "0.1.0"
 dependencies = [
  "cortex-m",
  "embedded-hal 0.2.7",
+ "icm42605-driver",
  "log",
  "rtic",
  "rtic-monotonics",
