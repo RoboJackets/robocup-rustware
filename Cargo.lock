@@ -181,6 +181,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5443807d6dff69373d433ab9ef5378ad8df50ca6298caf15de6e52e24aaf54d5"
 
 [[package]]
+name = "fixed-queue"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "22a5ad4f3e664b2be6d2b4acee67464bd11987faba2b85aff60d25f722bfa1be"
+
+[[package]]
 name = "fpga-rs"
 version = "0.1.0"
 dependencies = [
@@ -362,6 +368,7 @@ dependencies = [
  "defmt",
  "embedded-alloc",
  "embedded-hal 0.2.7",
+ "fixed-queue",
  "fpga-rs",
  "imxrt-iomuxc",
  "libm",

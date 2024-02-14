@@ -383,57 +383,32 @@ impl<SPI, CS, InitP, PROG, DoneP, SpiE, PinE, DELAY> FPGA<SPI, CS, InitP, PROG, 
     }
 
     /// Set the duty cycles and read the current encoder values from the FPGA
-    pub fn set_duty_get_encs(&mut self, duty_cycles: &mut [DutyCycle; 5], encs: &mut [i16; 5]) 
-            -> Result<u8, FpgaError<SpiE, PinE>> {
-        
-         // init write buffer
-        let mut write_buffer: [u8; 12] = [0x0;12];
-        
-        //send READ ENC WRITE VEL instruction
-        //we'll only write vel and not read any enc information for this function
+    pub fn set_duty_get_encs(
+        &mut self,
+        duty_cycles: &mut [DutyCycle; 5],
+        encoders: &mut [i16; 5]
+    ) -> Result<u8, FpgaError<SpiE, PinE>> {
+
+        let mut write_buffer = [0u8; 11];
+
         write_buffer[0] = Instruction::R_ENC_W_VEL.opcode();
-        
-        // This loop iterates through each duty_cycle and sets the correspondng bytes of the write buffer
-        // However, because of the weird behavior of Dribbler we are currently hardcoding a duty_cycle for it
-        // so we don't manually set dribbler's duty_cycle
+
         for i in 0..4 {
-            // first the lower 8 bits first (lsByte)
             write_buffer[(2 * i) + 1] = duty_cycles[i].lsb();
-            // then we send the upper 8 bits (msByte)
             write_buffer[(2 * i) + 2] = duty_cycles[i].msb();
         }
 
-        //
-        // Dribbler?
-        // For some unkown reason we need to at least assert the lsb of the higher byte write_buffer[10] = 0x01
-        // for any motors to move... No idea why. It might be because of the mechanism where if an invalid duty_cycle is sent         
-        // it automatically triggers the watchdog or something like that
-        // 
-        // I'll dive deeper into the FPGA verilog code as I am very suspiscious about the fact that our verilog sucks and
-        // the weird motion might be due to a shitty FPGA verilog lol
-        // 
         write_buffer[9] = 0x00;
         write_buffer[10] = 0x01;
-            
-        // I have NO IDEA why we need this here. Setting duties doesn't work unless we append a 0x00 at the end :)
-        write_buffer[11] = 0x00;
 
+        self.spi_transfer(&mut [write_buffer[0]])?;
+        self.spi_transfer(&mut write_buffer[1..])?;
 
-        // NOTE: that duty cycle bytes are send as Lower bytes first and then Upper bytes
-        // while, the received encoder values are Upper bytes first, and then Lower bytes 
-        self.spi_transfer(&mut write_buffer)?;
-
-        // store each encoder value accordingly
-        for i in 0..5 {
-            // store each byte and convert them into u16 to avoid bit truncation
-            let ms_byte: u16 = write_buffer[(2 * i) + 1] as u16;
-            let ls_byte: u16 = write_buffer[(2 * i) + 2] as u16;
-
-            // combine the two bytes into a single i16 value
-            encs[i] = (ms_byte << 8 | ls_byte) as i16; 
+        for i in 0..4 {
+            // Encoders are in form (msb, lsb)
+            encoders[i] = (((write_buffer[(2 * i) + 1]) as i16) << 8) | (write_buffer[(2 * i) + 2] as i16);
         }
 
-        // return status code 
         Ok(write_buffer[0])
     }
 

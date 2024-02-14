@@ -210,7 +210,7 @@ mod app {
         // drive forward at different speeds -> should be measuring different encoder values
         loop {
             // encoder array to hold the data :)
-            let mut encs_value: [i16; 5] = [0;5];
+            let mut encs_value = [0i16; 5];
 
             // move forward at SPEED
             log::info!("moving forward!");
