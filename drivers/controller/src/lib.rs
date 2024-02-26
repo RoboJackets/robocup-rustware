@@ -47,27 +47,27 @@ impl<L, R, U, D, CCWS, CWS> Controller<L, R, U, D, CCWS, CWS> {
     pub fn calculate_movement(&self) -> Vector3<f32> {
         let mut movement = Vector3::zeros();
 
-        if self.left.is_triggered() {
+        if !self.left.is_triggered() {
             movement += LEFT;
         }
 
-        if self.right.is_triggered() {
+        if !self.right.is_triggered() {
             movement += RIGHT;
         }
 
-        if self.up.is_triggered() {
+        if !self.up.is_triggered() {
             movement += UP;
         }
 
-        if self.down.is_triggered() {
+        if !self.down.is_triggered() {
             movement += DOWN;
         }
 
-        if self.clockwise.is_triggered() {
+        if !self.clockwise.is_triggered() {
             movement += CLOCKWISE;
         }
 
-        if self.counterclockwise.is_triggered() {
+        if !self.counterclockwise.is_triggered() {
             movement += COUNTERCLOCKWISE;
         }
 

@@ -62,7 +62,7 @@ mod app {
     type Fpga = FPGA<SPI, Output<P9>, P29, Output<P28>, P30, Delay1, hal::lpspi::LpspiError, Infallible>;
     // Delays
     type Delay1 = Blocking<Gpt1, GPT_FREQUENCY>;
-    type Control = Controller<P0, P1, P2, P3, P4, P5>;
+    type Control = Controller<P18, P19, P20, P21, P22, P23>;
 
     #[local]
     struct Local {
@@ -143,12 +143,12 @@ mod app {
         };
 
         // TODO: Refactor into a driver
-        let left = gpio1.input(pins.p0);
-        let up = gpio1.input(pins.p1);
-        let right = gpio4.input(pins.p2);
-        let down = gpio4.input(pins.p3);
-        let counterclockwise = gpio4.input(pins.p4);
-        let clockwise = gpio4.input(pins.p5);
+        let left = gpio1.input(pins.p18);
+        let up = gpio1.input(pins.p19);
+        let right = gpio1.input(pins.p20);
+        let down = gpio1.input(pins.p21);
+        let counterclockwise = gpio1.input(pins.p22);
+        let clockwise = gpio1.input(pins.p23);
 
         let controller = Controller::new(left, up, right, down, counterclockwise, clockwise);
 
@@ -188,7 +188,9 @@ mod app {
             }
         }
 
-        let movement = ctx.local.controller.calculate_movement();
+        let movement = controller::UP;
+
+        // let movement = ctx.local.controller.calculate_movement();
 
         let wheel_velocities = ctx.local.motion_controller.body_to_wheels(movement);
 
