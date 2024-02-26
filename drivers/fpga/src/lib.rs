@@ -4,6 +4,7 @@
 
 // import instructions & helper/wrapper structs
 pub mod instructions;
+
 use instructions::Instruction;
 
 // import helper/wrapper for DutyCycles
@@ -33,7 +34,7 @@ use bsp::hal::gpio::Input;
 
 /// use this constants when configuring the spi :)
 /// (IMPORTANT): move into the structs module?
-pub const FPGA_SPI_FREQUENCY: u32 = 10_000_000;
+pub const FPGA_SPI_FREQUENCY: u32 = 400_000;
 pub const FPGA_SPI_MODE: Mode = spi::Mode{
     polarity: spi::Polarity::IdleLow,
     phase: spi::Phase::CaptureOnFirstTransition,
@@ -49,17 +50,23 @@ pub const MAX_DUTY_CYCLE: f32 = 511.0;
 /// I.E.
 /// [signof(duty_cycle * MAX_DUTY_CYCLE / 2.0), (duty_cycle * MAX_DUTY_CYCLE / 2.0) & 0xFF]
 pub fn duty_cycle_to_fpga(duty_cycle: f32) -> (u8, u8) {
-    let duty = (duty_cycle * MAX_DUTY_CYCLE / 2.0) as i16;
+    let mut duty = (duty_cycle * MAX_DUTY_CYCLE / 2.0) as i16;
+    if duty > 255 {
+        duty = 0;
+    } else if duty < -255 {
+        duty = 0;
+    }
+
     (
-        if duty >= 0 { 0 } else { 1 },
-        (duty & 0xFF) as u8,
+        if duty >= 0 { 0 } else { 0b10 },
+        (duty.abs() & 0xFF) as u8,
     )
 }
 
 #[inline]
 pub fn duty_cycles_to_fpga(duty_cycles: [f32; 4], write_buffer: &mut [u8]) {
     for (i, duty_cycle) in duty_cycles.iter().enumerate() {
-        (write_buffer[2*i], write_buffer[(2*i)+1]) = duty_cycle_to_fpga(*duty_cycle);
+        (write_buffer[(2*i)+1], write_buffer[2*i]) = duty_cycle_to_fpga(*duty_cycle);
     }
 }
 
@@ -367,8 +374,8 @@ impl<SPI, CS, INIT, PROG, DONE, DELAY, SPIE, GPIOE> FPGA<SPI, CS, INIT, PROG, DO
 
         // TODO: Write dribbler to write_buffer[9] and write_buffer[10]
         // duty_cycle_to_fpga(dribbler_duty_cycle, &mut write_buffer[9..11]);
-        write_buffer[9] = 0x00;
         write_buffer[10] = 0x01;
+        write_buffer[11] = 0x00;
 
         self.spi_transfer(&mut write_buffer[..])?;
 
@@ -498,5 +505,101 @@ impl<SPI, CS, INIT, PROG, DONE, DELAY, SPIE, GPIOE> FPGA<SPI, CS, INIT, PROG, DO
         // Set status from buffer[0]
         self.status = buffer[0];
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    extern crate std;
+
+    use super::*;
+
+    #[test]
+    fn test_duty_to_fpga() {
+        let (sign, magnitude) = duty_cycle_to_fpga(0.247);
+
+        assert_eq!(sign, 0);
+        assert_eq!(magnitude, 63);
+    }
+
+    #[test]
+    fn test_duty_to_fpga_negative() {
+        let (sign, magnitude) = duty_cycle_to_fpga(-0.247);
+
+        assert_eq!(sign, 1);
+        assert_eq!(magnitude, 63);
+    }
+
+    #[test]
+    fn test_duty_to_fpga_over_one() {
+        let (sign, magnitude) = duty_cycle_to_fpga(1.5);
+
+        assert_eq!(sign, 0);
+        assert_eq!(magnitude, 0);
+    }
+
+    #[test]
+    fn test_duty_to_fpga_less_than_negative_one() {
+        let (sign, magnitude) = duty_cycle_to_fpga(-1.5);
+
+        assert_eq!(sign, 0);
+        assert_eq!(magnitude, 0);
+    }
+
+    #[test]
+    fn test_duties_to_fpga() {
+        let duty_cycles = [0.247, 0.247, 0.247, 0.247];
+        let mut buffer = [0u8; 8];
+        duty_cycles_to_fpga(duty_cycles, &mut buffer);
+
+        for i in 0..4 {
+            assert_eq!(buffer[2*i], 0);
+            assert_eq!(buffer[(2*i)+1], 63);
+        }
+    }
+
+    #[test]
+    fn test_duties_to_fpga_negative() {
+        let duty_cycles = [-0.247, -0.247, -0.247, -0.247];
+        let mut buffer = [0u8; 8];
+        duty_cycles_to_fpga(duty_cycles, &mut buffer);
+
+        for i in 0..4 {
+            assert_eq!(buffer[2*i], 1);
+            assert_eq!(buffer[(2*i)+1], 63);
+        }
+    }
+
+    #[test]
+    fn test_buffer_to_i16s() {
+        assert_eq!(1, 1);
+    }
+    
+    #[test]
+    fn test_create_buffer() {
+        let duty_cycles = [
+            0.012433962,
+            0.010152288,
+            -0.010152288,
+            -0.012433962,
+        ];
+        let mut buffer = [0u8; 8];
+        duty_cycles_to_fpga(duty_cycles, &mut buffer);
+
+        assert_eq!(buffer, [0u8; 8]);
+    }
+
+    #[test]
+    fn test_create_buffer_2() {
+        let duty_cycles = [
+            0.024867924,
+            0.020402576,
+            -0.020402576,
+            -0.024867924,
+        ];
+        let mut buffer = [0u8; 8];
+        duty_cycles_to_fpga(duty_cycles, &mut buffer);
+
+        assert_eq!(buffer, [0u8; 8]);
     }
 }

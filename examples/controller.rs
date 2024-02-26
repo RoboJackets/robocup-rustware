@@ -188,7 +188,7 @@ mod app {
             }
         }
 
-        let movement = controller::UP;
+        let movement = controller::CLOCKWISE;
 
         // let movement = ctx.local.controller.calculate_movement();
 
@@ -205,6 +205,7 @@ mod app {
         if ctx.local.motion_controller.full() {
             let average_velocities = ctx.local.motion_controller.get_stats();
             log::info!("Average Velocities: {:?}", average_velocities);
+            log::info!("Fpga Status: {:#010b}", ctx.local.fpga.status());
         }
 
         motion_control_delay::spawn().ok();

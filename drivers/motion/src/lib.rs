@@ -15,7 +15,7 @@ const WHEEL_DIST: f32 = (FRONT_WHEEL_DIST + REAR_WHEEL_DIST) / 2.0;
 // Constants for Test Fake Motion Control
 pub const LEFT: Vector3<f32> = Vector3::new(-1.0, 0.0, 0.0);
 pub const RIGHT: Vector3<f32> = Vector3::new(1.0, 0.0, 0.0);
-pub const UP: Vector3<f32> = Vector3::new(0.0, 1.0, 0.0);
+pub const UP: Vector3<f32> = Vector3::new(0.0, 0.1, 0.0);
 pub const DOWN: Vector3<f32> = Vector3::new(0.0, -1.0, 0.0);
 pub const COUNTERCLOCKWISE: Vector3<f32> = Vector3::new(0.0, 0.0, 1.0);
 pub const CLOCKWISE: Vector3<f32> = Vector3::new(0.0, 0.0, -1.0);
@@ -57,14 +57,11 @@ impl MotionControl {
 
         let wheel_to_bot = (&bot_to_wheel_t * &bot_to_wheel).try_inverse().unwrap() * &bot_to_wheel_t;
 
-        // An empirical test on a no-load robot dictated this as a good starting point
-        let duty_cycle_to_speed = 125.0;
-
         Self {
             bot_to_wheel,
             wheel_to_bot,
-            duty_cycle_to_speed,
-            speed_to_duty_cycle: 1.0 / duty_cycle_to_speed,
+            duty_cycle_to_speed: 125.0,
+            speed_to_duty_cycle: 1.0 / 125.0,
             encoder_deltas: Matrix::<i16, U4, U100, ArrayStorage<i16, 4, 100>>::zeros(),
             deltas: Matrix::<i16, U100, U1, ArrayStorage<i16, 100, 1>>::zeros(),
             counter: 0,
@@ -98,7 +95,7 @@ impl MotionControl {
     }
 
     pub fn full(&self) -> bool {
-        if self.counter == 100 {
+        if self.counter == 0 {
             true
         } else {
             false
@@ -279,5 +276,27 @@ mod tests {
         assert!(within_tolerance(body_velocity[0], 0.0));
         assert!(within_tolerance(body_velocity[1], 0.0));
         assert!(body_velocity[2] > 0.0);
+    }
+
+    #[test]
+    fn test_wheels() {
+        let motion_control = MotionControl::new();
+
+        let motion = Vector3::new(0.0, 0.1, 0.0);
+
+        let wheel_velocity = motion_control.body_to_wheels(motion);
+
+        assert_eq!(wheel_velocity, Vector4::zeros());
+    }
+
+    #[test]
+    fn test_wheels_two() {
+        let motion_control = MotionControl::new();
+
+        let motion = Vector3::new(0.0, 0.05, 0.0);
+
+        let wheel_velocity = motion_control.body_to_wheels(motion);
+
+        assert_eq!(wheel_velocity, Vector4::zeros());
     }
 }
