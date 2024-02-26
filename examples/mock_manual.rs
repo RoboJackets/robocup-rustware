@@ -183,7 +183,7 @@ mod app {
             },
             Local {
                 radio,
-                motion_controller: MotionControl::new(),
+                motion_controller: MotionControl::new(MOTION_CONTROL_DELAY_MS),
             }
         )
     }
@@ -197,10 +197,8 @@ mod app {
 
     #[task(binds = GPIO1_COMBINED_0_15, shared = [rx_int, gpio1], priority = 2)]
     fn radio_interrupt(ctx: radio_interrupt::Context) {
-        log::info!("Received Interrupt");
         if (ctx.shared.rx_int, ctx.shared.gpio1).lock(|rx_int, gpio1| {
             if rx_int.is_triggered() {
-                log::info!("Interrupt Triggered");
                 rx_int.clear_triggered();
                 gpio1.set_interrupt(&rx_int, None);
                 return true;
@@ -222,8 +220,6 @@ mod app {
             let mut read_buffer = [0u8; CONTROL_MESSAGE_SIZE];
             ctx.local.radio.read(&mut read_buffer, spi, delay);
 
-            log::info!("Buffer: {:?}", read_buffer);
-
             let control_message = match ControlMessage::unpack_from_slice(&read_buffer[..]) {
                 Ok(control_message) => control_message,
                 Err(err) => {
@@ -231,8 +227,6 @@ mod app {
                     return;
                 },
             };
-
-            log::info!("Control Command Received: {:?}", control_message);
 
             *command = Some(control_message);
 

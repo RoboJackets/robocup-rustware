@@ -36,10 +36,12 @@ pub struct MotionControl {
     linear_compensator: Vector4<f32>,
     // Multiplier to convert form encoder counts to meters.
     encoder_multiplier: f32,
+    // Delay (in us) between motion control commands
+    motion_control_delay_s: f32,
 }
 
 impl MotionControl {
-    pub fn new() -> Self {
+    pub fn new(motion_control_delay_us: u32) -> Self {
         let wheel_angles: [f32; 4] = [
             f32::to_radians(180.0 - FRONT_ANGLE),
             f32::to_radians(180.0 + BACK_ANGLE),
@@ -71,6 +73,7 @@ impl MotionControl {
             measurement: 0,
             linear_compensator: Vector4::zeros(),
             encoder_multiplier,
+            motion_control_delay_s: (motion_control_delay_us as f32) / 1_000_000.0,
         }
     }
 
@@ -88,21 +91,21 @@ impl MotionControl {
     pub fn body_with_encoders(
         &mut self,
         body_velocity: Vector3<f32>,
-        encoder_counts: [i16; 5],
+        encoder_counts: &[i16; 5],
     ) -> Vector4<f32> {
         let dt = (encoder_counts[4] as f32) * (1.0 / 18.432e6) * 2.0 * 128.0;
         let encoder_values = Vector4::new(
-            (encoder_counts[0] as f32) / dt * self.encoder_multiplier,
-            (encoder_counts[1] as f32) / dt * self.encoder_multiplier,
-            (encoder_counts[2] as f32) / dt * self.encoder_multiplier,
-            (encoder_counts[3] as f32) / dt * self.encoder_multiplier,
+            (encoder_counts[0] as f32) / self.motion_control_delay_s,
+            (encoder_counts[1] as f32) / self.motion_control_delay_s,
+            (encoder_counts[2] as f32) / self.motion_control_delay_s,
+            (encoder_counts[3] as f32) / self.motion_control_delay_s,
         );
-        self.encoder_velocities.set_column(self.measurement, &encoder_values);
+        self.encoder_velocities.set_column((self.measurement - 1) % 10, &encoder_values);
 
         let target_velocity = self.bot_to_wheel * body_velocity;
-        self.wheel_velocities.set_column(self.measurement, &target_velocity);
+        self.wheel_velocities.set_column(self.measurement % 10, &target_velocity);
 
-        if self.measurement == 9 {
+        if self.measurement == 10 {
             let differences = self.wheel_velocities - self.encoder_velocities;
             self.linear_compensator = differences.column_mean();
 

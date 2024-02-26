@@ -21,7 +21,6 @@ mod app {
     use core::convert::Infallible;
     use core::mem::MaybeUninit;
 
-    use fpga::DutyCycle;
     use imxrt_iomuxc::prelude::*;
 
     use main::ROBOT_ID;
@@ -53,7 +52,7 @@ mod app {
     use robojackets_robocup_rtp::{RobotStatusMessage, RobotStatusMessageBuilder, ROBOT_STATUS_SIZE};
     use robojackets_robocup_rtp::{BASE_STATION_ADDRESS, ROBOT_RADIO_ADDRESSES};
 
-    use main::motion_control::MotionControl;
+    use motion::MotionControl;
 
     use fpga_rs as fpga;
     use fpga::FPGA_SPI_FREQUENCY;
@@ -73,7 +72,7 @@ mod app {
     // Type Definitions
     // FPGA Spi
     type SPI = Lpspi<board::LpspiPins<P11, P12, P13, P10>, 4>;
-    type Fpga = FPGA<SPI, Output<P9>, P29, Output<P28>, P30, Delay1>;
+    type Fpga = FPGA<SPI, Output<P9>, P29, Output<P28>, P30, Delay1, hal::lpspi::LpspiError, Infallible>;
     // Shared Spi
     type SharedSPI = Lpspi<board::LpspiPins<P26, P39, P27, P38>, 3>;
     type RadioCE = Output<P0>;
@@ -262,8 +261,9 @@ mod app {
 
             let control_message = match ControlMessage::unpack_from_slice(&read_buffer[..]) {
                 Ok(control_message) => control_message,
-                Err(err) => {
-                    log::info!("Error Unpacking Control Command: {:?}", err);
+                Err(_err) => {
+                    #[cfg(feature = "debug")]
+                    log::info!("Error Unpacking Control Command: {:?}", _err);
                     return;
                 },
             };
@@ -277,8 +277,10 @@ mod app {
 
             let packed_data = match robot_status.pack() {
                 Ok(bytes) => bytes,
-                Err(err) => {
-                    log::info!("Error Packing Robot Status: {:?}", err);
+                Err(_err) => {
+                    #[cfg(feature = "debug")]
+                    log::info!("Error Packing Robot Status: {:?}", _err);
+
                     return;
                 }
             };
@@ -300,16 +302,22 @@ mod app {
         });
     }
 
-    #[task(shared = [control_message], local = [fpga, motion_controller, initialized: bool = false], priority = 1)]
+    #[task(shared = [control_message], local = [fpga, motion_controller, initialized: bool = false, last_encoders: [i16; 5] = [0i16; 5], iteration: u32 = 0], priority = 1)]
     async fn motion_control_loop(mut ctx: motion_control_loop::Context) {
         if !*ctx.local.initialized {
             match ctx.local.fpga.configure() {
-                Ok(_) => log::info!("Fpga Configured"),
+                Ok(_) => {
+                    #[cfg(feature = "debug")]
+                    log::info!("Fpga Configured")
+                },
                 Err(_) => panic!("Unable to Configure Fpga"),
             }
 
             match ctx.local.fpga.motors_en(true) {
-                Ok(status) => log::info!("Enabled motors fpga: {:010b}", status),
+                Ok(_status) => {
+                    #[cfg(feature = "debug")]
+                    log::info!("Enabled motors fpga: {:010b}", _status)
+                },
                 Err(_) => panic!("Unable to Enable Motors"),
             }
             *ctx.local.initialized = true;
@@ -323,26 +331,26 @@ mod app {
         });
 
         let wheel_velocities = ctx.local.motion_controller.body_to_wheels(body_velocities);
+        // let wheel_velocities = ctx.local.motion_controller.body_with_encoders(body_velocities, &ctx.local.last_encoders);
 
-        let mut duty_cycles = [
-            DutyCycle::from(wheel_velocities[0] as i16),
-            DutyCycle::from(wheel_velocities[1] as i16),
-            DutyCycle::from(wheel_velocities[2] as i16),
-            DutyCycle::from(wheel_velocities[3] as i16),
-            DutyCycle::from(256 as i16),
-        ];
+        #[cfg(feature = "debug")]
+        if *ctx.local.iteration % 100 == 0 {
+            log::info!("Duty Cycles: {:?}", duty_cycles);
+        }
 
-        log::info!("Duty Cycles: {:?}", duty_cycles);
-
-        let status = match ctx.local.fpga.set_duty_cycles(&mut duty_cycles) {
+        let _status = match ctx.local.fpga.set_duty_cycles(wheel_velocities.into(), 0.0) {
             Ok(status) => status,
             Err(_) => {
+                #[cfg(feature = "debug")]
                 log::info!("Unable to set duty cycles");
                 return;
             }
         };
 
-        log::info!("Wheel Velocities: {:?} --- status: {:08b}", wheel_velocities, status);
+        #[cfg(feature = "debug")]
+        if *ctx.local.iteration % 100 == 0 {
+            log::info!("Wheel Velocities: {:?} --- status: {:08b}", wheel_velocities, _status);
+        }
 
         motion_control_delay::spawn().ok();
     }

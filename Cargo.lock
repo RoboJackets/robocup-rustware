@@ -78,6 +78,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 
 [[package]]
+name = "controller"
+version = "0.1.0"
+dependencies = [
+ "embedded-hal 0.2.7",
+ "nalgebra",
+ "teensy4-bsp",
+]
+
+[[package]]
 name = "cortex-m"
 version = "0.7.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -364,6 +373,7 @@ checksum = "b5e6163cb8c49088c2c36f57875e58ccd8c87c7427f7fbd50ea6710b2f3f2e8f"
 name = "main"
 version = "0.1.0"
 dependencies = [
+ "controller",
  "cortex-m",
  "defmt",
  "embedded-alloc",
@@ -373,6 +383,7 @@ dependencies = [
  "imxrt-iomuxc",
  "libm",
  "log",
+ "motion",
  "nalgebra",
  "packed_struct",
  "robojackets-robocup-rtp",
@@ -382,6 +393,14 @@ dependencies = [
  "teensy4-bsp",
  "teensy4-panic",
  "teensy4-pins",
+]
+
+[[package]]
+name = "motion"
+version = "0.1.0"
+dependencies = [
+ "libm",
+ "nalgebra",
 ]
 
 [[package]]
