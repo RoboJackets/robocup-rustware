@@ -40,7 +40,7 @@ pub enum FpgaStatus {
 
 /// use this constants when configuring the spi :)
 /// (IMPORTANT): move into the structs module?
-pub const FPGA_SPI_FREQUENCY: u32 = 10_000_000;
+pub const FPGA_SPI_FREQUENCY: u32 = 400_000;
 pub const FPGA_SPI_MODE: Mode = spi::Mode{
     polarity: spi::Polarity::IdleLow,
     phase: spi::Phase::CaptureOnFirstTransition,
@@ -341,7 +341,7 @@ impl<SPI, CS, InitP, PROG, DoneP, SpiE, PinE, DELAY> FPGA<SPI, CS, InitP, PROG, 
         {
 
         // init write buffer
-        let mut write_buffer = [0x0u8; 11];
+        let mut write_buffer = [0x0u8; 12];
 
         
         //send READ ENC WRITE VEL instruction
@@ -372,8 +372,7 @@ impl<SPI, CS, InitP, PROG, DoneP, SpiE, PinE, DELAY> FPGA<SPI, CS, InitP, PROG, 
             
         // I have NO IDEA why we need this here. Setting duties doesn't work unless we append a 0x00 at the end :)
         // write_buffer[11] = 0x00;
-        self.spi_transfer(&mut [write_buffer[0]])?;
-        self.spi_transfer(&mut write_buffer[1..])?;
+        self.spi_transfer(&mut write_buffer)?;
 
         // this is the actual SPI transfer what writes the duty_cycles to the FPGA
         // self.spi_transfer(&mut write_buffer)?;        
