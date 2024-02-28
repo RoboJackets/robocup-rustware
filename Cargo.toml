@@ -65,11 +65,15 @@ features = ["log"]
 [dependencies.fpga-rs]
 path = "drivers/fpga"
 
+[dependencies.kicker]
+path = "drivers/kicker"
+
 # the root package is also a workspace that holds all of the neccesary "supporting" packages
 # such as driver files, utility files (e.g. tools), etc.
 [workspace]
 members = [
     "drivers/fpga",
+    "drivers/kicker",
     "tools",
 ]
 
