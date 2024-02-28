@@ -15,6 +15,8 @@ use embedded_hal::digital::v2::OutputPin;
 use embedded_hal::blocking::spi::{Transfer, Write};
 use embedded_hal::blocking::delay::DelayUs;
 
+use robojackets_robocup_rtp::ControlMessage;
+
 pub mod command;
 pub use command::KickType;
 use command::{KickCommand, KickActivation};
@@ -107,12 +109,11 @@ impl<CSN, SPI, DELAY, GPIOE, SPIE> Kicker<CSN, SPI, DELAY, GPIOE, SPIE> where
         self.charge_allowed = charge_allowed;
     }
 
-    pub fn service(&mut self, spi: &mut SPI, delay: &mut DELAY) -> Result<(), KickerError<SPIE, GPIOE>> {
+    pub fn service(&mut self, control_message: &ControlMessage, spi: &mut SPI, delay: &mut DELAY) -> Result<(), KickerError<SPIE, GPIOE>> {
         let mut command = KickCommand::new()
-                        .kick_type(self.kick_type)
-                        .activation(self.kick_activation)
-                        .charge_allowed(self.charge_allowed)
-                        .kick_power(self.kick_strength)
+                        .kick_type(control_message.shoot_mode.into())
+                        .activation((*control_message.trigger_mode).into())
+                        .kick_power(control_message.kick_strength.into())
                         .build();
 
         // TODO: Possibly Set SPI Frequency to 100_000

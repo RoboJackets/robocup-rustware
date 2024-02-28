@@ -7,3 +7,8 @@ edition = "2021"
 
 [dependencies]
 embedded-hal = "~0.2"
+
+[dependencies.robojackets-robocup-rtp]
+version = "0.4.1"
+default-features = false
+features = ["nostd"]

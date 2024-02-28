@@ -7,19 +7,40 @@ pub enum KickType {
     Kick = 0 << 7,
 }
 
+impl From<bool> for KickType {
+    fn from(value: bool) -> Self {
+        match value {
+            true => KickType::Chip,
+            false => KickType::Kick,
+        }
+    }
+}
+
 /// The activation type of the kicker
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum KickActivation {
+    Charge = 0 << 5,
     Immediate = 1 << 6,
     Breakbeam = 1 << 5,
     Cancel = 0b11 << 5,
 }
 
+impl From<u8> for KickActivation {
+    fn from(value: u8) -> Self {
+        match value {
+            0 => KickActivation::Charge,
+            1 => KickActivation::Immediate,
+            2 => KickActivation::Breakbeam,
+            _ => KickActivation::Cancel,
+        }
+    }
+}
+
 /// Builder for a command to be sent to the kicker
+/// If not in cancel, the kicker is allowed to charge
 pub(crate) struct KickCommand {
     kick_type: Option<KickType>,
     activation: Option<KickActivation>,
-    charge_allowed: Option<bool>,
     kick_power: Option<u8>,
 }
 
@@ -29,7 +50,6 @@ impl KickCommand {
         Self {
             kick_type: None,
             activation: None,
-            charge_allowed: None,
             kick_power: None,
         }
     }
@@ -43,12 +63,6 @@ impl KickCommand {
     /// Set the activation type for the kick command
     pub(crate) fn activation(mut self, activation: KickActivation) -> Self {
         self.activation = Some(activation);
-        self
-    }
-
-    /// Set whether the kicker is allowed to begin charging
-    pub(crate) fn charge_allowed(mut self, charge_allowed: bool) -> Self {
-        self.charge_allowed = Some(charge_allowed);
         self
     }
 
@@ -81,13 +95,15 @@ impl KickCommand {
         }
 
         if let Some(activation) = self.activation {
+            // Set Charge Allowed
+            if activation != KickActivation::Cancel {
+                command |= 1 << 4;
+            }
+
+            // Set Activation
             command |= activation as u8;
         } else {
             command |= KickActivation::Cancel as u8;
-        }
-
-        if let Some(charge_allowed) = self.charge_allowed { 
-            command |= (charge_allowed as u8) << 4;
         }
 
         if let Some(kick_power) = self.kick_power {
