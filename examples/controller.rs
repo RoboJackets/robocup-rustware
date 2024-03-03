@@ -51,7 +51,7 @@ mod app {
     const GPT_CLOCK_SOURCE: ClockSource = ClockSource::HighFrequencyReferenceClock;
     const GPT_DIVIDER: u32 = board::PERCLK_FREQUENCY / GPT_FREQUENCY;
 
-    const HEAP_SIZE: usize = 1024;
+    const HEAP_SIZE: usize = 4098;
     static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
 
     const MOTION_CONTROL_DELAY_US: u32 = 200;
@@ -66,7 +66,6 @@ mod app {
 
     #[local]
     struct Local {
-        motion_controller: MotionControl,
         fpga: Fpga,
         controller: Control,
         gpt2: Gpt2,
@@ -74,7 +73,7 @@ mod app {
 
     #[shared]
     struct Shared {
-
+        motion_controller: MotionControl,
     }
 
     #[init]
@@ -152,14 +151,14 @@ mod app {
 
         let controller = Controller::new(left, up, right, down, counterclockwise, clockwise);
 
+        motion_control_stats::spawn().ok();
         motion_control_loop::spawn().ok();
 
         (
             Shared {
-
+                motion_controller: MotionControl::new(),
             },
             Local {
-                motion_controller: MotionControl::new(),
                 fpga,
                 controller,
                 gpt2,
@@ -167,9 +166,22 @@ mod app {
         )
     }
 
+    #[task(shared=[motion_controller], priority=1)]
+    async fn motion_control_stats(mut ctx: motion_control_stats::Context) {
+        log::info!("Stats");
+
+        ctx.shared.motion_controller.lock(|motion_controller| {
+            let stats = motion_controller.get_stats();
+            log::info!("{}", stats);
+            drop(stats);
+        });
+
+        stats_delay::spawn().ok();
+    }
+
     // 1 count from the gpt2 ~1 microseconds
-    #[task(local=[motion_controller, fpga, controller, gpt2], priority=1)]
-    async fn motion_control_loop(ctx: motion_control_loop::Context) {
+    #[task(local=[fpga, controller, gpt2, iteration: u32 = 0], shared=[motion_controller], priority=1)]
+    async fn motion_control_loop(mut ctx: motion_control_loop::Context) {
         if !ctx.local.fpga.is_initialized() {
             match ctx.local.fpga.configure() {
                 Ok(_) => {
@@ -192,21 +204,19 @@ mod app {
 
         // let movement = ctx.local.controller.calculate_movement();
 
-        let wheel_velocities = ctx.local.motion_controller.body_to_wheels(movement);
+        ctx.shared.motion_controller.lock(|motion_controller| {
+            let wheel_velocities = motion_controller.body_to_wheels(movement);
 
-        let now = ctx.local.gpt2.count();
-        let encoder_values = match ctx.local.fpga.set_duty_get_encoders(wheel_velocities.into(), 0.0) {
-            Ok(encoder_values) => encoder_values,
-            Err(_) => panic!("Unable to Communicate with the FPGA"),
-        };
+            let now = ctx.local.gpt2.count();
+            let encoder_values = match ctx.local.fpga.set_duty_get_encoders(wheel_velocities.into(), 0.0) {
+                Ok(encoder_values) => encoder_values,
+                Err(_) => panic!("Unable to Communicate with the FPGA"),
+            };
 
-        ctx.local.motion_controller.add_encoders(encoder_values, now);
+            motion_controller.add_encoders(encoder_values, now);
+        });
 
-        if ctx.local.motion_controller.full() {
-            let average_velocities = ctx.local.motion_controller.get_stats();
-            log::info!("Average Velocities: {:?}", average_velocities);
-            log::info!("Fpga Status: {:#010b}", ctx.local.fpga.status());
-        }
+        *ctx.local.iteration += 1;
 
         motion_control_delay::spawn().ok();
     }
@@ -216,5 +226,12 @@ mod app {
         Systick::delay(MOTION_CONTROL_DELAY_US.micros()).await;
 
         motion_control_loop::spawn().ok();
+    }
+
+    #[task(priority = 1)]
+    async fn stats_delay(_ctx: stats_delay::Context) {
+        Systick::delay(500u32.millis()).await;
+
+        motion_control_stats::spawn().ok();
     }
 }

@@ -49,24 +49,34 @@ pub const MAX_DUTY_CYCLE: f32 = 511.0;
 ///
 /// I.E.
 /// [signof(duty_cycle * MAX_DUTY_CYCLE / 2.0), (duty_cycle * MAX_DUTY_CYCLE / 2.0) & 0xFF]
+///
+/// Return (low_byte, high_byte)
 pub fn duty_cycle_to_fpga(duty_cycle: f32) -> (u8, u8) {
-    let mut duty = (duty_cycle * MAX_DUTY_CYCLE / 2.0) as i16;
-    if duty > 255 {
-        duty = 0;
-    } else if duty < -255 {
-        duty = 0;
+    let mut duty = (duty_cycle * MAX_DUTY_CYCLE) as i16;
+    
+    let mut negative = false;
+    if duty < 0 {
+        negative = true;
+        duty *= -1;
     }
 
-    (
-        if duty >= 0 { 0 } else { 0b10 },
-        (duty.abs() & 0xFF) as u8,
-    )
+    if duty > 511 {
+        duty = 511;
+    }
+
+    let high = ((duty >> 8) & 1) as u8;
+    let low = (duty & 0xFF) as u8;
+
+    match negative {
+        true => (low, 0b10 | high),
+        false => (low, high),
+    }
 }
 
 #[inline]
 pub fn duty_cycles_to_fpga(duty_cycles: [f32; 4], write_buffer: &mut [u8]) {
     for (i, duty_cycle) in duty_cycles.iter().enumerate() {
-        (write_buffer[(2*i)+1], write_buffer[2*i]) = duty_cycle_to_fpga(*duty_cycle);
+        (write_buffer[2*i], write_buffer[(2*i)+1]) = duty_cycle_to_fpga(*duty_cycle);
     }
 }
 
@@ -74,8 +84,8 @@ pub fn duty_cycles_to_fpga(duty_cycles: [f32; 4], write_buffer: &mut [u8]) {
 pub fn buffer_to_i16s(buffer: &[u8]) -> [i16; 5] {
     let mut encoder_buffer = [0i16; 5];
 
-    for i in 0..4 {
-        encoder_buffer[i] = ((buffer[2*i] as i16) << 8) | (buffer[(2*i)+1] as i16);
+    for i in 0..5 {
+        encoder_buffer[i] = i16::from_be_bytes([buffer[2*i], buffer[(2*i)+1]]);
     }
 
     encoder_buffer
@@ -516,34 +526,34 @@ mod tests {
 
     #[test]
     fn test_duty_to_fpga() {
-        let (sign, magnitude) = duty_cycle_to_fpga(0.247);
+        let (low, high) = duty_cycle_to_fpga(0.247);
 
-        assert_eq!(sign, 0);
-        assert_eq!(magnitude, 63);
+        assert_eq!(low, 126);
+        assert_eq!(high, 0b00);
     }
 
     #[test]
     fn test_duty_to_fpga_negative() {
-        let (sign, magnitude) = duty_cycle_to_fpga(-0.247);
+        let (low, high) = duty_cycle_to_fpga(-0.247);
 
-        assert_eq!(sign, 1);
-        assert_eq!(magnitude, 63);
+        assert_eq!(high, 0b10);
+        assert_eq!(low, 126);
     }
 
     #[test]
     fn test_duty_to_fpga_over_one() {
-        let (sign, magnitude) = duty_cycle_to_fpga(1.5);
+        let (low, high) = duty_cycle_to_fpga(1.5);
 
-        assert_eq!(sign, 0);
-        assert_eq!(magnitude, 0);
+        assert_eq!(high, 0b01);
+        assert_eq!(low, 255);
     }
 
     #[test]
     fn test_duty_to_fpga_less_than_negative_one() {
-        let (sign, magnitude) = duty_cycle_to_fpga(-1.5);
+        let (low, high) = duty_cycle_to_fpga(-1.5);
 
-        assert_eq!(sign, 0);
-        assert_eq!(magnitude, 0);
+        assert_eq!(high, 0b11);
+        assert_eq!(low, 255);
     }
 
     #[test]
@@ -553,8 +563,8 @@ mod tests {
         duty_cycles_to_fpga(duty_cycles, &mut buffer);
 
         for i in 0..4 {
-            assert_eq!(buffer[2*i], 0);
-            assert_eq!(buffer[(2*i)+1], 63);
+            assert_eq!(buffer[2*i], 126);
+            assert_eq!(buffer[(2*i)+1], 0);
         }
     }
 
@@ -565,14 +575,25 @@ mod tests {
         duty_cycles_to_fpga(duty_cycles, &mut buffer);
 
         for i in 0..4 {
-            assert_eq!(buffer[2*i], 1);
-            assert_eq!(buffer[(2*i)+1], 63);
+            assert_eq!(buffer[2*i], 126);
+            assert_eq!(buffer[(2*i)+1], 0b10);
         }
     }
 
     #[test]
-    fn test_buffer_to_i16s() {
-        assert_eq!(1, 1);
+    fn test_buffer_to_i16s_positive() {
+        let buffer = [0x0A, 0xFF, 0x0A, 0xFF, 0x0A, 0xFF, 0x0A, 0xFF, 0x0A, 0xFF];
+        let i16s = buffer_to_i16s(&buffer);
+        let expected = [0x0AFF, 0x0AFF, 0x0AFF, 0x0AFF, 0x0AFF];
+        assert_eq!(i16s, expected);
+    }
+
+    #[test]
+    fn test_buffer_to_i16s_negative() {
+        let buffer = [0xFA, 0x0A, 0xFA, 0x0A, 0xFA, 0x0A, 0xFA, 0x0A, 0xFA, 0x0A];
+        let i16s = buffer_to_i16s(&buffer);
+        let expected = [-1526, -1526, -1526, -1526, -1526];
+        assert_eq!(i16s, expected);
     }
     
     #[test]
@@ -586,7 +607,7 @@ mod tests {
         let mut buffer = [0u8; 8];
         duty_cycles_to_fpga(duty_cycles, &mut buffer);
 
-        assert_eq!(buffer, [0u8; 8]);
+        assert_eq!(buffer, [6, 0, 5, 0, 5, 2, 6, 2]);
     }
 
     #[test]
@@ -600,6 +621,6 @@ mod tests {
         let mut buffer = [0u8; 8];
         duty_cycles_to_fpga(duty_cycles, &mut buffer);
 
-        assert_eq!(buffer, [0u8; 8]);
+        assert_eq!(buffer, [12, 0, 10, 0, 10, 2, 12, 2]);
     }
 }

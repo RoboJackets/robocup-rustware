@@ -1,5 +1,8 @@
 #![no_std]
 
+extern crate alloc;
+
+use alloc::{format, string::String, vec::Vec};
 use libm::{sinf, cosf};
 
 use nalgebra::base::*;
@@ -27,12 +30,12 @@ pub struct MotionControl {
     duty_cycle_to_speed: f32,
     // Conversion from speed (rad/s) -> duty cycles
     speed_to_duty_cycle: f32,
-    // Encoder Deltas
-    encoder_deltas: Matrix<i16, U4, U100, ArrayStorage<i16, 4, 100>>,
-    // Timestamps
-    deltas: Matrix<i16, U100, U1, ArrayStorage<i16, 100, 1>>,
-    // Start Timestamp
-    last_time: u32,
+    // Cumulative Encoder Values
+    cumulative_encoders: Vector4<i16>,
+    // Cumulative Time
+    start_time: u32,
+    // Velocities
+    velocities: Vec<Vector4<f32>>,
     counter: usize,
 }
 
@@ -62,10 +65,10 @@ impl MotionControl {
             wheel_to_bot,
             duty_cycle_to_speed: 125.0,
             speed_to_duty_cycle: 1.0 / 125.0,
-            encoder_deltas: Matrix::<i16, U4, U100, ArrayStorage<i16, 4, 100>>::zeros(),
-            deltas: Matrix::<i16, U100, U1, ArrayStorage<i16, 100, 1>>::zeros(),
+            cumulative_encoders: Vector4::zeros(),
             counter: 0,
-            last_time: 0,
+            start_time: 0,
+            velocities: Vec::with_capacity(5),
         }
     }
     
@@ -83,29 +86,28 @@ impl MotionControl {
 
     /// Add the timestamp and encoder values from the last iteration
     pub fn add_encoders(&mut self, encoder_values: [i16; 5], timestamp: u32) {
-        if self.last_time == 0 {
-            self.last_time = timestamp;
-            return;
+        if self.start_time == 0 {
+            self.start_time = timestamp;
         }
+        let encoder_deltas = Vector4::new(encoder_values[0], encoder_values[1], encoder_values[2], encoder_values[3]);
+        self.cumulative_encoders += encoder_deltas;
 
-        self.encoder_deltas.set_column(self.counter, &Vector4::new(encoder_values[0], encoder_values[1], encoder_values[2], encoder_values[3]));
-        self.deltas[self.counter] = (timestamp - self.last_time) as i16;
-        self.last_time = timestamp;
-        self.counter = (self.counter + 1) % 100;
+        if timestamp - self.start_time > 500_000 {
+            let cumulative_time = (timestamp - self.start_time) as f32;
+            let velocity = self.cumulative_encoders.map(|v| (v as f32) / cumulative_time);
+            self.velocities.push(velocity);
+
+            self.cumulative_encoders = Vector4::zeros();
+            self.start_time = timestamp;
+
+            if self.velocities.len() == 5 {
+                self.velocities.clear();
+            }
+        }
     }
 
-    pub fn full(&self) -> bool {
-        if self.counter == 0 {
-            true
-        } else {
-            false
-        }
-    }
-
-    pub fn get_stats(&self) -> Vector4<f32> {
-        let velocities = self.encoder_deltas * self.deltas;
-        let total_time = self.deltas.sum() as f32;
-        velocities.map(|v| (v as f32) / total_time)
+    pub fn get_stats(&self) -> String {
+        format!("Velocities: {:?}", self.velocities)
     }
 }
 

@@ -268,7 +268,8 @@ mod app {
                 },
             };
 
-            // log::info!("Control Command Received: {:?}", control_message);
+            #[cfg(feature = "debug")]
+            log::info!("Control Command Received: {:?}", control_message);
 
             *command = Some(control_message);
 
@@ -331,21 +332,11 @@ mod app {
         });
 
         let wheel_velocities = ctx.local.motion_controller.body_to_wheels(body_velocities);
-        // let wheel_velocities = ctx.local.motion_controller.body_with_encoders(body_velocities, &ctx.local.last_encoders);
 
-        #[cfg(feature = "debug")]
-        if *ctx.local.iteration % 100 == 0 {
-            log::info!("Duty Cycles: {:?}", duty_cycles);
+        if ctx.local.fpga.set_duty_cycles(wheel_velocities.into(), 0.0).is_err() {
+            #[cfg(feature = "debug")]
+            log::info!("Unable to set duty cycles");
         }
-
-        let _status = match ctx.local.fpga.set_duty_cycles(wheel_velocities.into(), 0.0) {
-            Ok(status) => status,
-            Err(_) => {
-                #[cfg(feature = "debug")]
-                log::info!("Unable to set duty cycles");
-                return;
-            }
-        };
 
         #[cfg(feature = "debug")]
         if *ctx.local.iteration % 100 == 0 {
