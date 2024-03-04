@@ -24,7 +24,6 @@ use teensy4_panic as _;
 mod app {
     use teensy4_bsp as bsp;
     use bsp::board;
-    use teensy4_bsp as bsp;
 
     use rtic_monotonics::systick::*;
 
@@ -49,7 +48,6 @@ mod app {
         Systick::start(ctx.core.SYST, 600_000_000, systick_token);
 
         blink_led::spawn().ok();
-        let poller = bsp::logging::log::usbd(usb, bsp::logging::Interrupts::Enabled).unwrap();
 
         (
             Shared {
@@ -68,7 +66,7 @@ mod app {
         }
     }
 
-    #[task(local = [], priority = 1)]
+    #[task(priority = 1)]
     async fn blink_led(_ctx: blink_led::Context) {
         loop {
             log::info!("On");
