@@ -7,7 +7,21 @@ pub mod registers;
 
 const ICM_ADDR: u8 = 0b1101000;
 const WHO_AM_I_EXPECTED: u8 = 0x42;
-const LSB_TO_G: f64 = 16.0 / 32768.0;
+const LSB_TO_G: f32 = 16.0 / 32768.0;
+
+const LSB_TO_DPS: f32 = 1000.0 / 32768.0;
+
+#[inline]
+pub fn reading_to_gyro(high: u8, low: u8) -> f32 {
+    let value = i16::from_be_bytes([high, low]);
+    ((value as f32) * LSB_TO_DPS).to_radians()
+}
+
+#[inline]
+pub fn reading_to_accel(high: u8, low: u8) -> f32 {
+    let value = i16::from_be_bytes([high, low]);
+    (value as f32) * LSB_TO_G
+}
 
 pub struct Icm42605<I2C> {
     i2c: I2C,
@@ -79,41 +93,25 @@ impl<I2C: i2c::Write<Error = E> + i2c::Read<Error = E> + 'static, E> Icm42605<I2
         Ok(this)
     }
 
-    pub fn gyro_z(&mut self) -> Result<f64, E> {
+    pub fn gyro_z(&mut self) -> Result<f32, E> {
         let hi = self.read(Bank::Bank0, registers::GYRO_DATA_Z1)?;
         let lo = self.read(Bank::Bank0, registers::GYRO_DATA_Z0)?;
 
-        // Reinterpret the bits as a signed 16-bit integer
-        let total = i16::from_ne_bytes([hi, lo]);
-
-        // +-1000dps max, for 16-bit signed integers, comes out to 32.8lsb/deg.
-        const LSB_TO_DPS: f64 = 1000.0 / 32768.0;
-        const DEG_TO_RADIANS: f64 = core::f64::consts::PI / 180.0;
-
-        Ok(total as f64 * (DEG_TO_RADIANS * LSB_TO_DPS))
+        Ok(reading_to_gyro(hi, lo))
     }
 
-    pub fn accel_x(&mut self) -> Result<f64, E> {
+    pub fn accel_x(&mut self) -> Result<f32, E> {
         let hi = self.read(Bank::Bank0, registers::ACCEL_DATA_X1)?;
         let lo = self.read(Bank::Bank0, registers::ACCEL_DATA_X0)?;
 
-        
-        // Reinterpret the bits as a signed 16-bit integer
-        let total = i16::from_ne_bytes([hi, lo]);
-
-        // +-4g max, for 16-bit signed integers, comes out to 8192lsb/g.
-        Ok(total as f64 * LSB_TO_G)
+        Ok(reading_to_accel(hi, lo))
     }
 
-    pub fn accel_y(&mut self) -> Result<f64, E> {
+    pub fn accel_y(&mut self) -> Result<f32, E> {
         let hi = self.read(Bank::Bank0, registers::ACCEL_DATA_Y1)?;
         let lo = self.read(Bank::Bank0, registers::ACCEL_DATA_Y0)?;
 
-        // Reinterpret the bits as a signed 16-bit integer
-        let total = i16::from_ne_bytes([hi, lo]);
-
-        // +-4g max, for 16-bit signed integers, comes out to 8192lsb/g.
-        Ok(total as f64 * LSB_TO_G)
+        Ok(reading_to_accel(hi, lo))
     }
 
     fn raw_write(&mut self, register_addr: u8, data: u8) -> Result<(), E> {
@@ -145,5 +143,28 @@ impl<I2C: i2c::Write<Error = E> + i2c::Read<Error = E> + 'static, E> Icm42605<I2
 
         self.raw_write(address, value)?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    extern crate std;
+
+    use super::*;
+
+    #[test]
+    fn test_reading_to_gyro() {
+        let high_reading = 0x12;
+        let low_reading = 0x34;
+
+        assert_eq!(reading_to_gyro(high_reading, low_reading), 2.4820662);
+    }
+
+    #[test]
+    fn test_reading_to_accel() {
+        let high_reading = 0x12;
+        let low_reading = 0x34;
+
+        assert_eq!(reading_to_accel(high_reading, low_reading), 2.2753906);
     }
 }
