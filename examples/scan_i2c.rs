@@ -17,14 +17,12 @@ use teensy4_panic as _;
 mod app {
     use core::mem::MaybeUninit;
 
-    use embedded_hal::blocking::i2c::{Write, WriteRead, Read};
+    use embedded_hal::blocking::i2c::WriteRead;
 
     use super::*;
 
     use teensy4_bsp as bsp;
     use bsp::board;
-
-    use teensy4_bsp::hal as hal;
 
     use rtic_monotonics::systick::*;
     use board::Lpi2c1;
@@ -94,30 +92,6 @@ mod app {
         }
 
         log::info!("Who Am I: {:#01x}", buffer[0]);
-
-        // let mut buffer = [0u8];
-        // if let Err(err) = ctx.local.i2c.write_read(0b1101000, &[0x75], &mut buffer) {
-        //     log::info!("Error Occurred: {:?}", err);
-        // }
-
-        // log::info!("Who I am: {:#01x}", buffer[0]);
-
-        // for address in 0..=0x7f {
-        //     let mut result = ctx.local.i2c.write(address, &[0x00]);
-        //     while let Err(err) = result {
-        //         if !err.contains(hal::lpi2c::ControllerStatus::BUS_BUSY) {
-        //             break;
-        //         }
-
-        //         Systick::delay(1u32.millis()).await;
-
-        //         result = ctx.local.i2c.write(address, &[0x00]);
-        //     }
-
-        //     if let Ok(_) = result {
-        //         log::info!("Device Found at Address: {:#010x}", address);
-        //     }
-        // }
 
         log::info!("Completed I2C Devices Scan");
     }
