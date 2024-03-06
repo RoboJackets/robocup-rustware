@@ -16,7 +16,7 @@ use teensy4_panic as _;
 
 #[rtic::app(device = teensy4_bsp, peripherals = true, dispatchers = [GPT2])]
 mod app {
-    use icm42605_driver::Icm42605;
+    use icm42605_driver::IMU;
 
     use bsp::board;
     use teensy4_bsp::{self as bsp, board::{Lpi2c1, PERCLK_FREQUENCY}};
@@ -26,11 +26,11 @@ mod app {
 
     use rtic_monotonics::systick::*;
 
-    type IMU = Icm42605<Lpi2c1>;
+    type Imu = IMU<Lpi2c1>;
 
     #[local]
     struct Local {
-        imu: IMU,
+        imu: Imu,
     }
 
     #[shared]
@@ -55,7 +55,7 @@ mod app {
 
         let mut delay = Blocking::<_, PERCLK_FREQUENCY>::from_pit(pit);
 
-        let imu = match Icm42605::new(i2c, &mut delay) {
+        let imu = match IMU::new(i2c, &mut delay) {
             Ok(imu) => imu,
             Err(_err) => panic!("Unable to Initialize IMU"),
         };

@@ -1,3 +1,9 @@
+//!
+//! Driver for the ICM42605 IMU.
+//!
+//! [Datasheet](https://invensense.tdk.com/wp-content/uploads/2020/09/DS-000292-ICM-42605-v1.5.pdf)
+//!
+
 #![no_std]
 
 use embedded_hal::blocking::{delay::DelayMs, i2c};
@@ -23,12 +29,12 @@ pub fn reading_to_accel(high: u8, low: u8) -> f32 {
     (value as f32) * LSB_TO_G
 }
 
-pub struct Icm42605<I2C> {
+pub struct IMU<I2C> {
     i2c: I2C,
     current_bank: Bank,
 }
 
-impl<I2C: i2c::Write<Error = E> + i2c::Read<Error = E> + 'static, E> Icm42605<I2C> {
+impl<I2C: i2c::Write<Error = E> + i2c::Read<Error = E>, E> IMU<I2C> {
     pub fn new(i2c: I2C, delay: &mut impl DelayMs<u8>) -> Result<Self, E> {
         let mut this = Self {
             i2c,
