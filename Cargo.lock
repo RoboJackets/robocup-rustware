@@ -368,6 +368,7 @@ dependencies = [
  "log",
  "nalgebra",
  "packed_struct",
+ "rgb_led_driver_name",
  "robojackets-robocup-rtp",
  "rtic",
  "rtic-monotonics",
@@ -550,6 +551,14 @@ name = "ral-registers"
 version = "0.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "46b71a9d9206e8b46714c74255adcaea8b11e0350c1d8456165073c3f75fc81a"
+
+[[package]]
+name = "rgb_led_driver_name"
+version = "0.1.0"
+dependencies = [
+ "embedded-hal 0.2.7",
+ "teensy4-bsp",
+]
 
 [[package]]
 name = "robojackets-robocup-rtp"

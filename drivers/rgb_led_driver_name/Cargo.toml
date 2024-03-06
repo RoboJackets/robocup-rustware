@@ -1,0 +1,8 @@
+[package]
+name = "rgb_led_driver_name"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+embedded-hal = "0.2.4"
+teensy4-bsp = "0.4.5"

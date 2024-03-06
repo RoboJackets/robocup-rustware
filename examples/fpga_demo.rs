@@ -10,7 +10,7 @@ use teensy4_panic as _; // allows program to panic and print panic messages
 /// Package used to configure pin configuration
 use imxrt_iomuxc::prelude::*;
 
-//// ASSOCIATED TPYES FOR INSTANCES ////
+//// ASSOCIATED TYPES FOR INSTANCES ////
 use teensy4_pins::common::*; // pad to pin definitions
 use bsp::hal::gpio; // gpio module
 use bsp::hal::gpt::Gpt1; // tpye definition for GPT1
@@ -86,7 +86,7 @@ mod app {
     fn init(cx: init::Context) -> (Shared, Local) {
         // allocate the resources needed
         let board::Resources {
-            // usedd to acces pin names
+            // used to acces pin names
             mut pins,
             // used to control any pin from the gpio2 register
             // (e.g. pin13 for the on board LED)
@@ -277,4 +277,3 @@ mod app {
     }
 
 }
-

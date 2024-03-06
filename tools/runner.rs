@@ -22,7 +22,7 @@ struct Configuration {
 impl Configuration {
     fn new() -> Self {
         let objcopy = env::var("TEENSY4RS_OBJCOPY").unwrap_or_else(|_| "rust-objcopy".into());
-        let loader = env::var("TEENSY4RS_LOADER").unwrap_or_else(|_| "./teensy_loader_cli".into());
+        let loader = env::var("TEENSY4RS_LOADER").unwrap_or_else(|_| "./teensy_loader_cli.exe".into());
         Self { objcopy, loader }
     }
 }
