@@ -17,7 +17,7 @@ use teensy4_panic as _;
 mod app {
     use core::mem::MaybeUninit;
 
-    use embedded_hal::blocking::i2c::WriteRead;
+    use embedded_hal::blocking::i2c::{Write, WriteRead, Read};
 
     use super::*;
 
@@ -62,7 +62,7 @@ mod app {
         let systick_token = rtic_monotonics::create_systick_token!();
         Systick::start(ctx.core.SYST, 600_000_000, systick_token);
 
-        let i2c = board::lpi2c(lpi2c1, pins.p19, pins.p18, board::Lpi2cClockSpeed::MHz1);
+        let i2c = board::lpi2c(lpi2c1, pins.p19, pins.p18, board::Lpi2cClockSpeed::KHz400);
 
         scan_i2c_devices::spawn().ok();
 
@@ -86,15 +86,14 @@ mod app {
     #[task(local=[i2c], priority=1)]
     async fn scan_i2c_devices(ctx: scan_i2c_devices::Context) {
         Systick::delay(TASK_START_DELAY_MS.millis()).await;
-        log::info!("Scanning For I2C Devices");
 
-        for address in 0..128 {
-            log::info!("Writing to Address: {:#01}", address);
-            Systick::delay(100u32.millis()).await;
-            let mut buffer = [0u8];
-            let _ = ctx.local.i2c.write_read(address, &[0x75], &mut buffer);
-            log::info!("Received: {:#01}", buffer[0]);
+        let mut buffer = [0u8];
+
+        if let Err(err) = ctx.local.i2c.write_read(0b1101000, &[0x75], &mut buffer) {
+            log::info!("Error Occurred: {:?}", err);
         }
+
+        log::info!("Who Am I: {:#01x}", buffer[0]);
 
         // let mut buffer = [0u8];
         // if let Err(err) = ctx.local.i2c.write_read(0b1101000, &[0x75], &mut buffer) {

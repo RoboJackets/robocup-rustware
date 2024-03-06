@@ -60,6 +60,8 @@ mod app {
             Err(_err) => panic!("Unable to Initialize IMU"),
         };
 
+        icm::spawn().ok();
+
         (
             Shared {},
             Local {
@@ -106,6 +108,8 @@ mod app {
             };
 
             log::info!("X: {}, Y: {}, Z: {}", accel_x, accel_y, gyro_z);
+
+            Systick::delay(100u32.millis()).await;
         }
     }
 }
