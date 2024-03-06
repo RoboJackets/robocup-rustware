@@ -1,7 +1,7 @@
 //!
 //! This demo example shows how a teensy 4 RTIC application can be set up
 //! and spawns a software task that blinks an onboard led.
-//! 
+//!
 
 #![no_std]
 #![no_main]
@@ -9,7 +9,7 @@
 
 ///
 /// This is a demo example file that turns on and off the onboard led.
-/// 
+///
 /// Please follow this example for future examples and sanity tests
 /// 
 
@@ -33,9 +33,7 @@ mod app {
     }
 
     #[shared]
-    struct Shared {
-
-    }
+    struct Shared {}
 
     #[init]
     fn init(ctx: init::Context) -> (Shared, Local) {
@@ -68,7 +66,7 @@ mod app {
         }
     }
 
-    #[task(local = [], priority = 1)]
+    #[task(priority = 1)]
     async fn blink_led(_ctx: blink_led::Context) {
         loop {
             log::info!("On");

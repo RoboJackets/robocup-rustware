@@ -10,6 +10,7 @@ edition = "2021"
 cortex-m = "0.7" # basic hal package for cortex m microcontroller boards
 log = "0.4" # allows for the logging feautre (a.k.a printing to the serial port)
 teensy4-pins = "0.3.1"
+icm42605-driver = { path = "./drivers/icm42605-driver" }
 imxrt-iomuxc = "0.2.2"
 rtic-nrf24l01 = { git = "https://github.com/N8BWert/rtic-nrf24l01.git" }
 embedded-alloc = "0.5.0"
@@ -68,8 +69,9 @@ path = "drivers/fpga"
 # such as driver files, utility files (e.g. tools), etc.
 [workspace]
 members = [
-    "drivers/fpga",
     "tools",
+    "drivers/icm42605-driver",
+    "drivers/fpga",
 ]
 
 # overrides the release build optimization level
