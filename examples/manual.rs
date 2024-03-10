@@ -221,7 +221,7 @@ mod app {
             },
             Local {
                 radio,
-                motion_controller: MotionControl::new(),
+                motion_controller: MotionControl::without_clock(),
                 fpga,
             }
         )

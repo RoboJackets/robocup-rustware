@@ -156,7 +156,7 @@ mod app {
 
         (
             Shared {
-                motion_controller: MotionControl::new(),
+                motion_controller: MotionControl::without_clock(),
             },
             Local {
                 fpga,
@@ -171,9 +171,9 @@ mod app {
         log::info!("Stats");
 
         ctx.shared.motion_controller.lock(|motion_controller| {
-            let stats = motion_controller.get_stats();
-            log::info!("{}", stats);
-            drop(stats);
+            // let stats = motion_controller.get_stats();
+            // log::info!("{}", stats);
+            // drop(stats);
         });
 
         stats_delay::spawn().ok();
@@ -212,8 +212,6 @@ mod app {
                 Ok(encoder_values) => encoder_values,
                 Err(_) => panic!("Unable to Communicate with the FPGA"),
             };
-
-            motion_controller.add_encoders(encoder_values, now);
         });
 
         *ctx.local.iteration += 1;
