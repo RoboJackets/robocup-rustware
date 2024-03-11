@@ -304,13 +304,8 @@ impl<SPI, CS, InitP, PROG, DoneP, SpiE, PinE, DELAY> FPGA<SPI, CS, InitP, PROG, 
         let mut write_buffer: [u8; 12] = [0x00; 12];
 
         // send READ DUTY CYCLES instruction through SPI transfer transaction
-<<<<<<< HEAD
-        write_buffer[0] = Instruction::ReadDuties.opcode();
-        write_buffer[1] = 0x00; // always append 0x00 after instruction
-=======
         write_buffer[0] = 0x00;
         write_buffer[1] = Instruction::R_DUTY.opcode(); // always append 0x00 after instruction
->>>>>>> main
 
          // Each duty cycle is obtained from two transfer transactions
          // The first transaction returns the MS Byte and the second transanction
