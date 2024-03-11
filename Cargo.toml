@@ -76,6 +76,7 @@ members = [
     "drivers/icm42605-driver",
     "drivers/fpga",
     "drivers/kicker",
+    "drivers/kicker-programmer",
 ]
 
 # overrides the release build optimization level
