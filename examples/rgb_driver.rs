@@ -12,15 +12,16 @@ use teensy4_panic as _;
 #[rtic::app(device = teensy4_bsp, peripherals = true, dispatchers = [GPT2])]
 mod led_control {
     use teensy4_bsp as bsp;
-    use bsp::board;
-    use rtic_monotonics::systick::*;
 
-    // use teensy4_pins::t41::*;
+    use bsp::board;
+    use bsp::hal::gpio; // gpio module
+    use teensy4_pins::t41::*;
+    use rtic_monotonics::systick::*;
     use rgb_led_driver_name::RgbLedDriver;
 
     #[local]
     struct Local {
-        led_driver: RgbLedDriver<OutputPin<Error = ()>, OutputPin<Error = ()>, OutputPin<Error = ()>>,
+        led_driver: RgbLedDriver<gpio::Output<P9>, gpio::Output<P10>, gpio::Output<P11>, core::convert::Infallible>
     }
 
     // the shared group of resources for everything to use amongst all functions
@@ -34,8 +35,7 @@ mod led_control {
 
         // Grab the board peripherals
         let board::Resources {
-            mut pins,
-            mut gpio1,
+            pins,
             mut gpio2,
             usb,
             ..
@@ -48,7 +48,7 @@ mod led_control {
 
         let red_pin = gpio2.output(pins.p9);
         let green_pin = gpio2.output(pins.p10);
-        let blue_pin = gpio2.output(pins.p9);
+        let blue_pin = gpio2.output(pins.p11);
         let led_driver = RgbLedDriver::new(red_pin, green_pin, blue_pin);
 
         // as I understand, this is the initialization calling the first "starting" function?
@@ -70,22 +70,20 @@ mod led_control {
         }
     }
 
-    #[task(local = [], priority = 1)]
-    async fn blink_led(_ctx: blink_led::Context) {
-        loop {
-            log::info!("On");
-
-            Systick::delay(1_000u32.millis()).await;
-
-            log::info!("Off");
-
-            Systick::delay(1_000u32.millis()).await;
-        }
-    }
-
     #[task(local = [led_driver], priority = 1)]
     async fn blink_rgb(_ctx: blink_rgb::Context) {
         let led_driver = _ctx.local.led_driver;
-        led_driver.set_color(true, true, true);
+        
+        // blink red
+        led_driver.set_color(true, false, false);
+        Systick::delay(1_000u32.millis()).await;
+
+        // blink green
+        led_driver.set_color(false, true, false);
+        Systick::delay(1_000u32.millis()).await;
+
+        // blink blue
+        led_driver.set_color(false, false, true);
+        Systick::delay(1_000u32.millis()).await;
     }
 }

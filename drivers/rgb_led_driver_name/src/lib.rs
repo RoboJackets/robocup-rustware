@@ -2,18 +2,27 @@
 #![crate_type = "lib"]
 
 extern crate alloc;
-use core::fmt::Debug; 
 
 
 use embedded_hal::digital::v2::OutputPin;
+// use teensy4_bsp as bsp;
+// use bsp::hal::gpio; 
+// use teensy4_pins::t41::*;
+// use bsp::hal::gpio::Output;
 
-pub struct RgbLedDriver<R:OutputPin<Error = ()>, G:OutputPin<Error = ()>, B:OutputPin<Error = ()>> {
+// pub struct RgbLedDriver<R:gpio::Output<P9>, G:gpio::Output<P10>, B:gpio::Output<P11>> {
+//     red_pin: R,
+//     green_pin: G,
+//     blue_pin: B,
+// }
+
+pub struct RgbLedDriver<R:OutputPin<Error = GPIOE>, G:OutputPin<Error = GPIOE>, B:OutputPin<Error = GPIOE>, GPIOE> {
     red_pin: R,
     green_pin: G,
     blue_pin: B,
-}   
+}
 
-impl<R: OutputPin<Error = ()>, G: OutputPin<Error = ()>, B: OutputPin<Error = ()> + Debug> RgbLedDriver<R, G, B> {
+impl<R: OutputPin<Error = GPIOE>, G: OutputPin<Error = GPIOE>, B: OutputPin<Error = GPIOE>, GPIOE> RgbLedDriver<R, G, B, GPIOE> {
     pub fn new(red: R, green: G, blue: B) -> Self {
 
         // sets the output directory for the pins --> not sure if necessary since they are output pins?
@@ -22,13 +31,13 @@ impl<R: OutputPin<Error = ()>, G: OutputPin<Error = ()>, B: OutputPin<Error = ()
 
     pub fn set_color(&mut self, red: bool, green: bool, blue: bool) {
         if !red {
-            self.red_pin.set_low().unwrap();
+            let _ = self.red_pin.set_low();
         }
         if !green {
-            self.green_pin.set_low().unwrap();
+            let _ = self.green_pin.set_low();
         }
         if !blue {
-            self.blue_pin.set_low().unwrap();
+            let _ = self.blue_pin.set_low();
         }
 
     }
