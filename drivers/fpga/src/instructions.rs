@@ -3,23 +3,20 @@
 
 #[allow(dead_code, non_camel_case_types)]
 
-use core::fmt::Debug;
+#[allow(dead_code, non_camel_case_types)]
 
-/// Instructions to be sent to the FPGA for performing various operations.
-/// 
-/// In general, these instructions should never be used alone and instead, the
-/// methods present in the library files should be used to generate these instructions.
-#[derive(Clone, Copy, Debug)]
+/// Instruction to Send to the Robot
+#[derive(Clone, Copy)]
 pub(crate) enum Instruction {
-    EnableMotors = 0x30,
-    DisableMotors = 0xB0,
-    ReadEncodersWriteVelocity = 0x80,
-    ReadEncoders = 0x91,
-    ReadHalls = 0x92,
-    ReadDuties = 0x93,
-    ReadHash1 = 0x94,
-    ReadHash2 = 0x95,
-    CheckDrive = 0x96,
+    EN_MOTORS = 0x30,
+    DIS_MOTORS = 0xB0,
+    R_ENC_W_VEL = 0x80,
+    R_ENC = 0x91,
+    R_HALLS = 0x92,
+    R_DUTY = 0x93,
+    R_HASH_1 = 0x94,
+    R_HASH_2 = 0x95,
+    CHECK_DRV = 0x96,
 }
 
 impl Instruction {

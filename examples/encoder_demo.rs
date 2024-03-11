@@ -59,13 +59,16 @@ mod app {
     const SECOND_DELAY: u32 = SYST_MONO_FACTOR * 1000;    // 1 s delay
 
     // MOTION SPEED in DUTY CYCLE
-    const SPEED: i16 = 63;
+    const SPEED: i16 = 64;
+    const SLOW_SPEED: i16 = 32;
+    const FAST_SPEED: i16 = 128;
+
     // timer stuff
     const GPT1_FREQUENCY: u32 = 1_000;
     const GPT1_CLOCK_SOURCE: ClockSource = ClockSource::HighFrequencyReferenceClock;
     const GPT1_DIVIDER: u32 = board::PERCLK_FREQUENCY / GPT1_FREQUENCY;
 
-    // type definitions to simplify Local and Shared Definitions
+    // type definitions to simplify calling conventions
     type Delay = Blocking<Gpt1, GPT1_FREQUENCY>;
     type Fpga = FPGA<board::Lpspi4, gpio::Output<P9>, P29, gpio::Output<P28>, P30, Delay>;
 
@@ -177,8 +180,11 @@ mod app {
     async fn init_fpga(cx: init_fpga::Context) {
         // acquire fpga instance from local resources
         let fpga = cx.local.fpga;
-        Systick::delay(SECOND_DELAY.millis()).await;
-
+        
+        // start the test :)
+        log::info!("[INIT] FPGA ENCODER DEMO");
+        Systick::delay(3*SECOND_DELAY.millis()).await;
+        
         // attempt to configure the fpga :)
         match fpga.configure() {
             Ok(_) => log::info!("Configuration worked???"),
@@ -200,63 +206,69 @@ mod app {
         };
         Systick::delay(TEN_MS_DELAY.millis()).await;
 
-        // TODO: Verify that each duty cycle corresponds to each respective motor
+        
+        // drive forward at different speeds -> should be measuring different encoder values
         loop {
-            // move forward for 2 seconds
+            // encoder array to hold the data :)
+            let mut encs_value: [i16; 5] = [0;5];
+
+            // move forward at SPEED
             log::info!("moving forward!");
             Systick::delay(TEN_MS_DELAY.millis()).await;
-            for _ in 0..100 {
+            for _ in 0..500 {
                 // forward direction duty cycles
                 let mut duty_cycles = [DutyCycle::from(SPEED as i16),     // motor 1
                                 DutyCycle::from(SPEED as i16),                            // motor 2
-                                DutyCycle::from(-SPEED as i16),                             // motor 3
-                                DutyCycle::from(-SPEED as i16),                             // motor 4
+                                DutyCycle::from(SPEED as i16),                             // motor 3
+                                DutyCycle::from(SPEED as i16),                             // motor 4
                                 DutyCycle::from(256 as i16)];                            // dribbler
                 // write duty cycle
-                match fpga.set_duty_cycles(&mut duty_cycles) {
+                match fpga.set_duty_get_encs(&mut duty_cycles, &mut encs_value) {
                     Ok(status) => log::info!("wrote duty cycles fpga status: {:b}", status),
                     Err(e) => panic!("error writing duty cycles... {:?}", e),
                 };
+                log::info!("Encoder Data: {:?}", encs_value);
                 Systick::delay(HUNDRED_MS_DELAY.millis()).await;
             }
 
-            // move backwards for 2 seconds
+            // move forward at SLOW_SPEED
             log::info!("moving backwards!");
             Systick::delay(TEN_MS_DELAY.millis()).await;
-            for _ in 0..100 {
+            for _ in 0..500 {
                 // forward direction duty cycles
-                let mut duty_cycles = [DutyCycle::from(-SPEED as i16),     // motor 1
-                                DutyCycle::from(-SPEED as i16),                            // motor 2
-                                DutyCycle::from(SPEED as i16),                           // motor 3
-                                DutyCycle::from(SPEED as i16),                           // motor 4
+                let mut duty_cycles = [DutyCycle::from(SLOW_SPEED as i16),     // motor 1
+                                DutyCycle::from(SLOW_SPEED as i16),                            // motor 2
+                                DutyCycle::from(SLOW_SPEED as i16),                           // motor 3
+                                DutyCycle::from(SLOW_SPEED as i16),                           // motor 4
                                 DutyCycle::from(256 as i16)];                           // dribbler
                 // write duty cycle
-                match fpga.set_duty_cycles(&mut duty_cycles) {
+                match fpga.set_duty_get_encs(&mut duty_cycles, &mut encs_value) {
                     Ok(status) => log::info!("wrote duty cycles fpga status: {:b}", status),
                     Err(e) => panic!("error writing duty cycles... {:?}", e),
                 };
+                log::info!("Encoder Data: {:?}", encs_value);
                 Systick::delay(HUNDRED_MS_DELAY.millis()).await;
             }
 
-            // spin for 5 seconds
+            // move forward at FAST_SPEED
             log::info!("spinning!");
             Systick::delay(TEN_MS_DELAY.millis()).await;
             for _ in 0..100 {
                 // forward direction duty cycles
-                let mut duty_cycles = [DutyCycle::from(SPEED as i16), 
-                                DutyCycle::from(SPEED as i16), 
-                                DutyCycle::from(SPEED as i16),
-                                DutyCycle::from(SPEED as i16),
+                let mut duty_cycles = [DutyCycle::from(FAST_SPEED as i16), 
+                                DutyCycle::from(FAST_SPEED as i16), 
+                                DutyCycle::from(FAST_SPEED as i16),
+                                DutyCycle::from(FAST_SPEED as i16),
                                 DutyCycle::from(256 as i16)];
                 // write duty cycle
-                match fpga.set_duty_cycles(&mut duty_cycles) {
+                match fpga.set_duty_get_encs(&mut duty_cycles, &mut encs_value) {
                     Ok(status) => log::info!("wrote duty cycles fpga status: {:b}", status),
                     Err(e) => panic!("error writing duty cycles... {:?}", e),
                 };
                 Systick::delay(HUNDRED_MS_DELAY.millis()).await;
             }
 
-            // still for 3 seconds
+            // stand still
             log::info!("standby...");
             Systick::delay(TEN_MS_DELAY.millis()).await;
             for _ in 0..100 {
@@ -267,7 +279,7 @@ mod app {
                                 DutyCycle::from(0 as i16),
                                 DutyCycle::from(256 as i16)];
                 // write duty cycle
-                match fpga.set_duty_cycles(&mut duty_cycles) {
+                match fpga.set_duty_get_encs(&mut duty_cycles, &mut encs_value) {
                     Ok(status) => log::info!("wrote duty cycles fpga status: {:b}", status),
                     Err(e) => panic!("error writing duty cycles... {:?}", e),
                 };

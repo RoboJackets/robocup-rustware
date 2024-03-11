@@ -1,7 +1,7 @@
 //!
 //! This demo example shows how a teensy 4 RTIC application can be set up
 //! and spawns a software task that blinks an onboard led.
-//! 
+//!
 
 #![no_std]
 #![no_main]
@@ -9,11 +9,9 @@
 
 ///
 /// This is a demo example file that turns on and off the onboard led.
-/// 
+///
 /// Please follow this example for future examples and sanity tests
 /// 
-
-extern crate alloc;
 
 use embedded_alloc::Heap;
 
@@ -24,17 +22,9 @@ use teensy4_panic as _;
 
 #[rtic::app(device = teensy4_bsp, peripherals = true, dispatchers = [GPT2])]
 mod app {
-    use teensy4_pins::t41::{Pins, *};
-
     use teensy4_bsp as bsp;
     use bsp::board;
     use bsp::board::LPSPI_FREQUENCY;
-
-    use bsp::hal as hal;
-    use hal::gpio::Output;
-
-    use bsp::ral as ral;
-    use ral::lpspi::{LPSPI1, LPSPI2, LPSPI3, LPSPI4};
 
     use rtic_monotonics::systick::*;
 
@@ -44,15 +34,11 @@ mod app {
     }
 
     #[shared]
-    struct Shared {
-
-    }
+    struct Shared {}
 
     #[init]
     fn init(ctx: init::Context) -> (Shared, Local) {
         let board::Resources {
-            pins,
-            mut gpio2,
             usb,
             ..
         } = board::t41(ctx.device);
@@ -65,8 +51,11 @@ mod app {
         blink_led::spawn().ok();
 
         (
-            Shared {},
+            Shared {
+
+            },
             Local {
+                
             },
         )
     }
@@ -78,8 +67,8 @@ mod app {
         }
     }
 
-    #[task(local = [], priority = 1)]
-    async fn blink_led(ctx: blink_led::Context) {
+    #[task(priority = 1)]
+    async fn blink_led(_ctx: blink_led::Context) {
         loop {
             log::info!("On");
 

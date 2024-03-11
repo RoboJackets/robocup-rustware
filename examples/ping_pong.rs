@@ -28,13 +28,11 @@ mod app {
     use rtic_monotonics::systick::*;
     use you_must_enable_the_rt_feature_for_the_pac_in_your_cargo_toml::board::LPSPI_FREQUENCY;
 
-    const DELAY_MS: u32 = 5_000;
     const GPT1_FREQUENCY: u32 = 1_000;
     const GPT1_CLOCK_SOURCE: ClockSource = ClockSource::HighFrequencyReferenceClock;
     const GPT1_DIVIDER: u32 = board::PERCLK_FREQUENCY / GPT1_FREQUENCY;
 
     type Delay = Blocking<Gpt1, GPT1_FREQUENCY>;
-    type SPI = Lpspi<board::LpspiPins<P11, P12, P13, P10>, 4>;
     type CE = Output<P0>;
     type CSN = Output<P9>;
     type SharedSPI = Lpspi<board::LpspiPins<P26, P39, P27, P38>, 3>;
@@ -57,7 +55,6 @@ mod app {
             mut gpio1,
             mut gpio2,
             usb,
-            lpspi4,
             mut gpt1,
             ..
         } = board::t41(ctx.device);
@@ -100,7 +97,7 @@ mod app {
         radio.set_pa_level(power_amplifier::PowerAmplifier::PALow, &mut shared_spi, &mut delay);
         radio.set_payload_size(4, &mut shared_spi, &mut delay);
         radio.open_writing_pipe([0xE7, 0xE7, 0xE7, 0xE7, 0xE7], &mut shared_spi, &mut delay);
-        radio.open_reading_pipe(1, [0xC3, 0xC3, 0xC3 ,0xC3, 0xC3], &mut shared_spi, &mut delay);
+        radio.open_reading_pipe(1, [0xC3, 0xC3, 0xC3 ,0xC3, 0xC1], &mut shared_spi, &mut delay);
         radio.start_listening(&mut shared_spi, &mut delay);
 
         ping_pong::spawn().unwrap();
@@ -124,13 +121,13 @@ mod app {
     }
 
     #[task(priority = 1)]
-    async fn wait_one_second(ctx: wait_one_second::Context) {
+    async fn wait_one_second(_ctx: wait_one_second::Context) {
         Systick::delay(1_000u32.millis()).await;
 
         ping_pong::spawn().ok();
     }
 
-    #[task(local=[radio, listening: bool =true, payload: u32 =0], shared=[delay, shared_spi], priority = 1)]
+    #[task(local=[radio, listening: bool = true, payload: u32 =0], shared=[delay, shared_spi], priority = 1)]
     async fn ping_pong(ctx: ping_pong::Context) {
         if *ctx.local.listening {
             (ctx.shared.delay, ctx.shared.shared_spi).lock(|delay, spi| {
