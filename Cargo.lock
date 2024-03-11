@@ -396,6 +396,7 @@ dependencies = [
  "icm42605-driver",
  "imxrt-iomuxc",
  "kicker",
+ "kicker-programmer",
  "libm",
  "log",
  "nalgebra",

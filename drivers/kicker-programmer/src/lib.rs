@@ -9,8 +9,7 @@
 #![crate_type = "lib"]
 
 mod binary;
-
-use core::marker::PhantomData;
+use binary::KICKER_BINARY;
 
 use embedded_hal::digital::v2::OutputPin;
 use embedded_hal::blocking::spi::{Transfer, Write};
@@ -31,6 +30,7 @@ pub enum KickerProgramError<SPIE, GPIOE> {
     InvalidDeviceId{expected: u8, found: u8},
     InvalidBinarySize{max: usize, found: usize},
     FailedToProgramKicker,
+    UnableToEnableProgramming,
     GpioError(GPIOE),
     SpiError(SPIE),
     SpiGpioError((SPIE, GPIOE)),
@@ -68,7 +68,7 @@ pub struct KickerProgrammer<CSN, RESET, SPI, DELAY, GPIOE, SPIE> where
     reset: RESET,
 }
 
-impl<CSN, RESET, SPI, DELAY, GPIOE, SPIE> Kicker<CSN, RESET, SPI, DELAY, GPIOE, SPIE> where
+impl<CSN, RESET, SPI, DELAY, GPIOE, SPIE> KickerProgrammer<CSN, RESET, SPI, DELAY, GPIOE, SPIE> where
     CSN: OutputPin<Error=GPIOE>,
     RESET: OutputPin<Error=GPIOE>,
     SPI: Transfer<u8, Error=SPIE> + Write<u8, Error=SPIE>,
@@ -79,6 +79,28 @@ impl<CSN, RESET, SPI, DELAY, GPIOE, SPIE> Kicker<CSN, RESET, SPI, DELAY, GPIOE, 
             delay,
             csn,
             reset,
+        }
+    }
+
+    pub fn init(&mut self) -> Result<(), KickerProgramError<SPIE, GPIOE>> {
+        self.csn.set_high().map_err(KickerProgramError::GpioError)?;
+
+        let mut enabled = false;
+        for _ in 0..20 {
+            self.reset.set_high().map_err(KickerProgramError::GpioError)?;
+            self.delay.delay_ms(100);
+            self.reset.set_low().map_err(KickerProgramError::GpioError)?;
+            self.delay.delay_ms(100);
+
+            enabled = self.enable_programming()?;
+            if enabled {
+                break;
+            }
+        }
+
+        match enabled {
+            true => Ok(()),
+            false => Err(KickerProgramError::UnableToEnableProgramming),
         }
     }
 
@@ -110,7 +132,9 @@ impl<CSN, RESET, SPI, DELAY, GPIOE, SPIE> Kicker<CSN, RESET, SPI, DELAY, GPIOE, 
     }
 
     /// Determine whether the program to flash is the same as the program already flashed to the kicker.
-    pub fn programs_different(&mut self, program: &[u8]) -> Result<bool, KickerProgramError<SPIE, GPIOE>> {
+    pub fn programs_different(&mut self) -> Result<bool, KickerProgramError<SPIE, GPIOE>> {
+        let program = &KICKER_BINARY;
+
         if program.len() > MAX_BINARY_SIZE {
             return Err(KickerProgramError::InvalidBinarySize { max: MAX_BINARY_SIZE, found: program.len() });
         }
@@ -120,7 +144,7 @@ impl<CSN, RESET, SPI, DELAY, GPIOE, SPIE> Kicker<CSN, RESET, SPI, DELAY, GPIOE, 
             for offset in 0..ATMEGA_PAGESIZE {
                 let low_byte = self.read_program_memory(MemoryByte::Low, page, offset)?;
                 if low_byte != program[program_pointer] {
-                    return (Ok(true));
+                    return Ok(true);
                 }
                 program_pointer += 1;
                 if program_pointer >= program.len() {
@@ -129,7 +153,7 @@ impl<CSN, RESET, SPI, DELAY, GPIOE, SPIE> Kicker<CSN, RESET, SPI, DELAY, GPIOE, 
 
                 let high_byte = self.read_program_memory(MemoryByte::High, page, offset)?;
                 if high_byte != program[program_pointer] {
-                    return (Ok(true));
+                    return Ok(true);
                 }
                 program_pointer += 1;
                 if program_pointer >= program.len() {
@@ -141,7 +165,9 @@ impl<CSN, RESET, SPI, DELAY, GPIOE, SPIE> Kicker<CSN, RESET, SPI, DELAY, GPIOE, 
     }
 
     /// Program the Kicker
-    pub fn program(&mut self, program: &[u8]) -> Result<(), KickerProgramError<SPIE, GPIOE>> {
+    pub fn program(&mut self) -> Result<(), KickerProgramError<SPIE, GPIOE>> {
+        let program = &KICKER_BINARY;
+
         if program.len() > MAX_BINARY_SIZE {
             return Err(KickerProgramError::InvalidBinarySize { max: MAX_BINARY_SIZE, found: program.len() });
         }
@@ -149,10 +175,10 @@ impl<CSN, RESET, SPI, DELAY, GPIOE, SPIE> Kicker<CSN, RESET, SPI, DELAY, GPIOE, 
         self.erase()?;
 
         let mut program_pointer = 0;
-        'page: for page in ATMEGA_NUM_PAGES {
-            for offset in ATMEGA_PAGESIZE {
+        'page: for page in 0..ATMEGA_NUM_PAGES {
+            for offset in 0..ATMEGA_PAGESIZE {
                 // Write Low Byte
-                self.load_memory_page(MemoryByte::Low, offset, page[program_pointer])?;
+                self.load_memory_page(MemoryByte::Low, offset, program[program_pointer])?;
                 program_pointer += 1;
                 if program_pointer >= program.len() {
                     self.write_page(page)?;
@@ -160,7 +186,7 @@ impl<CSN, RESET, SPI, DELAY, GPIOE, SPIE> Kicker<CSN, RESET, SPI, DELAY, GPIOE, 
                     break 'page;
                 }
 
-                self.load_memory_page(MemoryByte::High, offset, page[program_pointer])?;
+                self.load_memory_page(MemoryByte::High, offset, program[program_pointer])?;
                 program_pointer += 1;
                 if program_pointer >= program.len() {
                     self.write_page(page)?;
@@ -172,7 +198,7 @@ impl<CSN, RESET, SPI, DELAY, GPIOE, SPIE> Kicker<CSN, RESET, SPI, DELAY, GPIOE, 
             self.poll()?;
         }
 
-        let success = self.programs_different(program)?;
+        let success = self.programs_different()?;
 
         self.exit_programming()?;
 
@@ -182,13 +208,25 @@ impl<CSN, RESET, SPI, DELAY, GPIOE, SPIE> Kicker<CSN, RESET, SPI, DELAY, GPIOE, 
         }
     }
 
+    fn enable_programming(&mut self) -> Result<bool, KickerProgramError<SPIE, GPIOE>> {
+        self.delay.delay_us(10);
+        let mut buffer = [0u8; 4];
+        self.transfer(&mut buffer)?;
+        self.delay.delay_us(10);
+
+        match buffer[2] {
+            0x53 => Ok(true),
+            _ => Ok(false),
+        }
+    }
+
     /// Load data into memory at a specific page offset.
-    fn load_memory_page(&mut self, high_low: MemoryByte, address: u8, data: u8) -> Result<(), KickerProgramError<SPIE, GPIOE>> {
+    fn load_memory_page(&mut self, high_low: MemoryByte, address: usize, data: u8) -> Result<(), KickerProgramError<SPIE, GPIOE>> {
         self.delay.delay_us(10);
         self.write(&[
             high_low.write(),
             0x00,
-            address & 0x3F,
+            (address & 0x3F) as u8,
             data,
         ])?;
         self.delay.delay_us(10);
@@ -202,7 +240,7 @@ impl<CSN, RESET, SPI, DELAY, GPIOE, SPIE> Kicker<CSN, RESET, SPI, DELAY, GPIOE, 
             (page >> 2) as u8,
             (page << 6) as u8,
             0x00
-        ]);
+        ])?;
         self.delay.delay_us(10);
         Ok(())
     }
@@ -278,14 +316,15 @@ impl<CSN, RESET, SPI, DELAY, GPIOE, SPIE> Kicker<CSN, RESET, SPI, DELAY, GPIOE, 
         }
     }
 
-    fn write(&mut self, data: &[u8], spi: &mut SPI, delay: &mut DELAY)
+    fn write(&mut self, data: &[u8])
         -> Result<(), KickerProgramError<SPIE, GPIOE>> {
         self.csn.set_low().map_err(KickerProgramError::GpioError)?;
-        let spi_err = spi.write(data);
+        let spi_err = self.spi.write(data);
         let gpio_err = self.csn.set_high();
+        self.delay.delay_us(1);
 
         match (spi_err, gpio_err) {
-            (Err(spi), Err(gpio)) => Err(KickerProgramError::SpiGpioError((spie, gpio))),
+            (Err(spi), Err(gpio)) => Err(KickerProgramError::SpiGpioError((spi, gpio))),
             (Err(err), _) => Err(KickerProgramError::SpiError(err)),
             (_, Err(err)) => Err(KickerProgramError::GpioError(err)),
             (_, _) => Ok(()),
