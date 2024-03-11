@@ -1,0 +1,1 @@
+pub const KICKER_BINARY: [u8; 100] = [0u8; 100];
