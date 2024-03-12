@@ -65,6 +65,9 @@ features = ["log"]
 [dependencies.fpga-rs]
 path = "drivers/fpga"
 
+[dependencies.io-expander]
+path = "drivers/io-expander"
+
 # the root package is also a workspace that holds all of the neccesary "supporting" packages
 # such as driver files, utility files (e.g. tools), etc.
 [workspace]
@@ -72,6 +75,7 @@ members = [
     "tools",
     "drivers/icm42605-driver",
     "drivers/fpga",
+    "drivers/io-expander",
 ]
 
 # overrides the release build optimization level

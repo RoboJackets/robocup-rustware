@@ -3,6 +3,7 @@
     "rust-analyzer.check.allTargets": false,
     "rust-analyzer.linkedProjects": [
         "./Cargo.toml",
+        "./drivers/io-expander/Cargo.toml"
     ],
     "rust-analyzer.check.extraArgs": [
         "--examples",
