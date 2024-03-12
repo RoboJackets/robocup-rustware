@@ -30,15 +30,21 @@ impl<R: OutputPin<Error = GPIOE>, G: OutputPin<Error = GPIOE>, B: OutputPin<Erro
     }
 
     pub fn set_color(&mut self, red: bool, green: bool, blue: bool) {
-        if !red {
+        // println!("Setting color");
+        if red {
+            let _ = self.red_pin.set_high();
+        } else {
             let _ = self.red_pin.set_low();
         }
-        if !green {
+        if green {
+            let _ = self.green_pin.set_high();
+        } else {
             let _ = self.green_pin.set_low();
         }
-        if !blue {
+        if blue {
+            let _ = self.blue_pin.set_high();
+        } else {
             let _ = self.blue_pin.set_low();
         }
-
     }
 }

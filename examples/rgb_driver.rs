@@ -73,17 +73,19 @@ mod led_control {
     #[task(local = [led_driver], priority = 1)]
     async fn blink_rgb(_ctx: blink_rgb::Context) {
         let led_driver = _ctx.local.led_driver;
-        
-        // blink red
-        led_driver.set_color(true, false, false);
-        Systick::delay(1_000u32.millis()).await;
 
-        // blink green
-        led_driver.set_color(false, true, false);
-        Systick::delay(1_000u32.millis()).await;
+        for x in 0..10 {
+            // blink red
+            led_driver.set_color(true, true, false);
+            Systick::delay(1_000u32.millis()).await;
 
-        // blink blue
-        led_driver.set_color(false, false, true);
-        Systick::delay(1_000u32.millis()).await;
+            // blink green
+            led_driver.set_color(false, true, true);
+            Systick::delay(1_000u32.millis()).await;
+
+            // blink blue
+            led_driver.set_color(true, false, true);
+            Systick::delay(1_000u32.millis()).await;
+        }
     }
 }
