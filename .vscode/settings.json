@@ -3,8 +3,12 @@
     "rust-analyzer.check.allTargets": false,
     "rust-analyzer.linkedProjects": [
         "./Cargo.toml",
+        ".\\drivers\\rotary\\Cargo.toml",
+        ".\\drivers\\rotary\\Cargo.toml",
+        ".\\drivers\\rotary\\Cargo.toml"
     ],
     "rust-analyzer.check.extraArgs": [
         "--examples",
     ],
+    "rust-analyzer.showUnlinkedFileNotification": false,
 }
