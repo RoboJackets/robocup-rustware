@@ -5,6 +5,7 @@
 #![allow(unused)]
 
 /// Pins accessible via the io_expander
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Pin {
     PA0 = 0,
     PA1 = 1,
