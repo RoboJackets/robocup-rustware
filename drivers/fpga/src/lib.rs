@@ -376,7 +376,7 @@ impl<SPI, CS, INIT, PROG, DONE, DELAY, SPIE, GPIOE> FPGA<SPI, CS, INIT, PROG, DO
         &mut self,
         wheel_duty_cycles: [f32; 4],
         _dribbler_duty_cycle: f32,
-    ) -> Result<[i16; 5], FpgaError<SPIE, GPIOE>> {
+    ) -> Result<[u8; 10], FpgaError<SPIE, GPIOE>> {
         let mut write_buffer = [0u8; 12];
         write_buffer[0] = Instruction::R_ENC_W_VEL.opcode();
 
@@ -384,12 +384,14 @@ impl<SPI, CS, INIT, PROG, DONE, DELAY, SPIE, GPIOE> FPGA<SPI, CS, INIT, PROG, DO
 
         // TODO: Write dribbler to write_buffer[9] and write_buffer[10]
         // duty_cycle_to_fpga(dribbler_duty_cycle, &mut write_buffer[9..11]);
-        write_buffer[10] = 0x01;
-        write_buffer[11] = 0x00;
+        write_buffer[9] = 0x01;
+        write_buffer[10] = 0x00;
 
         self.spi_transfer(&mut write_buffer[..])?;
 
-        Ok(buffer_to_i16s(&write_buffer[1..11]))
+        let mut result = [0u8; 10];
+        result[..].copy_from_slice(&write_buffer[1..11]);
+        Ok(result)
     }
 
     /// Set the duty cycles and read the current encoder values from the FPGA

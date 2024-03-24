@@ -4,6 +4,7 @@
 extern crate alloc;
 
 pub mod motion_control;
+pub mod collect;
 
 #[cfg(not(any(
     feature = "robot-0",

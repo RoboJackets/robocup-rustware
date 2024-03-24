@@ -72,6 +72,9 @@ path = "drivers/motion"
 [dependencies.controller]
 path = "drivers/controller"
 
+[dependencies.w25q128]
+git = "https://github.com/N8BWert/w25q128.git"
+
 # the root package is also a workspace that holds all of the neccesary "supporting" packages
 # such as driver files, utility files (e.g. tools), etc.
 [workspace]

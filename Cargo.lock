@@ -409,6 +409,7 @@ dependencies = [
  "teensy4-bsp",
  "teensy4-panic",
  "teensy4-pins",
+ "w25q128",
 ]
 
 [[package]]
@@ -862,6 +863,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "de437e2a6208b014ab52972a27e59b33fa2920d3e00fe05026167a1c509d19cc"
 dependencies = [
  "vcell",
+]
+
+[[package]]
+name = "w25q128"
+version = "0.1.0"
+source = "git+https://github.com/N8BWert/w25q128.git#ebb1aebc54a0d49f3b637b86bdeab170ded165c8"
+dependencies = [
+ "defmt",
+ "defmt-macros",
+ "embedded-hal 0.2.7",
+ "fugit",
 ]
 
 [[package]]
