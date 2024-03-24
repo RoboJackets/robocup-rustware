@@ -4,7 +4,7 @@
 
 In 2023, we decided to switch microcontrollers from the team built A-Train microcontroller to the off-the-shelf Teensy 4.1 microcontroller.  In making this switch the team also decided that a full firmware rewrite was in order.
 
-Therefore, this repository contains the code for the firmware for the RoboCup team.
+Therefore, this repository contains the code for the firmware for the RoboJackets RoboCup team.
 
 ## Common Commands
 
