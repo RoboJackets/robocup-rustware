@@ -106,11 +106,17 @@ impl MotionControl {
 
     /// Convert target velocity to wheel velocity compensating for the rotation over time.
     pub fn control_update(&mut self, mut target_velocity: Vector3<f32>, rotational_measurement: f32) -> Vector4<f32> {
+        if target_velocity == Vector3::zeros() {
+            return Vector4::zeros();
+        }
+
+        if self.last_target_velocity[2] != rotational_measurement {
+            self.counter += 1;
+        }
         let rotational_difference = self.last_target_velocity[2] - rotational_measurement;
         self.rotational_correction += rotational_difference * self.scale_factor;
         target_velocity[2] += self.rotational_correction;
 
-        self.counter += 1;
         if self.counter == 100 {
             self.counter = 0;
             self.scale_factor *= SCALE_FACTOR;
@@ -337,5 +343,17 @@ mod tests {
         let wheel_velocities = motion_control.control_update(target_motion, angular_measurement);
 
         assert_eq!(wheel_velocities, motion_control.body_to_wheels(Vector3::new(1.0, 0.0, 0.1)));
+    }
+
+    #[test]
+    fn test_zero_is_zero() {
+        let mut motion_control = MotionControl::without_clock();
+
+        let target_motion = Vector3::zeros();
+        let angular_measurement = -0.1;
+
+        let wheel_velocities = motion_control.control_update(target_motion, angular_measurement);
+
+        assert_eq!(wheel_velocities, Vector4::zeros());
     }
 }

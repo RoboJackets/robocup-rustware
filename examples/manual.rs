@@ -30,6 +30,7 @@ mod app {
     use nalgebra::Vector3;
     use teensy4_bsp as bsp;
     use bsp::board::{self, LPSPI_FREQUENCY};
+    use bsp::board::{Lpi2c1, PERCLK_FREQUENCY};
 
     use teensy4_pins::t41::*;
 
@@ -59,6 +60,8 @@ mod app {
     use fpga::FPGA_SPI_MODE;
     use fpga::FPGA;
 
+    use icm42605_driver::IMU;
+
     // Constants
     const GPT_FREQUENCY: u32 = 1_000;
     const GPT_CLOCK_SOURCE: ClockSource = ClockSource::HighFrequencyReferenceClock;
@@ -76,19 +79,22 @@ mod app {
     // Shared Spi
     type SharedSPI = Lpspi<board::LpspiPins<P26, P39, P27, P38>, 3>;
     type RadioCE = Output<P0>;
-    type RadioCSN = Output<P2>;
+    type RadioCSN = Output<P6>;
     type RadioInterrupt = Input<P1>;
     // Delays
     type Delay1 = Blocking<Gpt1, GPT_FREQUENCY>;
     type Delay2 = Blocking<Gpt2, GPT_FREQUENCY>;
     // GPIO Ports
     type Gpio1 = Port<1>;
+    // IMU
+    type Imu = IMU<Lpi2c1>;
 
     #[local]
     struct Local {
         radio: Radio<RadioCE, RadioCSN, SharedSPI, Delay2, Infallible, LpspiError>,
         motion_controller: MotionControl,
         fpga: Fpga,
+        imu: Imu,
     }
 
     #[shared]
@@ -114,9 +120,11 @@ mod app {
             mut gpio3,
             mut gpio4,
             usb,
+            lpi2c1,
             lpspi4,
             mut gpt1,
             mut gpt2,
+            pit: (pit1, _pit2, _pit3, _pit4),
             ..
         } = board::t41(ctx.device);
 
@@ -158,6 +166,14 @@ mod app {
             spi.set_mode(FPGA_SPI_MODE);
         });
 
+        // Initialize IMU
+        let i2c = board::lpi2c(lpi2c1, pins.p19, pins.p18, board::Lpi2cClockSpeed::KHz400);
+        let mut pit_delay = Blocking::<_, PERCLK_FREQUENCY>::from_pit(pit1);
+        let imu = match IMU::new(i2c, &mut pit_delay) {
+            Ok(imu) => imu,
+            Err(_err) => panic!("Unable to Initialize IMU"),
+        };
+
         // Initialize pins for the FPGA
         let cs = gpio2.output(pins.p9);
         let init_b = gpio4.input(pins.p29);
@@ -183,12 +199,12 @@ mod app {
         let mut shared_spi = Lpspi::new(shared_spi_block, shared_spi_pins);
 
         shared_spi.disabled(|spi| {
-            spi.set_clock_hz(LPSPI_FREQUENCY, 10_000_000u32);
+            spi.set_clock_hz(LPSPI_FREQUENCY, 5_000_000u32);
             spi.set_mode(MODE_0);
         });
 
         // Init radio cs pin and ce pin
-        let radio_cs = gpio4.output(pins.p2);
+        let radio_cs = gpio2.output(pins.p6);
         let ce = gpio1.output(pins.p0);
 
         // Initialize radio
@@ -223,6 +239,7 @@ mod app {
                 radio,
                 motion_controller: MotionControl::without_clock(),
                 fpga,
+                imu,
             }
         )
     }
@@ -236,6 +253,9 @@ mod app {
 
     #[task(binds = GPIO1_COMBINED_0_15, shared = [rx_int, gpio1], priority = 2)]
     fn radio_interrupt(ctx: radio_interrupt::Context) {
+        #[cfg(feature = "debug")]
+        log::info!("Command Received");
+        
         if (ctx.shared.rx_int, ctx.shared.gpio1).lock(|rx_int, gpio1| {
             if rx_int.is_triggered() {
                 rx_int.clear_triggered();
@@ -303,7 +323,7 @@ mod app {
         });
     }
 
-    #[task(shared = [control_message], local = [fpga, motion_controller, initialized: bool = false, last_encoders: [i16; 5] = [0i16; 5], iteration: u32 = 0], priority = 1)]
+    #[task(shared = [control_message], local = [fpga, motion_controller, imu, initialized: bool = false, last_encoders: [i16; 5] = [0i16; 5], iteration: u32 = 0], priority = 1)]
     async fn motion_control_loop(mut ctx: motion_control_loop::Context) {
         if !*ctx.local.initialized {
             match ctx.local.fpga.configure() {
@@ -331,7 +351,17 @@ mod app {
             }
         });
 
-        let wheel_velocities = ctx.local.motion_controller.body_to_wheels(body_velocities);
+        let gyro = match ctx.local.imu.gyro_z() {
+            Ok(gyro) => gyro,
+            Err(_err) => {
+                #[cfg(feature = "debug")]
+                log::info!("Unable to Read Gyro");
+                body_velocities[2]
+            }
+        };
+
+        let wheel_velocities = ctx.local.motion_controller.control_update(body_velocities, gyro);
+        // let wheel_velocities = ctx.local.motion_controller.body_to_wheels(body_velocities);
 
         if ctx.local.fpga.set_duty_cycles(wheel_velocities.into(), 0.0).is_err() {
             #[cfg(feature = "debug")]
@@ -340,7 +370,7 @@ mod app {
 
         #[cfg(feature = "debug")]
         if *ctx.local.iteration % 100 == 0 {
-            log::info!("Wheel Velocities: {:?} --- status: {:08b}", wheel_velocities, _status);
+            log::info!("Wheel Velocities: {:?} --- Body Velocities: {:?}", wheel_velocities, body_velocities);
         }
 
         motion_control_delay::spawn().ok();

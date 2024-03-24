@@ -80,6 +80,7 @@ members = [
     "drivers/motion",
     "drivers/controller",
     "drivers/icm42605-driver",
+    "tools",
 ]
 
 # overrides the release build optimization level

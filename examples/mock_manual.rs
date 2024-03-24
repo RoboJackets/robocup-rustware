@@ -69,7 +69,7 @@ mod app {
     // Shared Spi
     type SharedSPI = Lpspi<board::LpspiPins<P26, P39, P27, P38>, 3>;
     type RadioCE = Output<P0>;
-    type RadioCSN = Output<P2>;
+    type RadioCSN = Output<P6>;
     type RadioInterrupt = Input<P1>;
     // Delays
     type Delay1 = Blocking<Gpt1, GPT_FREQUENCY>;
@@ -103,7 +103,7 @@ mod app {
         let board::Resources {
             pins,
             mut gpio1,
-            mut gpio4,
+            mut gpio2,
             usb,
             mut gpt1,
             mut gpt2,
@@ -149,7 +149,7 @@ mod app {
         });
 
         // Init radio cs pin and ce pin
-        let radio_cs = gpio4.output(pins.p2);
+        let radio_cs = gpio2.output(pins.p6);
         let ce = gpio1.output(pins.p0);
 
         // Initialize radio
