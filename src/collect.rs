@@ -46,6 +46,7 @@ impl MotionControlReading {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
 pub struct MotionControlHeader {
     pub target_velocity: [f32; 3],
 }
