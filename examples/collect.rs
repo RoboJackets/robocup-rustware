@@ -6,13 +6,14 @@
 #![no_std]
 #![no_main]
 #![feature(type_alias_impl_trait)]
+#![feature(bigint_helper_methods)]
 
 use embedded_alloc::Heap;
 
 #[global_allocator]
 static HEAP: Heap = Heap::empty();
 
-use teensy4_bsp as _;
+use teensy4_panic as _;
 
 #[rtic::app(device = teensy4_bsp, peripherals = true, dispatchers = [GPIO1_INT0, GPIO1_INT1])]
 mod app {
@@ -34,7 +35,7 @@ mod app {
     use teensy4_pins::t41::*;
 
     use teensy4_bsp::hal as hal;
-    use hal::lpspi::{LpspiError, Lpspi};
+    use hal::lpspi::{LpspiError, Lpspi, Pins};
     use hal::gpio::{Output, Port};
     use hal::gpt::{ClockSource, Gpt1, Gpt2};
     use hal::timer::Blocking;
@@ -82,7 +83,7 @@ mod app {
         fpga: Fpga,
         delay: Option<Delay2>,
         imu: IMU<Lpi2c1>,
-        storage_module: StorageModule<Output<P40>, SharedSPI, LpspiError, Infallible>,
+        storage_module: StorageModule<Output<P6>, SharedSPI, LpspiError, Infallible>,
         motion_control: MotionControl,
         spi: SharedSPI,
     }
@@ -155,16 +156,26 @@ mod app {
             Err(_) => panic!("Unable to initialize the FPGA"),
         };
 
+        let shared_spi_pins = Pins {
+            pcs0: pins.p38,
+            sck: pins.p27,
+            sdo: pins.p26,
+            sdi: pins.p39,
+        };
         let shared_spi_block = unsafe { LPSPI3::instance() };
-        let mut shared_spi = Lpspi::new(
-            shared_spi_block,
-            board::LpspiPins {
-                pcs0: pins.p38,
-                sck: pins.p27,
-                sdo: pins.p26,
-                sdi: pins.p38,
-            }
-        );
+        let mut shared_spi = Lpspi::new(shared_spi_block, shared_spi_pins);
+
+        shared_spi.disabled(|spi| {
+            spi.set_mode(MODE_0);
+        });
+
+        let csn = gpio2.output(pins.p6);
+
+        let mut storage_module = StorageModule::new(csn);
+        match storage_module.erase_32k_bytes([0x00, 0x00, 0x00], &mut shared_spi, &mut delay2) {
+            Ok(_) => (),
+            Err(_) => panic!("Unable to erase storage module"),
+        }
 
         let i2c = board::lpi2c(lpi2c1, pins.p19, pins.p18, board::Lpi2cClockSpeed::KHz400);
         let mut pit_delay = Blocking::<_, PERCLK_FREQUENCY>::from_pit(pit1);
@@ -172,19 +183,6 @@ mod app {
             Ok(imu) => imu,
             Err(_) => panic!("Unable to initialize the IMU"),
         };
-
-        shared_spi.disabled(|spi| {
-            spi.set_clock_hz(LPSPI_FREQUENCY, 5_000_000u32);
-            spi.set_mode(MODE_0);
-        });
-
-        let csn = gpio4.output(pins.p40);
-
-        let mut storage_module = StorageModule::new(csn);
-        match storage_module.erase_32k_bytes([0x00, 0x00, 0x00], &mut shared_spi, &mut delay2) {
-            Ok(_) => (),
-            Err(_) => panic!("Unable to erase storage module"),
-        }
 
         (
             Shared {
@@ -230,6 +228,8 @@ mod app {
         #[cfg(feature = "counterclockwise")]
         let body_velocity = controller::COUNTERCLOCKWISE;
 
+        let mut delay = ctx.local.delay.take().unwrap();
+
         if !*ctx.local.initialized {
             if ctx.local.fpga.configure().is_err() {
                 panic!("Unable to configure fpga");
@@ -242,10 +242,10 @@ mod app {
             let header = MotionControlHeader { target_velocity: body_velocity.into() };
 
             if ctx.local.storage_module.write(
-                ctx.local.address,
+                *ctx.local.address,
                 &header.to_bytes(),
                 ctx.local.spi,
-                ctx.local.delay,
+                &mut delay,
             ).is_err() {
                 panic!("Unable to Write to Flash Storage");
             }
@@ -290,20 +290,22 @@ mod app {
         };
 
         if ctx.local.storage_module.write(
-            ctx.local.address,
+            *ctx.local.address,
             &reading.to_bytes(),
-            ctx.local.shared_spi,
-            ctx.local.delay,
+            ctx.local.spi,
+            &mut delay,
         ).is_err() {
             panic!("Unable to Write to Storage Module");
         }
 
         // Increment Address
-        let (value, mut carry) = ctx.local.address[2].carrying_add(3, false);
+        let (value, mut carry) = ctx.local.address[2].carrying_add(23, false);
         ctx.local.address[2] = value;
         for i in (0..2).rev() {
             (ctx.local.address[i], carry) = ctx.local.address[i].carrying_add(0, carry);
         }
+
+        *ctx.local.delay = Some(delay);
 
         motion_control_delay::spawn().ok();
     }

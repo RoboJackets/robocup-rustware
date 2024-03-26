@@ -22,12 +22,15 @@ mod app {
     use core::convert::Infallible;
     use core::mem::MaybeUninit;
 
+    use imxrt_iomuxc::prelude::*;
+
     use main::collect::{MotionControlHeader, MotionControlReading};
 
     use embedded_hal::spi::MODE_0;
 
     use teensy4_bsp as bsp;
-    use teensy4_bsp::board;
+    use bsp::board::{self, LPSPI_FREQUENCY};
+    use bsp::board::{Lpi2c1, PERCLK_FREQUENCY};
 
     use teensy4_pins::t41::*;
 
@@ -36,14 +39,21 @@ mod app {
     use hal::gpio::{Output, Port};
     use hal::gpt::{ClockSource, Gpt1, Gpt2};
     use hal::timer::Blocking;
+    use hal::pit::Pit;
     
     use bsp::ral as ral;
     use ral::lpspi::LPSPI3;
 
     use rtic_monotonics::systick::*;
 
+    use motion::MotionControl;
+
     use fpga_rs as fpga;
+    use fpga::FPGA_SPI_FREQUENCY;
+    use fpga::FPGA_SPI_MODE;
     use fpga::FPGA;
+
+    use icm42605_driver::IMU;
 
     use w25q128::StorageModule;
 
@@ -56,7 +66,6 @@ mod app {
     static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
 
     const MOTION_CONTROL_DELAY_US: u32 = 200;
-    const TASK_START_DELAY_MS: u32 = 2_000;
 
     // Type Definitions
     // FPGA Spi
@@ -72,9 +81,8 @@ mod app {
 
     #[local]
     struct Local {
-        storage_module: StorageModule<Output<P6>, SharedSPI, LpspiError, Infallible>,
-        spi: SharedSPI,
-        delay: Delay2,
+        delay: Option<Delay2>,
+        pit: Pit<0>,
     }
 
     #[shared]
@@ -98,9 +106,11 @@ mod app {
             lpspi4,
             mut gpt1,
             mut gpt2,
-            pit: (pit1, _pit2, _pit3, _pit4),
+            pit: (mut pit1, _pit2, _pit3, _pit4),
             ..
         } = board::t41(ctx.device);
+
+        pit1.enable();
 
         // Setup Logging
         bsp::LoggingFrontend::default_log().register_usb(usb);
@@ -114,33 +124,15 @@ mod app {
         gpt2.set_clock_source(GPT_CLOCK_SOURCE);
         let mut delay2 = Blocking::<_, GPT_FREQUENCY>::from_gpt(gpt2);
 
-        let shared_spi_pins = Pins {
-            pcs0: pins.p38,
-            sck: pins.p27,
-            sdo: pins.p26,
-            sdi: pins.p39,
-        };
-        let shared_spi_block = unsafe { LPSPI3::instance() };
-        let mut shared_spi = Lpspi::new(shared_spi_block, shared_spi_pins);
-
-        shared_spi.disabled(|spi| {
-            spi.set_mode(MODE_0);
-        });
-
-        let csn = gpio2.output(pins.p6);
-
-        let storage_module = StorageModule::new(csn);
-
-        report_data::spawn().ok();
+        motion_control_update::spawn().ok();
 
         (
             Shared {
 
             },
             Local {
-                storage_module,
-                spi: shared_spi,
-                delay: delay2,
+                pit: pit1,
+                delay: Some(delay2),
             }
         )
     }
@@ -152,43 +144,19 @@ mod app {
         }
     }
 
-    #[task(local = [storage_module, spi, delay], priority=1)]
-    async fn report_data(ctx: report_data::Context) {
-        Systick::delay(TASK_START_DELAY_MS.millis()).await;
+    #[task(local = [delay, pit], priority=1)]
+    async fn motion_control_update(ctx: motion_control_update::Context) {
+        Systick::delay(1000u32.millis()).await;
+        let mut gpt = ctx.local.delay.take().unwrap().release();
+        gpt.enable();
 
-        let mut header = [0u8; 12];
-        if ctx.local.storage_module.read([0u8; 3], &mut header, ctx.local.spi, ctx.local.delay).is_err() {
-            panic!("Unable to Read Header");
-        }
-        log::info!("{:?}", header);
-        let header = MotionControlHeader::from_bytes(&header);
+        let start_count = gpt.count();
+        ctx.local.pit.set_load_timer_value(0);
+        Systick::delay(1000u32.millis()).await;
+        let end_count = gpt.count();
+        let end_pit = ctx.local.pit.current_timer_value();
 
-        log::info!("{:?}", header);
-        log::info!("...");
-
-        Systick::delay(100u32.millis()).await;
-
-        let mut address = [0, 0, 12];
-        loop {
-            let mut buffer = [0u8; 23];
-            if ctx.local.storage_module.read(address, &mut buffer, ctx.local.spi, ctx.local.delay).is_err() {
-                panic!("Unable to Read Data");
-            }
-            let reading = MotionControlReading::from_bytes(&buffer);
-
-            if reading.valid {
-                log::info!("{:?}", reading);
-            } else {
-                break;
-            }
-
-            let (value, mut carry) = address[2].carrying_add(23, false);
-            address[2] = value;
-            for i in (0..2).rev() {
-                (address[i], carry) = address[i].carrying_add(0, carry);
-            }
-        }
-
-        log::info!("DONE");
+        log::info!("Elapsed Count: {}", end_count - start_count);
+        log::info!("Elapsed PIT: {}", end_pit);
     }
 }

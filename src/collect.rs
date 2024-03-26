@@ -3,6 +3,7 @@
 //! data
 //! 
 
+#[derive(Debug, Clone, Copy)]
 pub struct MotionControlReading {
     pub valid: bool,
     pub accel_x: f32,
@@ -21,9 +22,9 @@ impl MotionControlReading {
         buffer[12..22].copy_from_slice(&self.encoder_values);
 
         if self.valid {
-            buffer[23] = 0;
+            buffer[22] = 0;
         } else {
-            buffer[23] = 255;
+            buffer[22] = 255;
         }
 
         buffer
@@ -34,7 +35,7 @@ impl MotionControlReading {
         let accel_y = f32::from_le_bytes(bytes[4..8].try_into().unwrap());
         let gyro_z = f32::from_le_bytes(bytes[8..12].try_into().unwrap());
         let encoder_values: [u8; 10] = bytes[12..22].try_into().unwrap();
-        let valid = bytes[23] == 0;
+        let valid = bytes[22] == 0;
 
         Self {
             accel_x,
