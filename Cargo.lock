@@ -369,6 +369,7 @@ dependencies = [
  "nalgebra",
  "packed_struct",
  "robojackets-robocup-rtp",
+ "rotary",
  "rtic",
  "rtic-monotonics",
  "rtic-nrf24l01",
@@ -559,6 +560,14 @@ checksum = "297505bf155ed49586c74cbce69a595b246f313a514fb1ab3140daa507959e62"
 dependencies = [
  "nalgebra",
  "packed_struct",
+]
+
+[[package]]
+name = "rotary"
+version = "0.1.0"
+dependencies = [
+ "embedded-hal 0.2.7",
+ "teensy4-bsp",
 ]
 
 [[package]]

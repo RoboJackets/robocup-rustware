@@ -20,7 +20,8 @@ mod rotary_driver {
 
     #[local]
     struct Local {
-        rotary_driver: RotaryPinDriver<gpio::Input<P6>, gpio::Input<P7>, gpio::Input<P8>, gpio::Input<P9>>,
+        // lib specifies that the rotaryPinDriver should take in InputPins, not Input
+        rotaryDriver: RotaryPinDriver<gpio::Input<P6>, gpio::Input<P7>, gpio::Input<P8>, gpio::Input<P9>>,
     }
 
     #[shared]
@@ -51,13 +52,13 @@ mod rotary_driver {
         read_pins::spawn().ok();
         (
             Shared {},
-            Local { rotary_driver },
+            Local { rotaryDriver },
         )
     }
 
-    #[task(local = [rotary_driver], priority = 1)]
+    #[task(local = [rotaryDriver], priority = 1)]
     async fn read_pins(_ctx: read_pins::Context) {
-        let rotary_driver = _ctx.local.rotary_driver;;
+        let rotary_driver = _ctx.local.rotaryDriver;
 
         let result = rotary_driver.read();
         log::info!("Result: {}", result);
