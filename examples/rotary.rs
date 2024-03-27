@@ -20,8 +20,9 @@ mod rotary_driver {
 
     #[local]
     struct Local {
-        // lib specifies that the rotaryPinDriver should take in InputPins, not Input
-        rotaryDriver: RotaryPinDriver<gpio::Input<P6>, gpio::Input<P7>, gpio::Input<P8>, gpio::Input<P9>>,
+        // lib specifies that the rotaryPinDriver should take in InputPins, not Input --> only pending question 
+        // in the rgb driver, the lib.rs file specifies that the rgb driver should take in OutputPins, not Output
+        rotary_driver: RotaryPinDriver<gpio::Input<P6>, gpio::Input<P7>, gpio::Input<P8>, gpio::Input<P9>>,
     }
 
     #[shared]
@@ -31,7 +32,7 @@ mod rotary_driver {
     fn init(ctx: init::Context) -> (Shared, Local) {
         let board::Resources { 
             usb, 
-            gpio2, 
+            mut gpio2, 
             pins,
             .. 
         } = board::t41(ctx.device);
@@ -46,19 +47,19 @@ mod rotary_driver {
         let input_two = gpio2.input(pins.p7);
         let input_three = gpio2.input(pins.p8);
         let input_four = gpio2.input(pins.p9);
-        let rotaryDriver = RotaryPinDriver::new(input_one, input_two, input_three, input_four);
+        let rotary_driver = RotaryPinDriver::new(input_one, input_two, input_three, input_four);
 
         // spawn other tasks as needed
         read_pins::spawn().ok();
         (
             Shared {},
-            Local { rotaryDriver },
+            Local { rotary_driver },
         )
     }
 
-    #[task(local = [rotaryDriver], priority = 1)]
+    #[task(local = [rotary_driver], priority = 1)]
     async fn read_pins(_ctx: read_pins::Context) {
-        let rotary_driver = _ctx.local.rotaryDriver;
+        let rotary_driver = _ctx.local.rotary_driver;
 
         let result = rotary_driver.read();
         log::info!("Result: {}", result);

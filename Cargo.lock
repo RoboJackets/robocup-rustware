@@ -567,6 +567,7 @@ name = "rotary"
 version = "0.1.0"
 dependencies = [
  "embedded-hal 0.2.7",
+ "imxrt-iomuxc",
  "teensy4-bsp",
 ]
 

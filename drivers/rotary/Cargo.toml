@@ -4,5 +4,12 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-embedded-hal = "0.2.4"
 teensy4-bsp = "0.4.5"
+imxrt-iomuxc = "0.2.2"
+
+[dependencies.embedded-hal]
+version = "~0.2"
+optional = true
+
+[features]
+input_pin = ["embedded-hal"]

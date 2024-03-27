@@ -73,6 +73,7 @@ path = "drivers/fpga"
 [workspace]
 members = [
     "drivers/fpga",
+    "drivers/rotary",
     "tools",
 ]
 
