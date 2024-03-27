@@ -250,13 +250,14 @@ mod app {
 
         let header = MotionControlHeader {
             target_velocity: controller::UP.into(),
+            valid: true,
         };
 
         if ctx.local.storage_module.write([0u8; 3], &header.to_bytes(), ctx.local.spi, ctx.local.delay).is_err() {
             panic!("Unable to Write");
         }
 
-        let mut address = [0, 0, 12];
+        let mut address = [0, 0, 13];
         for _ in 0..5 {
             let reading = MotionControlReading {
                 valid: true,
@@ -271,7 +272,7 @@ mod app {
                 panic!("Unable to Write");
             }
 
-            let (value, mut carry) = address[2].carrying_add(23, false);
+            let (value, mut carry) = address[2].carrying_add(31, false);
             address[2] = value;
             for i in (0..2).rev() {
                 (address[i], carry) = address[i].carrying_add(0, carry);
@@ -295,7 +296,7 @@ mod app {
 
         log::info!("Beginning Reading");
 
-        let mut header = [0u8; 12];
+        let mut header = [0u8; 13];
         match ctx.local.storage_module.read(
             [0, 0, 0],
             &mut header,
@@ -309,9 +310,9 @@ mod app {
             Err(_) => panic!("Unable to read header"),
         }
 
-        let mut address = [0, 0, 12];
+        let mut address = [0, 0, 13];
         for _ in 0..5 {
-            let mut reading = [0u8; 27];
+            let mut reading = [0u8; 31];
             match ctx.local.storage_module.read(
                 address,
                 &mut reading,
@@ -325,7 +326,7 @@ mod app {
                 Err(_) => panic!("Unable to read reading"),
             }
 
-            let (value, mut carry) = address[2].carrying_add(23, false);
+            let (value, mut carry) = address[2].carrying_add(31, false);
             address[2] = value;
             for i in (0..2).rev() {
                 (address[i], carry) = address[i].carrying_add(0, carry);

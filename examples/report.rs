@@ -160,7 +160,7 @@ mod app {
 
         let mut address = [0, 0, 12];
         loop {
-            let mut buffer = [0u8; 27];
+            let mut buffer = [0u8; 31];
             if ctx.local.storage_module.read(address, &mut buffer, ctx.local.spi, ctx.local.delay).is_err() {
                 panic!("Unable to Read Data");
             }

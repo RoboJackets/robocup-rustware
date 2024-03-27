@@ -66,6 +66,7 @@ mod app {
     static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
 
     const MOTION_CONTROL_DELAY_US: u32 = 200;
+    const TASK_START_DELAY_MS: u32 = 2_000;
 
     // Type Definitions
     // FPGA Spi
@@ -80,17 +81,16 @@ mod app {
     #[local]
     struct Local {
         fpga: Fpga,
-        delay: Option<Delay2>,
         imu: IMU<Lpi2c1>,
-        storage_module: StorageModule<Output<P6>, SharedSPI, LpspiError, Infallible>,
         motion_control: MotionControl,
-        spi: SharedSPI,
         pit: Chained01,
     }
 
     #[shared]
     struct Shared {
-
+        delay: Delay2,
+        storage_module: StorageModule<Output<P6>, SharedSPI, LpspiError, Infallible>,
+        spi: SharedSPI,
     }
 
     #[init]
@@ -116,8 +116,7 @@ mod app {
         // Setup Logging
         bsp::LoggingFrontend::default_log().register_usb(usb);
 
-        let mut chained = Chained01::new(pit0, pit1);
-        chained.enable();
+        let chained = Chained01::new(pit0, pit1);
 
         // Initialize Systick Async Delay
         let systick_token = rtic_monotonics::create_systick_token!();
@@ -131,7 +130,7 @@ mod app {
         gpt2.disable();
         gpt2.set_divider(GPT_DIVIDER);
         gpt2.set_clock_source(GPT_CLOCK_SOURCE);
-        let mut delay2 = Blocking::<_, GPT_FREQUENCY>::from_gpt(gpt2);
+        let delay2 = Blocking::<_, GPT_FREQUENCY>::from_gpt(gpt2);
 
         let shared_spi_pins = Pins {
             pcs0: pins.p38,
@@ -148,11 +147,7 @@ mod app {
 
         let csn = gpio2.output(pins.p6);
 
-        let mut storage_module = StorageModule::new(csn);
-        match storage_module.erase_32k_bytes([0x00, 0x00, 0x00], &mut shared_spi, &mut delay2) {
-            Ok(_) => (),
-            Err(_) => panic!("Unable to erase storage module"),
-        }
+        let storage_module = StorageModule::new(csn);
 
         let i2c = board::lpi2c(lpi2c1, pins.p19, pins.p18, board::Lpi2cClockSpeed::KHz400);
         let mut pit_delay = Blocking::<_, PERCLK_FREQUENCY>::from_pit(pit2);
@@ -187,17 +182,18 @@ mod app {
             Err(_) => panic!("Unable to initialize the FPGA"),
         };
 
+        determine_task::spawn().ok();
+
         (
             Shared {
-
+                storage_module,
+                spi: shared_spi,
+                delay: delay2,
             },
             Local {
                 fpga,
-                delay: Some(delay2),
                 imu,
-                storage_module,
                 motion_control: MotionControl::without_clock(),
-                spi: shared_spi,
                 pit: chained,
             }
         )
@@ -210,113 +206,140 @@ mod app {
         }
     }
 
-    #[task(local = [fpga, delay, imu, storage_module, motion_control, spi, pit, last_pit: u64 = 0, initialized: bool = false, address: [u8; 3] = [0u8; 3]], priority=1)]
+    #[task(shared=[storage_module, spi, delay], priority=1)]
+    async fn determine_task(ctx: determine_task::Context) {
+        Systick::delay(1_000u32.millis()).await;
+
+        let header = (ctx.shared.storage_module, ctx.shared.spi, ctx.shared.delay).lock(|storage_module, spi, delay| {
+            let mut header = [0u8; 13];
+            if storage_module.read([0u8; 3], &mut header, spi, delay).is_err() {
+                panic!("Unable to Read Header");
+            }
+            MotionControlHeader::from_bytes(&header)
+        });
+
+        if !header.valid {
+            log::info!("Collecting Data");
+            motion_control_update::spawn().ok();
+        } else {
+            log::info!("Reporting Data");
+            report_data::spawn().ok();
+        }
+    }
+
+    #[task(
+        local = [fpga, imu, motion_control, pit, last_pit: u64 = 0, initialized: bool = false, address: [u8; 3] = [0u8; 3]],
+        shared = [delay, storage_module, spi],
+        priority=1,
+    )]
     async fn motion_control_update(ctx: motion_control_update::Context) {
-        #[cfg(any(
-            feature = "up",
-            not(feature = "down"),
-            not(feature = "right"),
-            not(feature = "left"),
-            not(feature = "clockwise"),
-            not(feature = "counterclockwise"),
-        ))]
-        let body_velocity = controller::UP;
-        #[cfg(feature = "down")]
-        let body_velocity = controller::DOWN;
-        #[cfg(feature = "right")]
-        let body_velocity = controller::RIGHT;
-        #[cfg(feature = "left")]
-        let body_velocity = controller::LEFT;
-        #[cfg(feature = "clockwise")]
-        let body_velocity = controller::CLOCKWISE;
-        #[cfg(feature = "counterclockwise")]
-        let body_velocity = controller::COUNTERCLOCKWISE;
+        (ctx.shared.delay, ctx.shared.storage_module, ctx.shared.spi).lock(|delay, storage_module, spi| {
+            #[cfg(any(
+                feature = "up",
+                not(feature = "down"),
+                not(feature = "right"),
+                not(feature = "left"),
+                not(feature = "clockwise"),
+                not(feature = "counterclockwise"),
+            ))]
+            let body_velocity = controller::UP;
+            #[cfg(feature = "down")]
+            let body_velocity = controller::DOWN;
+            #[cfg(feature = "right")]
+            let body_velocity = controller::RIGHT;
+            #[cfg(feature = "left")]
+            let body_velocity = controller::LEFT;
+            #[cfg(feature = "clockwise")]
+            let body_velocity = controller::CLOCKWISE;
+            #[cfg(feature = "counterclockwise")]
+            let body_velocity = controller::COUNTERCLOCKWISE;
+    
+            if !*ctx.local.initialized {
+                if ctx.local.fpga.configure().is_err() {
+                    panic!("Unable to configure fpga");
+                }
+    
+                if ctx.local.fpga.motors_en(true).is_err() {
+                    panic!("Unable to enable motors");
+                }
+    
+                let header = MotionControlHeader { target_velocity: body_velocity.into(), valid: true };
+    
+                if storage_module.write(
+                    *ctx.local.address,
+                    &header.to_bytes(),
+                    spi,
+                    delay,
+                ).is_err() {
+                    panic!("Unable to Write to Flash Storage");
+                }
+    
+                *ctx.local.address = [0, 0, 13];
 
-        let mut delay = ctx.local.delay.take().unwrap();
-
-        if !*ctx.local.initialized {
-            if ctx.local.fpga.configure().is_err() {
-                panic!("Unable to configure fpga");
+                *ctx.local.initialized = true;
+    
+                ctx.local.pit.enable();
+                *ctx.local.last_pit = ctx.local.pit.current_timer_value();
             }
-
-            if ctx.local.fpga.motors_en(true).is_err() {
-                panic!("Unable to enable motors");
+    
+            let wheel_velocities = ctx.local.motion_control.body_to_wheels(body_velocity);
+    
+            let encoder_values = match ctx.local.fpga.set_duty_get_encoders(wheel_velocities.into(), 0.0) {
+                Ok(encoder_values) => encoder_values,
+                Err(_) => [u8::MAX; 10],
+            };
+    
+            if ctx.local.fpga.set_duty_cycles(wheel_velocities.into(), 0.0).is_err() {
+                log::info!("Unable to set duty cycles");
             }
+    
+            let gyro_z = match ctx.local.imu.gyro_z() {
+                Ok(z) => z,
+                Err(_) => f32::MAX,
+            };
+    
+            let accel_x = match ctx.local.imu.accel_x() {
+                Ok(x) => x,
+                Err(_) => f32::MAX,
+            };
+    
+            let accel_y = match ctx.local.imu.accel_y() {
+                Ok(y) => y,
+                Err(_) => f32::MAX,
+            };
+    
+            let now = ctx.local.pit.current_timer_value();
+            let delta_t = *ctx.local.last_pit - now;
+            // log::info!("{} - {} - {}", ctx.local.last_pit, now, delta_t);
+            *ctx.local.last_pit = now;
+    
+            let reading = MotionControlReading {
+                accel_x,
+                accel_y,
+                gyro_z,
+                encoder_values,
+                valid: true,
+                delta_t,
+            };
 
-            let header = MotionControlHeader { target_velocity: body_velocity.into() };
-
-            if ctx.local.storage_module.write(
+            log::info!("{:?}", reading);
+    
+            if storage_module.write(
                 *ctx.local.address,
-                &header.to_bytes(),
-                ctx.local.spi,
-                &mut delay,
+                &reading.to_bytes(),
+                spi,
+                delay,
             ).is_err() {
-                panic!("Unable to Write to Flash Storage");
+                panic!("Unable to Write to Storage Module");
             }
-
-            *ctx.local.address = [0, 0, 12];
-
-            *ctx.local.initialized = true;
-
-            *ctx.local.last_pit = ctx.local.pit.current_timer_value();
-        }
-
-        let wheel_velocities = ctx.local.motion_control.body_to_wheels(body_velocity);
-
-        let encoder_values = match ctx.local.fpga.set_duty_get_encoders(wheel_velocities.into(), 0.0) {
-            Ok(encoder_values) => encoder_values,
-            Err(_) => [u8::MAX; 10],
-        };
-
-        if ctx.local.fpga.set_duty_cycles(wheel_velocities.into(), 0.0).is_err() {
-            log::info!("Unable to set duty cycles");
-        }
-
-        let gyro_z = match ctx.local.imu.gyro_z() {
-            Ok(z) => z,
-            Err(_) => f32::MAX,
-        };
-
-        let accel_x = match ctx.local.imu.accel_x() {
-            Ok(x) => x,
-            Err(_) => f32::MAX,
-        };
-
-        let accel_y = match ctx.local.imu.accel_y() {
-            Ok(y) => y,
-            Err(_) => f32::MAX,
-        };
-
-        let now = ctx.local.pit.current_timer_value();
-        let delta_t = (*ctx.local.last_pit - now) as u32;
-        *ctx.local.last_pit = now;
-
-        let reading = MotionControlReading {
-            accel_x,
-            accel_y,
-            gyro_z,
-            encoder_values,
-            valid: true,
-            delta_t,
-        };
-
-        if ctx.local.storage_module.write(
-            *ctx.local.address,
-            &reading.to_bytes(),
-            ctx.local.spi,
-            &mut delay,
-        ).is_err() {
-            panic!("Unable to Write to Storage Module");
-        }
-
-        // Increment Address
-        let (value, mut carry) = ctx.local.address[2].carrying_add(23, false);
-        ctx.local.address[2] = value;
-        for i in (0..2).rev() {
-            (ctx.local.address[i], carry) = ctx.local.address[i].carrying_add(0, carry);
-        }
-
-        *ctx.local.delay = Some(delay);
+    
+            // Increment Address
+            let (value, mut carry) = ctx.local.address[2].carrying_add(31, false);
+            ctx.local.address[2] = value;
+            for i in (0..2).rev() {
+                (ctx.local.address[i], carry) = ctx.local.address[i].carrying_add(0, carry);
+            }
+        });
 
         motion_control_delay::spawn().ok();
     }
@@ -326,5 +349,49 @@ mod app {
         Systick::delay(MOTION_CONTROL_DELAY_US.micros()).await;
 
         motion_control_update::spawn().ok();
+    }
+
+    #[task(shared = [storage_module, spi, delay], priority=1)]
+    async fn report_data(ctx: report_data::Context) {
+        Systick::delay(TASK_START_DELAY_MS.millis()).await;
+
+        (ctx.shared.storage_module, ctx.shared.spi, ctx.shared.delay).lock(|storage_module, spi, delay| {
+            let mut header = [0u8; 13];
+            if storage_module.read([0u8; 3], &mut header, spi, delay).is_err() {
+                panic!("Unable to Read Header");
+            }
+            log::info!("{:?}", header);
+            let header = MotionControlHeader::from_bytes(&header);
+
+            log::info!("{:?}", header);
+            log::info!("...");
+
+            delay.block_ms(100);
+
+            let mut address = [0, 0, 13];
+            loop {
+                let mut buffer = [0u8; 31];
+                if storage_module.read(address, &mut buffer, spi, delay).is_err() {
+                    panic!("Unable to Read Data");
+                }
+                let reading = MotionControlReading::from_bytes(&buffer);
+
+                if reading.valid {
+                    log::info!("{:?}", reading);
+                } else {
+                    break;
+                }
+
+                let (value, mut carry) = address[2].carrying_add(31, false);
+                address[2] = value;
+                for i in (0..2).rev() {
+                    (address[i], carry) = address[i].carrying_add(0, carry);
+                }
+            }
+
+            log::info!("DONE");
+
+            let _ = storage_module.erase_32k_bytes([0u8; 3], spi, delay);
+        });
     }
 }
