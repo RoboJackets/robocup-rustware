@@ -39,7 +39,7 @@ mod app {
     use hal::gpio::{Output, Port};
     use hal::gpt::{ClockSource, Gpt1, Gpt2};
     use hal::timer::Blocking;
-    use hal::pit::Pit;
+    use hal::pit::{Pit, Chained01};
     
     use bsp::ral as ral;
     use ral::lpspi::LPSPI3;
@@ -81,8 +81,8 @@ mod app {
 
     #[local]
     struct Local {
-        delay: Option<Delay2>,
-        pit: Pit<0>,
+        delay: Delay2,
+        pit: Chained01,
     }
 
     #[shared]
@@ -106,11 +106,12 @@ mod app {
             lpspi4,
             mut gpt1,
             mut gpt2,
-            pit: (mut pit1, _pit2, _pit3, _pit4),
+            pit: (mut pit0, mut pit1, _pit3, _pit4),
             ..
         } = board::t41(ctx.device);
 
-        pit1.enable();
+        let mut chained = Chained01::new(pit0, pit1);
+        chained.enable();
 
         // Setup Logging
         bsp::LoggingFrontend::default_log().register_usb(usb);
@@ -131,8 +132,8 @@ mod app {
 
             },
             Local {
-                pit: pit1,
-                delay: Some(delay2),
+                pit: chained,
+                delay: delay2,
             }
         )
     }
@@ -147,16 +148,11 @@ mod app {
     #[task(local = [delay, pit], priority=1)]
     async fn motion_control_update(ctx: motion_control_update::Context) {
         Systick::delay(1000u32.millis()).await;
-        let mut gpt = ctx.local.delay.take().unwrap().release();
-        gpt.enable();
 
-        let start_count = gpt.count();
-        ctx.local.pit.set_load_timer_value(0);
-        Systick::delay(1000u32.millis()).await;
-        let end_count = gpt.count();
+        let start_pit = ctx.local.pit.current_timer_value();
+        ctx.local.delay.block_ms(1_000);
         let end_pit = ctx.local.pit.current_timer_value();
 
-        log::info!("Elapsed Count: {}", end_count - start_count);
-        log::info!("Elapsed PIT: {}", end_pit);
+        log::info!("Elapsed PIT: {}", start_pit - end_pit);
     }
 }

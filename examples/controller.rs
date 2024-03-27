@@ -200,7 +200,7 @@ mod app {
             }
         }
 
-        let movement = controller::CLOCKWISE;
+        let movement = controller::UP;
 
         // let movement = ctx.local.controller.calculate_movement();
 
@@ -209,7 +209,9 @@ mod app {
 
             let now = ctx.local.gpt2.count();
             let encoder_values = match ctx.local.fpga.set_duty_get_encoders(wheel_velocities.into(), 0.0) {
-                Ok(encoder_values) => encoder_values,
+                Ok(encoder_values) => {
+                    log::info!("Encoder Values: {:?}", encoder_values);
+                },
                 Err(_) => panic!("Unable to Communicate with the FPGA"),
             };
         });

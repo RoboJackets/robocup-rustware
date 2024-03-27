@@ -33,17 +33,14 @@ mod app {
 
     use teensy4_bsp::hal as hal;
     use hal::lpspi::{LpspiError, Lpspi, Pins};
-    use hal::gpio::{Output, Port};
-    use hal::gpt::{ClockSource, Gpt1, Gpt2};
+    use hal::gpio::Output;
+    use hal::gpt::{ClockSource, Gpt2};
     use hal::timer::Blocking;
     
     use bsp::ral as ral;
     use ral::lpspi::LPSPI3;
 
     use rtic_monotonics::systick::*;
-
-    use fpga_rs as fpga;
-    use fpga::FPGA;
 
     use w25q128::StorageModule;
 
@@ -55,20 +52,13 @@ mod app {
     const HEAP_SIZE: usize = 8192;
     static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
 
-    const MOTION_CONTROL_DELAY_US: u32 = 200;
     const TASK_START_DELAY_MS: u32 = 2_000;
 
     // Type Definitions
-    // FPGA Spi
-    type FpgaSpi = Lpspi<board::LpspiPins<P11, P12, P13, P10>, 4>;
-    type Fpga = FPGA<FpgaSpi, Output<P9>, P29, Output<P28>, P30, Delay1, hal::lpspi::LpspiError, Infallible>;
     // Shared SPI
     type SharedSPI = Lpspi<board::LpspiPins<P26, P39, P27, P38>, 3>;
     // Delays
-    type Delay1 = Blocking<Gpt1, GPT_FREQUENCY>;
     type Delay2 = Blocking<Gpt2, GPT_FREQUENCY>;
-    // GPIO Ports
-    type Gpio1 = Port<1>;
 
     #[local]
     struct Local {
@@ -88,17 +78,17 @@ mod app {
 
         // Grab the board peripherals
         let board::Resources {
-            mut pins,
-            mut gpio1,
+            pins,
+            gpio1: _gpio1,
             mut gpio2,
-            mut gpio3,
-            mut gpio4,
+            gpio3: _gpio3,
+            gpio4: _gpio4,
             usb,
-            lpi2c1,
-            lpspi4,
-            mut gpt1,
+            lpi2c1: _lpi2c1,
+            lpspi4: _lpspi4,
+            gpt1: _gpt1,
             mut gpt2,
-            pit: (pit1, _pit2, _pit3, _pit4),
+            pit: (_pit1, _pit2, _pit3, _pit4),
             ..
         } = board::t41(ctx.device);
 
@@ -112,7 +102,7 @@ mod app {
         gpt2.disable();
         gpt2.set_divider(GPT_DIVIDER);
         gpt2.set_clock_source(GPT_CLOCK_SOURCE);
-        let mut delay2 = Blocking::<_, GPT_FREQUENCY>::from_gpt(gpt2);
+        let delay2 = Blocking::<_, GPT_FREQUENCY>::from_gpt(gpt2);
 
         let shared_spi_pins = Pins {
             pcs0: pins.p38,
@@ -170,7 +160,7 @@ mod app {
 
         let mut address = [0, 0, 12];
         loop {
-            let mut buffer = [0u8; 23];
+            let mut buffer = [0u8; 27];
             if ctx.local.storage_module.read(address, &mut buffer, ctx.local.spi, ctx.local.delay).is_err() {
                 panic!("Unable to Read Data");
             }

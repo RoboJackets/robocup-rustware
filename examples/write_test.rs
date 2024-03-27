@@ -264,6 +264,7 @@ mod app {
                 accel_y: 1.0,
                 gyro_z: 1.0,
                 encoder_values: [15; 10],
+                delta_t: 0,
             };
 
             if ctx.local.storage_module.write(address, &reading.to_bytes(), ctx.local.spi, ctx.local.delay).is_err() {
@@ -283,6 +284,7 @@ mod app {
             accel_y: 0.0,
             gyro_z: 0.0,
             encoder_values: [0u8; 10],
+            delta_t: 0,
         };
 
         if ctx.local.storage_module.write(address, &reading.to_bytes(), ctx.local.spi, ctx.local.delay).is_err() {
@@ -309,7 +311,7 @@ mod app {
 
         let mut address = [0, 0, 12];
         for _ in 0..5 {
-            let mut reading = [0u8; 23];
+            let mut reading = [0u8; 27];
             match ctx.local.storage_module.read(
                 address,
                 &mut reading,

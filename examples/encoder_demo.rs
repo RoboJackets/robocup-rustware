@@ -61,7 +61,7 @@ mod app {
     const SECOND_DELAY: u32 = SYST_MONO_FACTOR * 1000;    // 1 s delay
 
     // MOTION SPEED in DUTY CYCLE
-    const SPEED: f32 = 0.64;
+    const SPEED: f32 = 1.0;
     const SLOW_SPEED: f32 = 0.32;
     const FAST_SPEED: f32 = 0.128;
 
