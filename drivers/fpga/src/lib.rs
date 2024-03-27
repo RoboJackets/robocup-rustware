@@ -317,8 +317,8 @@ impl<SPI, CS, INIT, PROG, DONE, DELAY, SPIE, GPIOE> FPGA<SPI, CS, INIT, PROG, DO
         
         // TODO: Set Dribblers
         // duty_cycle_to_fpga(dribbler_duty_cycle, &mut write_buffer[9..11])
-        write_buffer[9] = 0x00;
-        write_buffer[10] = 0x01;
+        write_buffer[10] = 0x00;
+        write_buffer[11] = 0x01;
 
         self.spi_transfer(&mut write_buffer)?;
 
@@ -384,8 +384,8 @@ impl<SPI, CS, INIT, PROG, DONE, DELAY, SPIE, GPIOE> FPGA<SPI, CS, INIT, PROG, DO
 
         // TODO: Write dribbler to write_buffer[9] and write_buffer[10]
         // duty_cycle_to_fpga(dribbler_duty_cycle, &mut write_buffer[9..11]);
-        write_buffer[9] = 0x01;
-        write_buffer[10] = 0x00;
+        write_buffer[10] = 0x01;
+        write_buffer[11] = 0x00;
 
         self.spi_transfer(&mut write_buffer[..])?;
 
