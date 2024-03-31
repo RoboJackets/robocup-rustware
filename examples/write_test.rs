@@ -261,9 +261,9 @@ mod app {
         for _ in 0..5 {
             let reading = MotionControlReading {
                 valid: true,
-                accel_x: 1.0,
-                accel_y: 1.0,
-                gyro_z: 1.0,
+                accel_x: unsafe { (1.0f32 * 1_000.0).to_int_unchecked::<i32>() },
+                accel_y: unsafe { (1.0f32 * 1_000.0).to_int_unchecked::<i32>() },
+                gyro_z: unsafe { (1.0f32 * 1_000.0).to_int_unchecked::<i32>() },
                 encoder_values: [15; 10],
                 delta_t: 0,
             };
@@ -281,9 +281,9 @@ mod app {
 
         let reading = MotionControlReading {
             valid: false,
-            accel_x: 0.0,
-            accel_y: 0.0,
-            gyro_z: 0.0,
+            accel_x: unsafe { 0.0f32.to_int_unchecked::<i32>() },
+            accel_y: unsafe { 0.0f32.to_int_unchecked::<i32>() },
+            gyro_z: unsafe { 0.0f32.to_int_unchecked::<i32>() },
             encoder_values: [0u8; 10],
             delta_t: 0,
         };

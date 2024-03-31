@@ -314,9 +314,9 @@ mod app {
             *ctx.local.last_pit = now;
     
             let reading = MotionControlReading {
-                accel_x,
-                accel_y,
-                gyro_z,
+                accel_x: unsafe { (accel_x * 1_000.0).to_int_unchecked::<i32>() },
+                accel_y: unsafe { (accel_y * 1_000.0).to_int_unchecked::<i32>() },
+                gyro_z: unsafe { (gyro_z * 1_000.0).to_int_unchecked::<i32>() },
                 encoder_values,
                 valid: true,
                 delta_t,
