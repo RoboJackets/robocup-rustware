@@ -2,8 +2,6 @@
 
 extern crate alloc;
 
-use alloc::{format, string::String, vec::Vec, boxed::Box};
-
 use nalgebra::base::*;
 
 pub mod motion_control;
