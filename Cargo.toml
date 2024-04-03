@@ -19,6 +19,8 @@ libm = "0.2.8"
 [dependencies.rotary]
 path = "drivers/rotary"
 
+[dependencies.MCP23017]
+path = "drivers/MCP23017"
 
 [dependencies.nalgebra]
 version = "0.32.3"
@@ -74,6 +76,7 @@ path = "drivers/fpga"
 members = [
     "drivers/fpga",
     "drivers/rotary",
+    "drivers/MCP23017",
     "tools",
 ]
 

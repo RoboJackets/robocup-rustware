@@ -1,0 +1,15 @@
+[package]
+name = "MCP23017"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+teensy4-bsp = "0.4.5"
+imxrt-iomuxc = "0.2.2"
+
+[dependencies.embedded-hal]
+version = "~0.2"
+optional = true
+
+[features]
+input_pin = ["embedded-hal"]

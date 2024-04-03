@@ -15,7 +15,6 @@ mod rotary_driver {
     use teensy4_bsp as bsp;
     use bsp::board;
     use bsp::hal::gpio; // gpio module
-    use rtic_monotonics::systick::*;
     use teensy4_pins::t41::*;
 
     #[local]
