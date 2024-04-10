@@ -15,6 +15,10 @@ const FRONT_ANGLE: f32 = 30.0;
 const BACK_ANGLE: f32 = 45.0;
 const ENCODER_COUNTS_PER_TURN: f32 = 512.0;
 
+/// We think the gear ratio is 1 / 18.0 because encoder readings seem to be
+/// roughly 18x what we expect
+const GEAR_RATIO: f32 = 1.0 / 18.0;
+
 const WHEEL_DIST: f32 = (FRONT_WHEEL_DIST + READ_WHEEL_DIST) / 2.0;
 
 const BODY_KP: Vector3<f32> = Vector3::new(0.8, 0.8, 1.5);

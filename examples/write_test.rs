@@ -258,7 +258,7 @@ mod app {
         }
 
         let mut address = [0, 0, 13];
-        for _ in 0..5 {
+        for _ in 0..100_000 {
             let reading = MotionControlReading {
                 valid: true,
                 accel_x: unsafe { (1.0f32 * 1_000.0).to_int_unchecked::<i32>() },
@@ -311,7 +311,7 @@ mod app {
         }
 
         let mut address = [0, 0, 13];
-        for _ in 0..5 {
+        for _ in 0..500 {
             let mut reading = [0u8; 31];
             match ctx.local.storage_module.read(
                 address,

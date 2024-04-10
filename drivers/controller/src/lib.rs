@@ -9,10 +9,10 @@ use teensy4_bsp::hal::gpio::Input;
 
 use nalgebra::base::*;
 
-pub const LEFT: Vector3<f32> = Vector3::new(-1.0, 0.0, 0.0);
-pub const RIGHT: Vector3<f32> = Vector3::new(1.0, 0.0, 0.0);
-pub const UP: Vector3<f32> = Vector3::new(0.0, 0.5, 0.0);
-pub const DOWN: Vector3<f32> = Vector3::new(0.0, -1.0, 0.0);
+pub const LEFT: Vector3<f32> = Vector3::new(-0.25, 0.0, 0.0);
+pub const RIGHT: Vector3<f32> = Vector3::new(0.25, 0.0, 0.0);
+pub const UP: Vector3<f32> = Vector3::new(0.0, 0.25, 0.0);
+pub const DOWN: Vector3<f32> = Vector3::new(0.0, -0.25, 0.0);
 pub const CLOCKWISE: Vector3<f32> = Vector3::new(0.0, 0.0, -1.0);
 pub const COUNTERCLOCKWISE: Vector3<f32> = Vector3::new(0.0, 0.0, 1.0);
 

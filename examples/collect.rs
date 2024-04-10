@@ -208,8 +208,6 @@ mod app {
 
     #[task(shared=[storage_module, spi, delay], priority=1)]
     async fn determine_task(ctx: determine_task::Context) {
-        Systick::delay(1_000u32.millis()).await;
-
         let header = (ctx.shared.storage_module, ctx.shared.spi, ctx.shared.delay).lock(|storage_module, spi, delay| {
             let mut header = [0u8; 13];
             if storage_module.read([0u8; 3], &mut header, spi, delay).is_err() {
@@ -288,10 +286,6 @@ mod app {
                 Ok(encoder_values) => encoder_values,
                 Err(_) => [u8::MAX; 10],
             };
-    
-            if ctx.local.fpga.set_duty_cycles(wheel_velocities.into(), 0.0).is_err() {
-                log::info!("Unable to set duty cycles");
-            }
     
             let gyro_z = match ctx.local.imu.gyro_z() {
                 Ok(z) => z,

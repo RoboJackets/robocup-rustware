@@ -376,7 +376,7 @@ impl<SPI, CS, INIT, PROG, DONE, DELAY, SPIE, GPIOE> FPGA<SPI, CS, INIT, PROG, DO
         &mut self,
         wheel_duty_cycles: [f32; 4],
         _dribbler_duty_cycle: f32,
-    ) -> Result<[u8; 10], FpgaError<SPIE, GPIOE>> {
+    ) -> Result<[f32; 4], FpgaError<SPIE, GPIOE>> {
         let mut write_buffer = [0u8; 12];
         write_buffer[0] = Instruction::R_ENC_W_VEL.opcode();
 
@@ -389,9 +389,31 @@ impl<SPI, CS, INIT, PROG, DONE, DELAY, SPIE, GPIOE> FPGA<SPI, CS, INIT, PROG, DO
 
         self.spi_transfer(&mut write_buffer[..])?;
 
-        let mut result = [0u8; 10];
-        result[..].copy_from_slice(&write_buffer[1..11]);
-        Ok(result)
+        let delta = (i16::from_be_bytes(write_buffer[9..11].try_into().unwrap()) as f32) * (1.0 / 18.432) * 256.0;
+        let mut delta_encoders = [
+            (i16::from_be_bytes(write_buffer[1..3].try_into().unwrap()) as f32),
+            (i16::from_be_bytes(write_buffer[3..5].try_into().unwrap()) as f32),
+            (i16::from_be_bytes(write_buffer[5..7].try_into().unwrap()) as f32),
+            (i16::from_be_bytes(write_buffer[7..9].try_into().unwrap()) as f32),
+        ];
+        for i in 0..4 {
+            delta_encoders[i] *= 1e6 * 3.068e-4 / (20.0 * delta);
+        }
+        Ok(delta_encoders)
+
+        // let mut result = [
+        //     i16::from_le_bytes(write_buffer[2..4].try_into().unwrap()) as f32,
+        //     i16::from_le_bytes(write_buffer[4..6].try_into().unwrap()) as f32,
+        //     i16::from_le_bytes(write_buffer[6..8].try_into().unwrap()) as f32,
+        //     i16::from_le_bytes(write_buffer[8..10].try_into().unwrap()) as f32,
+        // ];
+        // let dt = (i16::from_le_bytes(write_buffer[10..12].try_into().unwrap()) as f32) * (1.0 / 18.432) * 256.0;
+
+        // for i in 0..result.len() {
+        //     result[i] /= dt;
+        // }
+
+        // Ok(result)
     }
 
     /// Set the duty cycles and read the current encoder values from the FPGA
