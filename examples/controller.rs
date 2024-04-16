@@ -156,7 +156,7 @@ mod app {
 
         (
             Shared {
-                motion_controller: MotionControl::without_clock(),
+                motion_controller: MotionControl::new(),
             },
             Local {
                 fpga,

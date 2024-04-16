@@ -237,7 +237,7 @@ mod app {
             },
             Local {
                 radio,
-                motion_controller: MotionControl::without_clock(),
+                motion_controller: MotionControl::new(),
                 fpga,
                 imu,
             }
@@ -360,8 +360,8 @@ mod app {
             }
         };
 
-        let wheel_velocities = ctx.local.motion_controller.control_update(body_velocities, gyro);
-        // let wheel_velocities = ctx.local.motion_controller.body_to_wheels(body_velocities);
+        // let wheel_velocities = ctx.local.motion_controller.control_update(body_velocities, gyro);
+        let wheel_velocities = ctx.local.motion_controller.body_to_wheels(body_velocities);
 
         if ctx.local.fpga.set_duty_cycles(wheel_velocities.into(), 0.0).is_err() {
             #[cfg(feature = "debug")]

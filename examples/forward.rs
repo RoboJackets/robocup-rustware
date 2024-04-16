@@ -173,7 +173,7 @@ mod app {
             },
             Local {
                 fpga,
-                motion_control: MotionControl::without_clock(),
+                motion_control: MotionControl::new(),
                 gpt: gpt2,
             }
         )
@@ -208,8 +208,13 @@ mod app {
         let body_velocity = Vector3::new(0.0, 0.5, 0.0);
 
         let wheel_velocities = ctx.local.motion_control.body_to_wheels(body_velocity);
-
-        let encoder_values = match ctx.local.fpga.set_duty_get_encoders(wheel_velocities.into(), 0.0) {
+        
+        let mut duty_cycles = [0f32; 4];
+        for i in 0..wheel_velocities.len() {
+            duty_cycles[i] = wheel_velocities[i] / 2.0;
+        }
+        log::info!("Target Duty Cycles: {:?}", duty_cycles);
+        let encoder_values = match ctx.local.fpga.set_velocities(wheel_velocities.into(), 0.0) {
             Ok(encoder_values) => encoder_values,
             Err(_) => [0.0; 4],
         };

@@ -24,3 +24,7 @@ pub const UP: Vector3<f32> = Vector3::new(0.0, 0.1, 0.0);
 pub const DOWN: Vector3<f32> = Vector3::new(0.0, -1.0, 0.0);
 pub const COUNTERCLOCKWISE: Vector3<f32> = Vector3::new(0.0, 0.0, 1.0);
 pub const CLOCKWISE: Vector3<f32> = Vector3::new(0.0, 0.0, -1.0);
+
+
+/// Weighting for measurements
+pub const ALPHA: f32 = 0.15;

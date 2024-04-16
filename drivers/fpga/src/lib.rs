@@ -39,9 +39,13 @@ pub const FPGA_SPI_MODE: Mode = spi::Mode{
     polarity: spi::Polarity::IdleLow,
     phase: spi::Phase::CaptureOnFirstTransition,
 };
+pub const GEAR_RATIO: f32 = 20.0;
 
 /// The maximum duty cycle
 pub const MAX_DUTY_CYCLE: f32 = 511.0;
+
+/// Conversion factor to convert wheel velocities to Duty Cycles
+pub const VELOCITY_TO_DUTY_CYCLES: f32 = 1.0 / 125.0;
 
 #[inline]
 /// To convert a duty cycle to fpga it is multiplied by the max duty cycle and divided by 2, then written to
@@ -372,6 +376,53 @@ impl<SPI, CS, INIT, PROG, DONE, DELAY, SPIE, GPIOE> FPGA<SPI, CS, INIT, PROG, DO
     //     Ok( write_buffer[0] )
     // }
 
+    /// Set the velocity of the motors and get the velocities the motors
+    /// were spinning at (based on the encoder deltas)
+    /// 
+    /// Params:
+    ///     wheel_velocities: The Velocity to spin each motor at
+    ///         ( v1,    v2,    v3,    4)
+    ///         ((m/s), (m/s), (m/s), (m/s))
+    ///     dribbler_velocity: The velocity to spin the dribbler at (m/s)
+    /// 
+    /// Return:
+    ///     Wheel Velocities: The Velocity (according to the encoders) the motors
+    ///         are spinning at:
+    ///         ( v1,    v2,    v3,    v4)
+    ///         ((m/s), (m/s), (m/s), (m/s))
+    pub fn set_velocities(
+        &mut self,
+        mut wheel_velocities: [f32; 4],
+        _dribbler_velocity: f32,
+    ) -> Result<[f32; 4], FpgaError<SPIE, GPIOE>> {
+        let mut write_buffer = [0u8; 12];
+        write_buffer[0] = Instruction::R_ENC_W_VEL.opcode();
+
+        for i in 0..wheel_velocities.len() {
+            wheel_velocities[i] *= VELOCITY_TO_DUTY_CYCLES;
+        }
+
+        duty_cycles_to_fpga(wheel_velocities, &mut write_buffer);
+
+        // TODO: Write Dribbler
+        write_buffer[10] = 0x01;
+        write_buffer[11] = 0x00;
+
+        self.spi_transfer(&mut write_buffer[..])?;
+
+        let delta = (i16::from_be_bytes(write_buffer[9..11].try_into().unwrap()) as f32) * (1.0 / 18.432) * 256.0;
+        let mut delta_encoders = [
+            (i16::from_be_bytes(write_buffer[1..3].try_into().unwrap()) as f32),
+            (i16::from_be_bytes(write_buffer[3..5].try_into().unwrap()) as f32),
+            (i16::from_be_bytes(write_buffer[5..7].try_into().unwrap()) as f32),
+            (i16::from_be_bytes(write_buffer[7..9].try_into().unwrap()) as f32),
+        ];
+        for i in 0..4 {
+            delta_encoders[i] *= 1e6 * 3.068e-4 / (GEAR_RATIO * delta);
+        }
+        Ok(delta_encoders)
+    }
+
     pub fn set_duty_get_encoders(
         &mut self,
         wheel_duty_cycles: [f32; 4],
@@ -397,23 +448,9 @@ impl<SPI, CS, INIT, PROG, DONE, DELAY, SPIE, GPIOE> FPGA<SPI, CS, INIT, PROG, DO
             (i16::from_be_bytes(write_buffer[7..9].try_into().unwrap()) as f32),
         ];
         for i in 0..4 {
-            delta_encoders[i] *= 1e6 * 3.068e-4 / (20.0 * delta);
+            delta_encoders[i] *= 1e6 * 3.068e-4 / (GEAR_RATIO * delta);
         }
         Ok(delta_encoders)
-
-        // let mut result = [
-        //     i16::from_le_bytes(write_buffer[2..4].try_into().unwrap()) as f32,
-        //     i16::from_le_bytes(write_buffer[4..6].try_into().unwrap()) as f32,
-        //     i16::from_le_bytes(write_buffer[6..8].try_into().unwrap()) as f32,
-        //     i16::from_le_bytes(write_buffer[8..10].try_into().unwrap()) as f32,
-        // ];
-        // let dt = (i16::from_le_bytes(write_buffer[10..12].try_into().unwrap()) as f32) * (1.0 / 18.432) * 256.0;
-
-        // for i in 0..result.len() {
-        //     result[i] /= dt;
-        // }
-
-        // Ok(result)
     }
 
     /// Set the duty cycles and read the current encoder values from the FPGA
