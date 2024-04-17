@@ -8,4 +8,4 @@ fi
 
 sleep 0.5
 
-sudo minicom
+# sudo minicom

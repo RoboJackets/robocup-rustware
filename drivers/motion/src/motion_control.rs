@@ -41,6 +41,7 @@ pub struct MotionControl {
 }
 
 impl MotionControl {
+    /// Initialize a new motion control module
     pub fn new() -> Self {
         let wheel_angles = [
             (180.0 - FRONT_ANGLE).to_radians(),

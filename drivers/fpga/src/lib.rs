@@ -44,8 +44,12 @@ pub const GEAR_RATIO: f32 = 20.0;
 /// The maximum duty cycle
 pub const MAX_DUTY_CYCLE: f32 = 511.0;
 
-/// Conversion factor to convert wheel velocities to Duty Cycles
-pub const VELOCITY_TO_DUTY_CYCLES: f32 = 1.0 / 125.0;
+/// Wheel Radius (m)
+pub const WHEEL_RADIUS: f32 = 0.02786;
+/// Duty Cycle to Velocity (m/s) (Tested.  See duty-to-wheel-data <https://docs.google.com/spreadsheets/d/1Y931pXyfOq7iaclSkPCwzVSvX_aOvcgqkb2LaQmUZGI/edit?usp=sharing>)
+pub const DUTY_CYCLE_TO_VELOCITY: f32 = 7.37;
+/// Velocity (m/s) to Duty Cycle
+pub const VELOCITY_TO_DUTY_CYCLES: f32 = 1.0 / DUTY_CYCLE_TO_VELOCITY;
 
 #[inline]
 /// To convert a duty cycle to fpga it is multiplied by the max duty cycle and divided by 2, then written to
@@ -402,7 +406,7 @@ impl<SPI, CS, INIT, PROG, DONE, DELAY, SPIE, GPIOE> FPGA<SPI, CS, INIT, PROG, DO
             wheel_velocities[i] *= VELOCITY_TO_DUTY_CYCLES;
         }
 
-        duty_cycles_to_fpga(wheel_velocities, &mut write_buffer);
+        duty_cycles_to_fpga(wheel_velocities, &mut write_buffer[1..9]);
 
         // TODO: Write Dribbler
         write_buffer[10] = 0x01;
@@ -418,7 +422,7 @@ impl<SPI, CS, INIT, PROG, DONE, DELAY, SPIE, GPIOE> FPGA<SPI, CS, INIT, PROG, DO
             (i16::from_be_bytes(write_buffer[7..9].try_into().unwrap()) as f32),
         ];
         for i in 0..4 {
-            delta_encoders[i] *= 1e6 * 3.068e-4 / (GEAR_RATIO * delta);
+            delta_encoders[i] *= 1e6 * 2.0 * core::f32::consts::PI * WHEEL_RADIUS / (6144.0 * delta);
         }
         Ok(delta_encoders)
     }
@@ -427,7 +431,7 @@ impl<SPI, CS, INIT, PROG, DONE, DELAY, SPIE, GPIOE> FPGA<SPI, CS, INIT, PROG, DO
         &mut self,
         wheel_duty_cycles: [f32; 4],
         _dribbler_duty_cycle: f32,
-    ) -> Result<[f32; 4], FpgaError<SPIE, GPIOE>> {
+    ) -> Result<([f32; 4], f32), FpgaError<SPIE, GPIOE>> {
         let mut write_buffer = [0u8; 12];
         write_buffer[0] = Instruction::R_ENC_W_VEL.opcode();
 
@@ -447,10 +451,7 @@ impl<SPI, CS, INIT, PROG, DONE, DELAY, SPIE, GPIOE> FPGA<SPI, CS, INIT, PROG, DO
             (i16::from_be_bytes(write_buffer[5..7].try_into().unwrap()) as f32),
             (i16::from_be_bytes(write_buffer[7..9].try_into().unwrap()) as f32),
         ];
-        for i in 0..4 {
-            delta_encoders[i] *= 1e6 * 3.068e-4 / (GEAR_RATIO * delta);
-        }
-        Ok(delta_encoders)
+        Ok((delta_encoders, delta))
     }
 
     /// Set the duty cycles and read the current encoder values from the FPGA

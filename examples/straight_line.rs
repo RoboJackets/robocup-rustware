@@ -38,9 +38,10 @@ mod app {
     use embedded_hal::spi::MODE_0;
 
     use nalgebra::Vector3;
+    use teensy4_bsp::board::Lpi2c1;
     use teensy4_bsp as bsp;
     use bsp::board;
-    use bsp::board::{Lpi2c1, PERCLK_FREQUENCY};
+    use bsp::board::PERCLK_FREQUENCY;
 
     use teensy4_pins::t41::*;
 
@@ -62,6 +63,8 @@ mod app {
     use fpga::FPGA_SPI_FREQUENCY;
     use fpga::FPGA_SPI_MODE;
     use fpga::FPGA;
+
+    use nalgebra::*;
 
     use icm42605_driver::IMU;
 
@@ -87,12 +90,15 @@ mod app {
     // Delays
     type Delay1 = Blocking<Gpt1, GPT_FREQUENCY>;
     type Delay2 = Blocking<Gpt2, GPT_FREQUENCY>;
+    type Imu = IMU<Lpi2c1>;
 
     #[local]
     struct Local {
         fpga: Fpga,
         motion_control: MotionControl,
-        gpt: Gpt2,
+        last_encoders: Vector4<f32>,
+        chain_timer: Chained01,
+        imu: Imu,
     }
 
     #[shared]
@@ -123,7 +129,15 @@ mod app {
         // Setup Logging
         bsp::LoggingFrontend::default_log().register_usb(usb);
 
-        let chained = Chained01::new(pit0, pit1);
+        let mut chained = Chained01::new(pit0, pit1);
+        chained.enable();
+
+        let i2c = board::lpi2c(lpi2c1, pins.p19, pins.p18, board::Lpi2cClockSpeed::KHz400);
+        let mut pit_delay = Blocking::<_, PERCLK_FREQUENCY>::from_pit(pit2);
+        let imu = match IMU::new(i2c, &mut pit_delay) {
+            Ok(imu) => imu,
+            Err(_err) => panic!("Unable to Initialize IMU"),
+        };
 
         // Initialize Systick Async Delay
         let systick_token = rtic_monotonics::create_systick_token!();
@@ -133,11 +147,6 @@ mod app {
         gpt1.set_divider(GPT_DIVIDER);
         gpt1.set_clock_source(GPT_CLOCK_SOURCE);
         let delay1 = Blocking::<_, GPT_FREQUENCY>::from_gpt(gpt1);
-
-        gpt2.disable();
-        gpt2.set_divider(board::PERCLK_FREQUENCY / 1_000_000);
-        gpt2.set_clock_source(GPT_CLOCK_SOURCE);
-        gpt2.enable();
 
         let mut fpga_spi = board::lpspi(
             lpspi4,
@@ -174,7 +183,9 @@ mod app {
             Local {
                 fpga,
                 motion_control: MotionControl::new(),
-                gpt: gpt2,
+                chain_timer: chained,
+                last_encoders: Vector4::zeros(),
+                imu,
             }
         )
     }
@@ -187,12 +198,11 @@ mod app {
     }
 
     #[task(
-        local = [fpga, motion_control, gpt, initialized: bool = false, last_gpt: u32 = 0],
+        local = [fpga, motion_control, chain_timer, imu, last_encoders, initialized: bool = false, last_time: u64 = 0],
         shared = [],
         priority=1,
     )]
     async fn motion_control_update(ctx: motion_control_update::Context) {
-
         if !*ctx.local.initialized {
             if ctx.local.fpga.configure().is_err() {
                 panic!("Unable to configure fpga");
@@ -203,29 +213,60 @@ mod app {
             }
 
             *ctx.local.initialized = true;
+            *ctx.local.last_time = ctx.local.chain_timer.current_timer_value();
         }
 
-        let body_velocity = Vector3::new(0.0, 0.5, 0.0);
+        let body_velocities = Vector3::new(0.0, 1.0, 0.0);
 
-        let wheel_velocities = ctx.local.motion_control.body_to_wheels(body_velocity);
+        let gyro = match ctx.local.imu.gyro_z() {
+            Ok(gyro) => gyro,
+            Err(_err) => {
+                log::info!("Unable to Read Gyro");
+                0.0
+            }
+        };
+
+        let accel_x = match ctx.local.imu.accel_x() {
+            Ok(accel_x) => accel_x,
+            Err(_err) => {
+                log::info!("Unable to Read Accel X");
+                0.0
+            }
+        };
+
+        let accel_y = match ctx.local.imu.accel_y() {
+            Ok(accel_y) => accel_y,
+            Err(_err) => {
+                log::info!("Unable to Read Accel Y");
+                0.0
+            }
+        };
+
+        let now = ctx.local.chain_timer.current_timer_value();
+        let delta = *ctx.local.last_time - now;
+        *ctx.local.last_time = now;
+
+        let wheel_velocities = ctx.local.motion_control.control_update(
+            Vector3::new(accel_x, accel_y, gyro),
+            *ctx.local.last_encoders,
+            body_velocities,
+            delta,
+        );
     
-        let encoder_values = match ctx.local.fpga.set_velocities([1.0, 1.0, 1.0, 1.0], 0.0) {
+        let encoder_values = match ctx.local.fpga.set_velocities(wheel_velocities.into(), 0.0) {
             Ok(encoder_values) => {
                 log::info!("Encoder Values: {:?}", encoder_values);
                 encoder_values
             },
             Err(_) => [0.0; 4],
         };
-        // let encoder_values = match ctx.local.fpga.set_velocities(wheel_velocities.into(), 0.0) {
-        //     Ok(encoder_values) => encoder_values,
-        //     Err(_) => [0.0; 4],
-        // };
 
-        let now = ctx.local.gpt.count();
-        log::info!("Delta: {}", now - *ctx.local.last_gpt);
-        *ctx.local.last_gpt = now;
-
-        // log::info!("{:?}", encoder_values);
+        *ctx.local.last_encoders = Vector4::new(
+            encoder_values[0],
+            encoder_values[1],
+            encoder_values[2],
+            encoder_values[3],
+        );
 
         motion_control_delay::spawn().ok();
     }

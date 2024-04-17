@@ -27,7 +27,7 @@ mod app {
 
     use embedded_hal::spi::MODE_0;
 
-    use nalgebra::Vector3;
+    use nalgebra::{Vector3, Vector4};
     use teensy4_bsp as bsp;
     use bsp::board::{self, LPSPI_FREQUENCY};
     use bsp::board::{Lpi2c1, PERCLK_FREQUENCY};
@@ -39,6 +39,7 @@ mod app {
     use hal::gpio::{Output, Input, Trigger, Port};
     use hal::gpt::{ClockSource, Gpt1, Gpt2};
     use hal::timer::Blocking;
+    use hal::pit::Chained01;
     
     use bsp::ral as ral;
     use ral::lpspi::LPSPI3;
@@ -70,7 +71,8 @@ mod app {
     const HEAP_SIZE: usize = 1024;
     static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
 
-    const MOTION_CONTROL_DELAY_US: u32 = 200;
+    const MOTION_CONTROL_DELAY_US: u32 = 1_000;
+    const MAX_COUNTER_VALUE: u32 = 100;
 
     // Type Definitions
     // FPGA Spi
@@ -95,6 +97,8 @@ mod app {
         motion_controller: MotionControl,
         fpga: Fpga,
         imu: Imu,
+        last_encoders: Vector4<f32>,
+        chain_timer: Chained01,
     }
 
     #[shared]
@@ -105,6 +109,7 @@ mod app {
         gpio1: Gpio1,
         robot_status: RobotStatusMessage,
         control_message: Option<ControlMessage>,
+        counter: u32,
     }
 
     #[init]
@@ -124,7 +129,7 @@ mod app {
             lpspi4,
             mut gpt1,
             mut gpt2,
-            pit: (pit1, _pit2, _pit3, _pit4),
+            pit: (pit0, pit1, pit2, _pit3),
             ..
         } = board::t41(ctx.device);
 
@@ -147,6 +152,10 @@ mod app {
         gpt2.set_clock_source(GPT_CLOCK_SOURCE);
         let mut delay2 = Blocking::<_, GPT_FREQUENCY>::from_gpt(gpt2);
 
+        // Chained Pit<0> and Pit<1>
+        let mut chained_timer = Chained01::new(pit0, pit1);
+        chained_timer.enable();
+
         // Setup Rx Interrupt
         let rx_int = gpio1.input(pins.p1);
         gpio1.set_interrupt(&rx_int, Some(Trigger::FallingEdge));
@@ -168,7 +177,7 @@ mod app {
 
         // Initialize IMU
         let i2c = board::lpi2c(lpi2c1, pins.p19, pins.p18, board::Lpi2cClockSpeed::KHz400);
-        let mut pit_delay = Blocking::<_, PERCLK_FREQUENCY>::from_pit(pit1);
+        let mut pit_delay = Blocking::<_, PERCLK_FREQUENCY>::from_pit(pit2);
         let imu = match IMU::new(i2c, &mut pit_delay) {
             Ok(imu) => imu,
             Err(_err) => panic!("Unable to Initialize IMU"),
@@ -234,12 +243,15 @@ mod app {
                 gpio1,
                 robot_status: initial_robot_status,
                 control_message: None,
+                counter: 0,
             },
             Local {
                 radio,
                 motion_controller: MotionControl::new(),
                 fpga,
                 imu,
+                last_encoders: Vector4::zeros(),
+                chain_timer: chained_timer,
             }
         )
     }
@@ -268,14 +280,19 @@ mod app {
         }
     }
 
-    #[task(shared = [rx_int, gpio1, shared_spi, delay2, control_message, robot_status], local = [radio], priority = 2)]
+    #[task(
+        shared = [rx_int, gpio1, shared_spi, delay2, control_message, robot_status, counter],
+        local = [radio],
+        priority = 2
+    )]
     async fn receive_command(ctx: receive_command::Context) {
         (
             ctx.shared.shared_spi,
             ctx.shared.delay2,
             ctx.shared.control_message,
             ctx.shared.robot_status,
-        ).lock(|spi, delay, command, robot_status| {
+            ctx.shared.counter,
+        ).lock(|spi, delay, command, robot_status, counter| {
             let mut read_buffer = [0u8; CONTROL_MESSAGE_SIZE];
             ctx.local.radio.read(&mut read_buffer, spi, delay);
 
@@ -287,6 +304,8 @@ mod app {
                     return;
                 },
             };
+
+            *counter = 0;
 
             #[cfg(feature = "debug")]
             log::info!("Control Command Received: {:?}", control_message);
@@ -323,7 +342,11 @@ mod app {
         });
     }
 
-    #[task(shared = [control_message], local = [fpga, motion_controller, imu, initialized: bool = false, last_encoders: [i16; 5] = [0i16; 5], iteration: u32 = 0], priority = 1)]
+    #[task(
+        shared = [control_message, counter],
+        local = [fpga, motion_controller, imu, last_encoders, chain_timer, initialized: bool = false, iteration: u32 = 0, last_time: u64 = 0],
+        priority = 1
+    )]
     async fn motion_control_loop(mut ctx: motion_control_loop::Context) {
         if !*ctx.local.initialized {
             match ctx.local.fpga.configure() {
@@ -342,31 +365,75 @@ mod app {
                 Err(_) => panic!("Unable to Enable Motors"),
             }
             *ctx.local.initialized = true;
+
+            *ctx.local.last_time = ctx.local.chain_timer.current_timer_value();
         }
 
-        let body_velocities = ctx.shared.control_message.lock(|control_message| {
+        let mut body_velocities = ctx.shared.control_message.lock(|control_message| {
             match control_message {
                 Some(control_message) => control_message.get_velocity(),
                 None => Vector3::new(0.0, 0.0, 0.0),
             }
         });
 
+        let counter = ctx.shared.counter.lock(|counter| *counter);
+        if counter > MAX_COUNTER_VALUE {
+            body_velocities = Vector3::new(0.0, 0.0, 0.0);
+        }
+
         let gyro = match ctx.local.imu.gyro_z() {
             Ok(gyro) => gyro,
             Err(_err) => {
                 #[cfg(feature = "debug")]
                 log::info!("Unable to Read Gyro");
-                body_velocities[2]
+                0.0
             }
         };
 
-        // let wheel_velocities = ctx.local.motion_controller.control_update(body_velocities, gyro);
-        let wheel_velocities = ctx.local.motion_controller.body_to_wheels(body_velocities);
+        let accel_x = match ctx.local.imu.accel_x() {
+            Ok(accel_x) => accel_x,
+            Err(_err) => {
+                #[cfg(feature = "debug")]
+                log::info!("Unable to Read Accel X");
+                0.0
+            }
+        };
 
-        if ctx.local.fpga.set_duty_cycles(wheel_velocities.into(), 0.0).is_err() {
-            #[cfg(feature = "debug")]
-            log::info!("Unable to set duty cycles");
-        }
+        let accel_y = match ctx.local.imu.accel_y() {
+            Ok(accel_y) => accel_y,
+            Err(_err) => {
+                #[cfg(feature = "debug")]
+                log::info!("Unable to Read Accel Y");
+                0.0
+            }
+        };
+
+        let now = ctx.local.chain_timer.current_timer_value();
+        let delta = *ctx.local.last_time - now;
+        *ctx.local.last_time = now;
+
+        let wheel_velocities = ctx.local.motion_controller.control_update(
+            Vector3::new(accel_x, accel_y, gyro),
+            *ctx.local.last_encoders,
+            body_velocities,
+            delta,
+        );
+
+        let encoder_velocities = match ctx.local.fpga.set_velocities(wheel_velocities.into(), 0.0) {
+            Ok(encoder_velocities) => encoder_velocities,
+            Err(_err) => {
+                #[cfg(feature = "debug")]
+                log::info!("Unable to Read Encoder Values");
+                [0.0; 4]
+            }
+        };
+
+        *ctx.local.last_encoders = Vector4::new(
+            encoder_velocities[0],
+            encoder_velocities[1],
+            encoder_velocities[2],
+            encoder_velocities[3],
+        );
 
         #[cfg(feature = "debug")]
         if *ctx.local.iteration % 100 == 0 {
