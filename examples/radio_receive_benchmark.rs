@@ -1,8 +1,5 @@
 //!
-//! Benchmark the radio by receiving packets
-//! 
-//! Note: The Receiver simply receives packets, while the Sender prints
-//! out the results after sending 100 packets at a given channel
+//! Benchmark the Radio by continually receiving packets.
 //! 
 
 #![no_std]
@@ -10,20 +7,15 @@
 #![feature(type_alias_impl_trait)]
 
 use embedded_alloc::Heap;
+use rtic_nrf24l01::config::power_amplifier::PowerAmplifier;
 
 #[global_allocator]
 static HEAP: Heap = Heap::empty();
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Role {
-    Sender,
-    Receiver,
-}
-
-#[cfg(feature = "sender")]
-pub const ROLE: Role = Role::Sender;
-#[cfg(any(feature = "receiver", not(feature = "sender")))]
-pub const ROLE: Role = Role::Sender;
+// Radio Channel
+const RADIO_CHANNEL: u8 = 0;
+// PA Level
+const PA_LEVEL: PowerAmplifier = PowerAmplifier::PALow;
 
 #[rtic::app(device = teensy4_bsp, peripherals = true, dispatchers = [GPIO1_INT0, GPIO1_INT1])]
 mod app {
@@ -56,8 +48,8 @@ mod app {
 
     use packed_struct::prelude::*;
 
-    use robojackets_robocup_rtp::{ControlMessage, Team, CONTROL_MESSAGE_SIZE};
-    use robojackets_robocup_rtp::{RobotStatusMessage, RobotStatusMessageBuilder, ROBOT_STATUS_SIZE};
+    use robojackets_robocup_rtp::{ControlMessage, CONTROL_MESSAGE_SIZE};
+    use robojackets_robocup_rtp::{RobotStatusMessage, RobotStatusMessageBuilder};
     use robojackets_robocup_rtp::{BASE_STATION_ADDRESS, ROBOT_RADIO_ADDRESSES};
 
     // Constants
@@ -153,29 +145,15 @@ mod app {
         radio.open_writing_pipe(BASE_STATION_ADDRESS, &mut shared_spi, &mut delay2);
         radio.open_reading_pipe(1, ROBOT_RADIO_ADDRESSES[ROBOT_ID as usize], &mut shared_spi, &mut delay2);
         radio.set_channel(RADIO_CHANNEL, &mut shared_spi, &mut delay2);
+        
 
         let initial_radio_status = RobotStatusMessageBuilder::new().build();
 
         let rx_int = gpio1.input(pins.p1);
-
-        match ROLE {
-            Role::Receiver => {
-                gpio1.set_interrupt(&rx_int, Some(Trigger::FallingEdge));
-                rx_int.clear_triggered();
-
-                radio.set_payload_size(CONTROL_MESSAGE_SIZE as u8, &mut shared_spi, &mut delay2);
-                radio.start_listening(&mut shared_spi, &mut delay2);
-                
-                // Task is interrupt based
-            },
-            Role::Sender => {
-                radio.set_payload_size(ROBOT_STATUS_SIZE as u8, &mut shared_spi, &mut delay2);
-                radio.stop_listening(&mut shared_spi, &mut delay2);
-                
-                // Spawn Sender Role Task
-                send_status::spawn().ok();
-            }
-        }
+        gpio1.set_interrupt(&rx_int, Some(Trigger::FallingEdge));
+        rx_int.clear_triggered();
+        radio.set_payload_size(CONTROL_MESSAGE_SIZE as u8, &mut shared_spi, &mut delay2);
+        radio.start_listening(&mut shared_spi, &mut delay2);
 
         (
             Shared {
@@ -251,71 +229,5 @@ mod app {
             rx_int.clear_triggered();
             gpio1.set_interrupt(&rx_int, Some(Trigger::FallingEdge));
         });
-    }
-
-    #[task(
-        shared = [robot_status, radio, shared_spi, delay2,],
-        local = [
-            total_sends: usize = 0,
-            successful_sends: usize = 0,
-            last_ball_sense: bool = false,
-            last_kick_status: bool = true,
-        ],
-        priority = 2,
-    )]
-    async fn send_status(ctx: send_status::Context) {
-        (
-            ctx.shared.robot_status,
-            ctx.shared.radio,
-            ctx.shared.shared_spi,
-            ctx.shared.delay2,
-        ).lock(|robot_status, radio, spi, delay| {
-            let robot_status = RobotStatusMessageBuilder::new()
-                .robot_id(ROBOT_ID)
-                .team(Team::Blue)
-                .ball_sense_status(!*ctx.local.last_ball_sense)
-                .kick_status(!*ctx.local.last_kick_status)
-                .build();
-
-            *ctx.local.last_ball_sense = !*ctx.local.last_ball_sense;
-            *ctx.local.last_kick_status != *ctx.local.last_kick_status;
-
-            *ctx.shared.robot_status = robot_status;
-
-            let packed_data = match robot_status.pack() {
-                Ok(bytes) => bytes,
-                Err(_err) => {
-                    panic!("Error Packing Robot Status: {:?}", _err);
-                }
-            };
-
-            let report = radio.write(&packed_data, spi, delay);
-
-            if report {
-                log::info!("Received Acknowledgement From Transmission");
-                *ctx.local.successful_sends += 1;
-            } else {
-                log::info!("No Ack Received");
-            }
-
-            *ctx.local.total_sends += 1;
-
-            if *ctx.local.total_sends >= TOTAL_SEND_PACKETS {
-                log::info!(
-                    "{} / {} Packets Successfully Acknowledged",
-                    ctx.local.successful_sends,
-                    ctx.local.total_sends,
-                )
-            } else {
-                wait_for_next_send::spawn().ok();
-            }
-        });
-    }
-
-    #[task(priority = 1)]
-    async fn wait_for_next_send(ctx: wait_for_next_send::Context) {
-        Systick::delay(SEND_DELAY_MS.millis()).await;
-
-        send_status::spawn().ok();
     }
 }
