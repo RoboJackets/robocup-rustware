@@ -22,6 +22,8 @@ const PA_LEVEL: PowerAmplifier = PowerAmplifier::PALow;
 // Delay between Packet Sends
 const SEND_DELAY_MS: u32 = 100;
 
+use teensy4_panic as _;
+
 #[rtic::app(device = teensy4_bsp, peripherals = true, dispatchers = [GPIO1_INT0, GPIO1_INT1])]
 mod app {
     use super::*;
@@ -116,7 +118,7 @@ mod app {
 
         let shared_spi_pins = Pins {
             pcs0: pins.p38,
-            sck: pins.p17,
+            sck: pins.p27,
             sdo: pins.p26,
             sdi: pins.p39,
         };
@@ -136,7 +138,7 @@ mod app {
             panic!("Unable to Initialize the Radio");
         }
 
-        radio.set_pa_level(power_amplifier::PowerAmplifier::PALow, &mut shared_spi, &mut delay2);
+        radio.set_pa_level(PA_LEVEL, &mut shared_spi, &mut delay2);
         radio.open_writing_pipe(BASE_STATION_ADDRESS, &mut shared_spi, &mut delay2);
         radio.open_reading_pipe(1, ROBOT_RADIO_ADDRESSES[ROBOT_ID as usize], &mut shared_spi, &mut delay2);
         radio.set_channel(RADIO_CHANNEL, &mut shared_spi, &mut delay2);
@@ -182,7 +184,7 @@ mod app {
             ctx.shared.shared_spi,
             ctx.shared.delay2,
         ).lock(|robot_status, radio, spi, delay| {
-            let robot_status = RobotStatusMessageBuilder::new()
+            let new_robot_status = RobotStatusMessageBuilder::new()
                 .robot_id(ROBOT_ID)
                 .team(Team::Blue)
                 .ball_sense_status(!*ctx.local.last_ball_sense)
@@ -190,9 +192,9 @@ mod app {
                 .build();
 
             *ctx.local.last_ball_sense = !*ctx.local.last_ball_sense;
-            *ctx.local.last_kick_status != *ctx.local.last_kick_status;
+            *ctx.local.last_kick_status = !*ctx.local.last_kick_status;
 
-            *ctx.shared.robot_status = robot_status;
+            *robot_status = new_robot_status;
 
             let packed_data = match robot_status.pack() {
                 Ok(bytes) => bytes,

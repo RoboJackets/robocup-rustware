@@ -16,10 +16,15 @@ pub const WHEEL_RADIUS: f32 = 0.02786;
 pub const SCALE_FACTOR: f32 = 0.5;
 /// Weighting for IMU Sensor Readings
 pub const ALPHA: f32 = 0.15;
+/// Weighting for the IMU Sensor Readings on High Acceleration
+pub const HIGH_ALPHA: f32 = 0.30;
+/// High Acceleration Cutoff (squared) (We should weight the accelerometer higher if there
+/// is a high acceleration)
+pub const HIGH_ACCELERATION_CUTOFF: f32 = 0.5 * 0.5;
 /// Factor with which to correct headings my
 pub const CORRECT_FACTOR: f32 = 0.5;
 /// Number of timesteps to wait for measurements to stabilize
-pub const STABLIZE_TIME: u32 = 3;
+pub const STABLIZE_TIME: u32 = 2;
 
 #[derive(Debug)]
 pub struct MotionControl {
@@ -114,7 +119,13 @@ impl MotionControl {
         let encoder_estimate = self.encoder_estimate(encoder_velocities);
 
         // Weight State Estimates
-        let state_estimate = imu_estimate.map(|v| v * ALPHA) + encoder_estimate.map(|v| v * (1.0 - ALPHA));
+        let state_estimate: Vector3<f32>;
+        if imu_measurements[0] * imu_measurements[0] + imu_measurements[1] * imu_measurements[1] > HIGH_ACCELERATION_CUTOFF {
+            state_estimate = imu_estimate.map(|v| v * ALPHA) + encoder_estimate.map(|v| v * (1.0 - ALPHA));
+        } else {
+            state_estimate = imu_estimate.map(|v| v * HIGH_ALPHA) + encoder_estimate.map(|v| v * (1.0 - HIGH_ALPHA));
+        }
+        
         let difference = (target_velocity - state_estimate).map(|v| v * CORRECT_FACTOR);
         
         // Find the Update Velocity

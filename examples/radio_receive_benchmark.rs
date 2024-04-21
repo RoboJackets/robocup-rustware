@@ -13,9 +13,11 @@ use rtic_nrf24l01::config::power_amplifier::PowerAmplifier;
 static HEAP: Heap = Heap::empty();
 
 // Radio Channel
-const RADIO_CHANNEL: u8 = 0;
+const RADIO_CHANNEL: u8 = 15;
 // PA Level
 const PA_LEVEL: PowerAmplifier = PowerAmplifier::PALow;
+
+use teensy4_panic as _;
 
 #[rtic::app(device = teensy4_bsp, peripherals = true, dispatchers = [GPIO1_INT0, GPIO1_INT1])]
 mod app {
@@ -62,8 +64,6 @@ mod app {
 
     const SEND_DELAY_MS: u32 = 100;
 
-    // Radio Channel
-    const RADIO_CHANNEL: u8 = 0;
     // Total Packets to Send
     const TOTAL_SEND_PACKETS: usize = 100;
 
@@ -121,7 +121,7 @@ mod app {
 
         let shared_spi_pins = Pins {
             pcs0: pins.p38,
-            sck: pins.p17,
+            sck: pins.p27,
             sdo: pins.p26,
             sdi: pins.p39,
         };
@@ -141,7 +141,7 @@ mod app {
             panic!("Unable to Initialize the Radio");
         }
 
-        radio.set_pa_level(power_amplifier::PowerAmplifier::PALow, &mut shared_spi, &mut delay2);
+        radio.set_pa_level(PA_LEVEL, &mut shared_spi, &mut delay2);
         radio.open_writing_pipe(BASE_STATION_ADDRESS, &mut shared_spi, &mut delay2);
         radio.open_reading_pipe(1, ROBOT_RADIO_ADDRESSES[ROBOT_ID as usize], &mut shared_spi, &mut delay2);
         radio.set_channel(RADIO_CHANNEL, &mut shared_spi, &mut delay2);
