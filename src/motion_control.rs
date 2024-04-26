@@ -25,6 +25,9 @@ const BODY_KP: Vector3<f32> = Vector3::new(0.8, 0.8, 1.5);
 
 const MAX_ACCELERATION: Vector3<f32> = Vector3::new(4.0, 3.0, 30.0);
 
+/// Alpha weighting for acceleration
+pub const ALPHA: f32 = 0.15;
+
 // There are 512 Encoder Counts Per Revolution
 
 pub struct MotionControl {

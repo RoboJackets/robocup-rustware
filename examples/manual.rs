@@ -28,6 +28,8 @@ mod app {
     use embedded_hal::spi::MODE_0;
 
     use nalgebra::{Vector3, Vector4};
+    use rtic_nrf24l01::config::power_amplifier::PowerAmplifier;
+    use rtic_nrf24l01::error::RadioError;
     use teensy4_bsp as bsp;
     use bsp::board::{self, LPSPI_FREQUENCY};
     use bsp::board::{Lpi2c1, PERCLK_FREQUENCY};
@@ -71,8 +73,11 @@ mod app {
     const HEAP_SIZE: usize = 1024;
     static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
 
-    const MOTION_CONTROL_DELAY_US: u32 = 1_000;
+    const MOTION_CONTROL_DELAY_US: u32 = 100;
     const MAX_COUNTER_VALUE: u32 = 100;
+
+    const PA_LEVEL: PowerAmplifier = PowerAmplifier::PALow;
+    const RF_CHANNEL: u8 = 15;
 
     // Type Definitions
     // FPGA Spi
@@ -80,9 +85,9 @@ mod app {
     type Fpga = FPGA<SPI, Output<P9>, P29, Output<P28>, P30, Delay1, hal::lpspi::LpspiError, Infallible>;
     // Shared Spi
     type SharedSPI = Lpspi<board::LpspiPins<P26, P39, P27, P38>, 3>;
-    type RadioCE = Output<P0>;
-    type RadioCSN = Output<P6>;
-    type RadioInterrupt = Input<P1>;
+    type RadioCE = Output<P20>;
+    type RadioCSN = Output<P14>;
+    type RadioInterrupt = Input<P15>;
     // Delays
     type Delay1 = Blocking<Gpt1, GPT_FREQUENCY>;
     type Delay2 = Blocking<Gpt2, GPT_FREQUENCY>;
@@ -99,6 +104,9 @@ mod app {
         imu: Imu,
         last_encoders: Vector4<f32>,
         chain_timer: Chained01,
+        led_pin: Output<P22>,
+
+        radio_error: Result<(), RadioError>,
     }
 
     #[shared]
@@ -157,7 +165,7 @@ mod app {
         chained_timer.enable();
 
         // Setup Rx Interrupt
-        let rx_int = gpio1.input(pins.p1);
+        let rx_int = gpio1.input(pins.p15);
         gpio1.set_interrupt(&rx_int, Some(Trigger::FallingEdge));
 
         // Initialize Fpga SPI
@@ -183,20 +191,6 @@ mod app {
             Err(_err) => panic!("Unable to Initialize IMU"),
         };
 
-        // Initialize pins for the FPGA
-        let cs = gpio2.output(pins.p9);
-        let init_b = gpio4.input(pins.p29);
-        let config = Config::zero().set_open_drain(OpenDrain::Enabled);
-        configure(&mut pins.p28, config);
-        let prog_b = gpio3.output(pins.p28);
-        let done = gpio3.input(pins.p30);
-
-        // Initialize the FPGA
-        let fpga = match FPGA::new(spi, cs, init_b, prog_b, done, delay1) {
-            Ok(fpga) => fpga,
-            Err(_) => panic!("Unable to initialize the FPGA"),
-        };
-
         // Initialize Shared SPI
         let shared_spi_pins = Pins {
             pcs0: pins.p38,
@@ -213,20 +207,37 @@ mod app {
         });
 
         // Init radio cs pin and ce pin
-        let radio_cs = gpio2.output(pins.p6);
-        let ce = gpio1.output(pins.p0);
+        let radio_cs = gpio1.output(pins.p14);
+        let ce = gpio1.output(pins.p20);
+
+        let led_pin = gpio1.output(pins.p22);
 
         // Initialize radio
         let mut radio = Radio::new(ce, radio_cs);
-        if radio.begin(&mut shared_spi, &mut delay2).is_err() {
-            panic!("Unable to Initialize the Radio");
+        let radio_error = radio.begin(&mut shared_spi, &mut delay2);
+
+        if !radio_error.is_err() {
+            radio.set_pa_level(PA_LEVEL, &mut shared_spi, &mut delay2);
+            radio.set_channel(RF_CHANNEL, &mut shared_spi, &mut delay2);
+            radio.set_payload_size(CONTROL_MESSAGE_SIZE as u8, &mut shared_spi, &mut delay2);
+            radio.open_writing_pipe(BASE_STATION_ADDRESS, &mut shared_spi, &mut delay2);
+            radio.open_reading_pipe(1, ROBOT_RADIO_ADDRESSES[ROBOT_ID as usize], &mut shared_spi, &mut delay2);
+            radio.start_listening(&mut shared_spi, &mut delay2);
         }
 
-        radio.set_pa_level(power_amplifier::PowerAmplifier::PALow, &mut shared_spi, &mut delay2);
-        radio.set_payload_size(CONTROL_MESSAGE_SIZE as u8, &mut shared_spi, &mut delay2);
-        radio.open_writing_pipe(BASE_STATION_ADDRESS, &mut shared_spi, &mut delay2);
-        radio.open_reading_pipe(1, ROBOT_RADIO_ADDRESSES[ROBOT_ID as usize], &mut shared_spi, &mut delay2);
-        radio.start_listening(&mut shared_spi, &mut delay2);
+        // Initialize pins for the FPGA
+        let cs = gpio2.output(pins.p9);
+        let init_b = gpio4.input(pins.p29);
+        let config = Config::zero().set_open_drain(OpenDrain::Enabled);
+        configure(&mut pins.p28, config);
+        let prog_b = gpio3.output(pins.p28);
+        let done = gpio3.input(pins.p30);
+
+        // Initialize the FPGA
+        let fpga = match FPGA::new(spi, cs, init_b, prog_b, done, delay1) {
+            Ok(fpga) => fpga,
+            Err(_) => panic!("Unable to initialize the FPGA"),
+        };
 
         // Set an initial robot status
         let initial_robot_status = RobotStatusMessageBuilder::new().build();
@@ -252,6 +263,8 @@ mod app {
                 imu,
                 last_encoders: Vector4::zeros(),
                 chain_timer: chained_timer,
+                radio_error,
+                led_pin,
             }
         )
     }
@@ -263,12 +276,10 @@ mod app {
         }
     }
 
-    #[task(binds = GPIO1_COMBINED_0_15, shared = [rx_int, gpio1], priority = 2)]
+    #[task(binds = GPIO1_COMBINED_16_31, shared = [rx_int, gpio1], local = [led_pin], priority = 2)]
     fn radio_interrupt(ctx: radio_interrupt::Context) {
-        #[cfg(feature = "debug")]
-        log::info!("Command Received");
-        
         if (ctx.shared.rx_int, ctx.shared.gpio1).lock(|rx_int, gpio1| {
+            ctx.local.led_pin.toggle();
             if rx_int.is_triggered() {
                 rx_int.clear_triggered();
                 gpio1.set_interrupt(&rx_int, None);
@@ -354,7 +365,14 @@ mod app {
                     #[cfg(feature = "debug")]
                     log::info!("Fpga Configured")
                 },
-                Err(_) => panic!("Unable to Configure Fpga"),
+                Err(_) => {
+                    for _ in 0..5 {
+                        log::info!("Fpga Could Not Be Configured");
+
+                        Systick::delay(500u32.millis()).await;
+                    }
+                    panic!("Unable to Configure Fpga")
+                },
             }
 
             match ctx.local.fpga.motors_en(true) {
@@ -362,7 +380,14 @@ mod app {
                     #[cfg(feature = "debug")]
                     log::info!("Enabled motors fpga: {:010b}", _status)
                 },
-                Err(_) => panic!("Unable to Enable Motors"),
+                Err(_) => {
+                    for _ in 0..5 {
+                        log::info!("Motors Could Not Be Enabled");
+
+                        Systick::delay(500u32.millis()).await;
+                    }
+                    panic!("Unable to Enable Motors")
+                },
             }
             *ctx.local.initialized = true;
 
@@ -419,6 +444,9 @@ mod app {
             delta,
         );
 
+        #[cfg(feature = "debug")]
+        log::info!("Moving at {:?}", wheel_velocities);
+
         let encoder_velocities = match ctx.local.fpga.set_velocities(wheel_velocities.into(), 0.0) {
             Ok(encoder_velocities) => encoder_velocities,
             Err(_err) => {
@@ -435,11 +463,6 @@ mod app {
             encoder_velocities[3],
         );
 
-        #[cfg(feature = "debug")]
-        if *ctx.local.iteration % 100 == 0 {
-            log::info!("Wheel Velocities: {:?} --- Body Velocities: {:?}", wheel_velocities, body_velocities);
-        }
-
         motion_control_delay::spawn().ok();
     }
 
@@ -448,5 +471,23 @@ mod app {
         Systick::delay(MOTION_CONTROL_DELAY_US.micros()).await;
 
         motion_control_loop::spawn().ok();
+    }
+
+    #[task(
+        local = [radio_error],
+        priority = 1
+    )]
+    async fn print_radio_error(ctx: print_radio_error::Context) {
+        Systick::delay(1_000u32.millis()).await;
+
+        let error = ctx.local.radio_error.unwrap();
+
+        for _ in 0..5 {
+            log::info!("Radio Error Occurred: {:?}", error);
+
+            Systick::delay(500u32.millis()).await;
+        }
+
+        panic!("Radio Error Occurred: {:?}", error);
     }
 }

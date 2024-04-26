@@ -75,8 +75,7 @@ mod app {
     const HEAP_SIZE: usize = 8192;
     static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
 
-    const MOTION_CONTROL_DELAY_US: u32 = 1000;
-    const TASK_START_DELAY_MS: u32 = 2_000;
+    const MOTION_CONTROL_DELAY_US: u32 = 200;
 
     // Type Definitions
     // FPGA Spi
@@ -93,6 +92,7 @@ mod app {
         fpga: Fpga,
         motion_control: MotionControl,
         gpt: Gpt2,
+        led_pin: Output<P23>,
     }
 
     #[shared]
@@ -107,7 +107,7 @@ mod app {
         // Grab the board peripherals
         let board::Resources {
             mut pins,
-            gpio1: _gpio1,
+            mut gpio1,
             mut gpio2,
             mut gpio3,
             mut gpio4,
@@ -139,6 +139,8 @@ mod app {
         gpt2.set_clock_source(GPT_CLOCK_SOURCE);
         gpt2.enable();
 
+        let led_pin = gpio1.output(pins.p23);
+
         let mut fpga_spi = board::lpspi(
             lpspi4,
             board::LpspiPins {
@@ -160,10 +162,18 @@ mod app {
         let prog_b = gpio3.output(pins.p28);
         let done = gpio3.input(pins.p30);
 
-        let fpga = match FPGA::new(fpga_spi, cs, init_b, prog_b, done, delay1) {
+        let mut fpga = match FPGA::new(fpga_spi, cs, init_b, prog_b, done, delay1) {
             Ok(fpga) => fpga,
             Err(_) => panic!("Unable to initialize the FPGA"),
         };
+
+        if fpga.configure().is_err() {
+            panic!("Unable to Configure FPGA");
+        }
+
+        if fpga.motors_en(true).is_err() {
+            panic!("Unable to Enable Motors");
+        }
 
         motion_control_update::spawn().ok();
 
@@ -175,6 +185,7 @@ mod app {
                 fpga,
                 motion_control: MotionControl::new(),
                 gpt: gpt2,
+                led_pin,
             }
         )
     }
@@ -187,23 +198,31 @@ mod app {
     }
 
     #[task(
-        local = [fpga, motion_control, gpt, initialized: bool = false, last_gpt: u32 = 0],
+        local = [fpga, motion_control, gpt, led_pin, initialized: bool = false, last_gpt: u32 = 0],
         shared = [],
         priority=1,
     )]
     async fn motion_control_update(ctx: motion_control_update::Context) {
-
         if !*ctx.local.initialized {
-            if ctx.local.fpga.configure().is_err() {
-                panic!("Unable to configure fpga");
-            }
-
-            if ctx.local.fpga.motors_en(true).is_err() {
-                panic!("Unable to enable motors");
-            }
-
+            log::info!("Started");
+            ctx.local.led_pin.set();
             *ctx.local.initialized = true;
         }
+
+        if ctx.local.fpga.motors_en(true).is_err() {
+            panic!("Unable to enable motors");
+        }
+        // if !*ctx.local.initialized {
+        //     if ctx.local.fpga.configure().is_err() {
+        //         panic!("Unable to configure fpga");
+        //     }
+
+        //     if ctx.local.fpga.motors_en(true).is_err() {
+        //         panic!("Unable to enable motors");
+        //     }
+
+        //     *ctx.local.initialized = true;
+        // }
 
         let body_velocity = Vector3::new(0.0, 0.5, 0.0);
 

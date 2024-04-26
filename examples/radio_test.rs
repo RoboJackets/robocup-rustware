@@ -7,6 +7,7 @@ use teensy4_panic as _;
 #[rtic::app(device = teensy4_bsp, peripherals = true, dispatchers = [GPT2])]
 mod app {
     use embedded_hal::spi::MODE_0;
+    use rtic_nrf24l01::error::RadioError;
     use rtic_nrf24l01::{Radio, config::*};
 
     use teensy4_bsp::hal::gpio::Output;
@@ -122,8 +123,8 @@ mod app {
 
         let mut radio = Radio::new(ce, csn);
 
-        if radio.begin(ctx.local.spi, ctx.local.delay).is_err() {
-            panic!("Unable to Initialize the radio");
+        if let Err(err) = radio.begin(ctx.local.spi, ctx.local.delay) {
+            log::info!("Radio Error: {:?}", err);
         }
 
         radio.set_pa_level(power_amplifier::PowerAmplifier::PALow, ctx.local.spi, ctx.local.delay);

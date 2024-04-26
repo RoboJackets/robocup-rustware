@@ -16,11 +16,11 @@ static HEAP: Heap = Heap::empty();
 // Number of Packets to Send
 const TOTAL_SEND_PACKETS: usize = 100;
 // Radio Channel
-const RADIO_CHANNEL: u8 = 0;
+const RADIO_CHANNEL: u8 = 15;
 // PA Level
 const PA_LEVEL: PowerAmplifier = PowerAmplifier::PALow;
 // Delay between Packet Sends
-const SEND_DELAY_MS: u32 = 100;
+const SEND_DELAY_MS: u32 = 50;
 
 use teensy4_panic as _;
 
@@ -35,6 +35,7 @@ mod app {
 
     use embedded_hal::spi::MODE_0;
 
+    use rtic_nrf24l01::error::RadioError;
     use teensy4_pins::t41::*;
 
     use teensy4_bsp as bsp;
@@ -69,14 +70,15 @@ mod app {
 
     // Type Definitions
     type SharedSPI = Lpspi<board::LpspiPins<P26, P39, P27, P38>, 3>;
-    type RadioCE = Output<P0>;
-    type RadioCSN = Output<P6>;
-    type RadioInterrupt = Input<P1>;
+    type RadioCE = Output<P20>;
+    type RadioCSN = Output<P14>;
+    type RadioInterrupt = Input<P15>;
     type Delay2 = Blocking<Gpt2, GPT_FREQUENCY>;
     type Gpio1 = Port<1>;
 
     #[local]
     struct Local {
+        error: Result<(), RadioError>,
     }
 
     #[shared]
@@ -126,27 +128,31 @@ mod app {
         let mut shared_spi = Lpspi::new(shared_spi_block, shared_spi_pins);
 
         shared_spi.disabled(|spi| {
-            spi.set_clock_hz(LPSPI_FREQUENCY, 5_000_000u32);
+            spi.set_clock_hz(LPSPI_FREQUENCY, 1_000_000u32);
             spi.set_mode(MODE_0);
         });
 
-        let radio_cs = gpio2.output(pins.p6);
-        let ce = gpio1.output(pins.p0);
+        let radio_cs = gpio1.output(pins.p14);
+        let ce = gpio1.output(pins.p20);
 
         let mut radio = Radio::new(ce, radio_cs);
-        if radio.begin(&mut shared_spi, &mut delay2).is_err() {
-            panic!("Unable to Initialize the Radio");
-        }
-
-        radio.set_pa_level(PA_LEVEL, &mut shared_spi, &mut delay2);
-        radio.open_writing_pipe(BASE_STATION_ADDRESS, &mut shared_spi, &mut delay2);
-        radio.open_reading_pipe(1, ROBOT_RADIO_ADDRESSES[ROBOT_ID as usize], &mut shared_spi, &mut delay2);
-        radio.set_channel(RADIO_CHANNEL, &mut shared_spi, &mut delay2);
-        radio.set_payload_size(ROBOT_STATUS_SIZE as u8, &mut shared_spi, &mut delay2);
-        radio.stop_listening(&mut shared_spi, &mut delay2);
-        send_status::spawn().ok();
+        
+        let success = radio.begin(&mut shared_spi, &mut delay2);
 
         let initial_robot_status = RobotStatusMessageBuilder::new().build();
+
+        if !success.is_err() {
+            radio.set_pa_level(PA_LEVEL, &mut shared_spi, &mut delay2);
+            radio.open_writing_pipe(BASE_STATION_ADDRESS, &mut shared_spi, &mut delay2);
+            radio.open_reading_pipe(1, ROBOT_RADIO_ADDRESSES[ROBOT_ID as usize], &mut shared_spi, &mut delay2);
+            radio.set_channel(RADIO_CHANNEL, &mut shared_spi, &mut delay2);
+            radio.set_payload_size(ROBOT_STATUS_SIZE as u8, &mut shared_spi, &mut delay2);
+            radio.stop_listening(&mut shared_spi, &mut delay2);
+
+            send_status::spawn().ok();
+        } else {
+
+        }
 
         (
             Shared {
@@ -156,6 +162,7 @@ mod app {
                 radio,
             },
             Local {
+                error: success,
             }
         )
     }
@@ -178,6 +185,9 @@ mod app {
         priority = 2,
     )]
     async fn send_status(ctx: send_status::Context) {
+        Systick::delay(1_000u32.millis()).await;
+
+        log::info!("Sending Statuses");
         (
             ctx.shared.robot_status,
             ctx.shared.radio,
@@ -196,6 +206,8 @@ mod app {
 
             *robot_status = new_robot_status;
 
+            log::info!("Sending {:?}", new_robot_status);
+
             let packed_data = match robot_status.pack() {
                 Ok(bytes) => bytes,
                 Err(_err) => {
@@ -204,6 +216,7 @@ mod app {
             };
 
             let report = radio.write(&packed_data, spi, delay);
+            radio.flush_tx(spi, delay);
 
             if report {
                 log::info!("Received Acknowledgement From Transmission");
@@ -231,5 +244,32 @@ mod app {
         Systick::delay(SEND_DELAY_MS.millis()).await;
 
         send_status::spawn().ok();
+    }
+
+    #[task(
+        shared = [shared_spi, radio, delay2],
+        local = [error],
+        priority = 1
+    )]
+    async fn print_error(ctx: print_error::Context) {
+        Systick::delay(1_000u32.millis()).await;
+
+        let error = ctx.local.error.unwrap();
+
+        for _ in 0..5 {
+            log::info!("Error Occurred: {:?}", error);
+
+            Systick::delay(500u32.millis()).await;
+        }
+
+        (
+            ctx.shared.shared_spi,
+            ctx.shared.radio,
+            ctx.shared.delay2,
+        ).lock(|spi, radio, delay| {
+            log::info!("Configuration: {:?}", radio.get_registers(spi, delay));
+        });
+
+        panic!("Error Occurred: {:?}", error);
     }
 }

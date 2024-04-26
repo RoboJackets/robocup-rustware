@@ -153,7 +153,9 @@ mod app {
 
         let rx_int = gpio1.input(pins.p15);
         gpio1.set_interrupt(&rx_int, Some(Trigger::Low));
+        rx_int.clear_triggered();
 
+        poll_receive::spawn().ok();
         blink::spawn().ok();
 
         (
@@ -186,61 +188,37 @@ mod app {
     }
 
     #[task(
-        binds = GPIO1_COMBINED_16_31,
-        shared = [rx_int, gpio1],
-        priority = 1
-    )]
-    fn radio_interrupt(ctx: radio_interrupt::Context) {
-        log::info!("Command Received");
-
-        if (ctx.shared.rx_int, ctx.shared.gpio1).lock(|rx_int, gpio1| {
-            if rx_int.is_triggered() {
-                rx_int.clear_triggered();
-                gpio1.set_interrupt(&rx_int, None);
-                return true;
-            }
-            false
-        }) {
-            receive_command::spawn().ok();
-        }
-    }
-
-    #[task(
         local = [total_packets],
-        shared = [rx_int, gpio1, shared_spi, delay2, control_message, robot_status, radio],
-        priority = 1,
+        shared = [shared_spi, delay2, control_message, robot_status, radio],
     )]
-    async fn receive_command(ctx: receive_command::Context) {
+    async fn poll_receive(ctx: poll_receive::Context) {
         (
             ctx.shared.shared_spi,
             ctx.shared.delay2,
             ctx.shared.control_message,
             ctx.shared.robot_status,
-            ctx.shared.radio,
+            ctx.shared.radio
         ).lock(|spi, delay, control_message, robot_status, radio| {
-            let mut read_buffer = [0u8; CONTROL_MESSAGE_SIZE];
-            radio.read(&mut read_buffer, spi, delay);
+            if radio.packet_ready(spi, delay) {
+                let mut buffer = [0u8; CONTROL_MESSAGE_SIZE];
+                radio.read(&mut buffer, spi, delay);
 
-            let control_message = match ControlMessage::unpack_from_slice(&read_buffer[..]) {
-                Ok(control_message) => control_message,
-                Err(_err) => {
-                    log::info!("Error Unpacking Control Command: {:?}", _err);
-                    return;
+                match ControlMessage::unpack_from_slice(&buffer[..]) {
+                    Ok(data) => log::info!("Received: {:?}", data),
+                    Err(err) => log::info!("Unable to Unpack Data: {:?}", err),
                 }
-            };
 
-            *ctx.local.total_packets += 1;
-
-            log::info!("Control Command Received: {:?}", control_message);
-
-            radio.flush_rx(spi, delay);
+                radio.flush_rx(spi, delay);
+            }
         });
 
-        (ctx.shared.rx_int, ctx.shared.gpio1).lock(|rx_int, gpio1| {
-            rx_int.clear_triggered();
-            gpio1.set_interrupt(&rx_int, Some(Trigger::FallingEdge));
-        });
+        wait::spawn().ok();
+    }
 
-        log::info!("Received {} Total Packets", *ctx.local.total_packets);
+    #[task]
+    async fn wait(ctx: wait::Context) {
+        Systick::delay(50u32.millis()).await;
+
+        poll_receive::spawn().ok();
     }
 }
