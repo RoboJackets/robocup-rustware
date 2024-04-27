@@ -375,19 +375,19 @@ mod app {
                 },
             }
 
-            match ctx.local.fpga.motors_en(true) {
+            match ctx.local.fpga.reset_motors() {
                 Ok(_status) => {
                     #[cfg(feature = "debug")]
-                    log::info!("Enabled motors fpga: {:010b}", _status)
+                    log::info!("Enabled Motors fpga: {:010b}", _status);
                 },
                 Err(_) => {
                     for _ in 0..5 {
-                        log::info!("Motors Could Not Be Enabled");
+                        log::info!("Motors could not be enabled");
 
                         Systick::delay(500u32.millis()).await;
                     }
-                    panic!("Unable to Enable Motors")
-                },
+                    panic!("Unable to Enable Motors");
+                }
             }
             *ctx.local.initialized = true;
 
@@ -455,6 +455,9 @@ mod app {
                 [0.0; 4]
             }
         };
+
+        #[cfg(feature = "debug")]
+        log::info!("Fpga Status: {:#010b}", ctx.local.fpga.status);
 
         *ctx.local.last_encoders = Vector4::new(
             encoder_velocities[0],

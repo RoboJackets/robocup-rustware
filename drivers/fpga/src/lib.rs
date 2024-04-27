@@ -123,7 +123,7 @@ pub struct FPGA<SPI, CS, INIT, PROG, DONE, DELAY, SPIE, GPIOE> where
     done: Input<DONE>,
     delay: DELAY,
     // The status of the FPGA
-    status: u8,
+    pub status: u8,
     // When Done is pulled true, this is set true
     initialized: bool,
 }
@@ -424,6 +424,7 @@ impl<SPI, CS, INIT, PROG, DONE, DELAY, SPIE, GPIOE> FPGA<SPI, CS, INIT, PROG, DO
         for i in 0..4 {
             delta_encoders[i] *= 1e6 * 2.0 * core::f32::consts::PI * WHEEL_RADIUS / (6144.0 * delta);
         }
+        self.status = write_buffer[0];
         Ok(delta_encoders)
     }
 
@@ -452,6 +453,15 @@ impl<SPI, CS, INIT, PROG, DONE, DELAY, SPIE, GPIOE> FPGA<SPI, CS, INIT, PROG, DO
             (i16::from_be_bytes(write_buffer[7..9].try_into().unwrap()) as f32),
         ];
         Ok((delta_encoders, delta))
+    }
+
+    pub fn check_drv(&mut self) -> Result<[u8; 3], FpgaError<SPIE, GPIOE>> {
+        let mut write_buffer = [0x96, 0x00, 0x00, 0x00, 0x00];
+        self.spi_transfer(&mut write_buffer)?;
+
+        self.status = write_buffer[0];
+
+        Ok([write_buffer[1], write_buffer[2], write_buffer[4]])
     }
 
     /// Set the duty cycles and read the current encoder values from the FPGA
@@ -537,6 +547,17 @@ impl<SPI, CS, INIT, PROG, DONE, DELAY, SPIE, GPIOE> FPGA<SPI, CS, INIT, PROG, DO
         
         self.spi_transfer(&mut write_buffer)?;
         Ok(self.status)
+    }
+
+    pub fn reset_motors(&mut self) -> Result<u8, FpgaError<SPIE, GPIOE>> {
+        // Set Motors High -> Low -> High
+        let mut buffer = [0x30 | 1 << 7];
+        self.spi_write(&buffer)?;
+        buffer[0] = 0x30;
+        self.spi_write(&buffer)?;
+        buffer[0] = 0x30 | 1 << 7;
+        self.spi_transfer(&mut buffer)?;
+        Ok(buffer[0])
     }
 
     /// Reset the watchdog on the FPGA.

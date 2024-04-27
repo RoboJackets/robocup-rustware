@@ -92,7 +92,6 @@ mod app {
         fpga: Fpga,
         motion_control: MotionControl,
         gpt: Gpt2,
-        led_pin: Output<P23>,
     }
 
     #[shared]
@@ -139,8 +138,6 @@ mod app {
         gpt2.set_clock_source(GPT_CLOCK_SOURCE);
         gpt2.enable();
 
-        let led_pin = gpio1.output(pins.p23);
-
         let mut fpga_spi = board::lpspi(
             lpspi4,
             board::LpspiPins {
@@ -171,10 +168,6 @@ mod app {
             panic!("Unable to Configure FPGA");
         }
 
-        if fpga.motors_en(true).is_err() {
-            panic!("Unable to Enable Motors");
-        }
-
         motion_control_update::spawn().ok();
 
         (
@@ -185,7 +178,6 @@ mod app {
                 fpga,
                 motion_control: MotionControl::new(),
                 gpt: gpt2,
-                led_pin,
             }
         )
     }
@@ -198,20 +190,17 @@ mod app {
     }
 
     #[task(
-        local = [fpga, motion_control, gpt, led_pin, initialized: bool = false, last_gpt: u32 = 0],
+        local = [fpga, motion_control, gpt, initialized: bool = false, last_gpt: u32 = 0],
         shared = [],
         priority=1,
     )]
     async fn motion_control_update(ctx: motion_control_update::Context) {
         if !*ctx.local.initialized {
-            log::info!("Started");
-            ctx.local.led_pin.set();
-            *ctx.local.initialized = true;
+            if ctx.local.fpga.reset_motors().is_err() {
+                panic!("Motor Reset Failed");
+            }
         }
 
-        if ctx.local.fpga.motors_en(true).is_err() {
-            panic!("Unable to enable motors");
-        }
         // if !*ctx.local.initialized {
         //     if ctx.local.fpga.configure().is_err() {
         //         panic!("Unable to configure fpga");
@@ -241,8 +230,14 @@ mod app {
         // };
 
         let now = ctx.local.gpt.count();
-        log::info!("Delta: {}", now - *ctx.local.last_gpt);
+        // log::info!("Delta: {}", now - *ctx.local.last_gpt);
         *ctx.local.last_gpt = now;
+
+        if let Ok(drv) = ctx.local.fpga.check_drv() {
+            log::info!("DRV: [{:#010b}, {:#010b}, {:#010b}]", drv[0], drv[1], drv[2]);
+        }
+
+        log::info!("Fpga Status: {:#010b}", ctx.local.fpga.status);
 
         // log::info!("{:?}", encoder_values);
 
