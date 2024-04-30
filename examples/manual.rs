@@ -73,7 +73,7 @@ mod app {
     const HEAP_SIZE: usize = 1024;
     static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
 
-    const MOTION_CONTROL_DELAY_US: u32 = 100;
+    const MOTION_CONTROL_DELAY_US: u32 = 200;
     const MAX_COUNTER_VALUE: u32 = 100;
 
     const PA_LEVEL: PowerAmplifier = PowerAmplifier::PALow;
@@ -360,37 +360,17 @@ mod app {
     )]
     async fn motion_control_loop(mut ctx: motion_control_loop::Context) {
         if !*ctx.local.initialized {
-            match ctx.local.fpga.configure() {
-                Ok(_) => {
-                    #[cfg(feature = "debug")]
-                    log::info!("Fpga Configured")
-                },
-                Err(_) => {
-                    for _ in 0..5 {
-                        log::info!("Fpga Could Not Be Configured");
-
-                        Systick::delay(500u32.millis()).await;
-                    }
-                    panic!("Unable to Configure Fpga")
-                },
+            if ctx.local.fpga.configure().is_err() {
+                panic!("Unable to configure fpga");
             }
 
-            match ctx.local.fpga.reset_motors() {
-                Ok(_status) => {
-                    #[cfg(feature = "debug")]
-                    log::info!("Enabled Motors fpga: {:010b}", _status);
-                },
-                Err(_) => {
-                    for _ in 0..5 {
-                        log::info!("Motors could not be enabled");
+            Systick::delay(10u32.millis()).await;
 
-                        Systick::delay(500u32.millis()).await;
-                    }
-                    panic!("Unable to Enable Motors");
-                }
+            if ctx.local.fpga.motors_en(true).is_err() {
+                panic!("Unable to enable motors");
             }
+
             *ctx.local.initialized = true;
-
             *ctx.local.last_time = ctx.local.chain_timer.current_timer_value();
         }
 
@@ -401,7 +381,10 @@ mod app {
             }
         });
 
-        let counter = ctx.shared.counter.lock(|counter| *counter);
+        let counter = ctx.shared.counter.lock(|counter| {
+            *counter += 1;
+            *counter
+        });
         if counter > MAX_COUNTER_VALUE {
             body_velocities = Vector3::new(0.0, 0.0, 0.0);
         }

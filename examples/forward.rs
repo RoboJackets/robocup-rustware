@@ -164,10 +164,6 @@ mod app {
             Err(_) => panic!("Unable to initialize the FPGA"),
         };
 
-        if fpga.configure().is_err() {
-            panic!("Unable to Configure FPGA");
-        }
-
         motion_control_update::spawn().ok();
 
         (
@@ -196,52 +192,32 @@ mod app {
     )]
     async fn motion_control_update(ctx: motion_control_update::Context) {
         if !*ctx.local.initialized {
-            if ctx.local.fpga.reset_motors().is_err() {
-                panic!("Motor Reset Failed");
+            if ctx.local.fpga.configure().is_err() {
+                panic!("Unable to configure fpga");
             }
+
+            Systick::delay(10u32.millis()).await;
+
+            if ctx.local.fpga.motors_en(true).is_err() {
+                panic!("Unable to enable motors");
+            }
+
+            *ctx.local.initialized = true;
         }
 
-        // if !*ctx.local.initialized {
-        //     if ctx.local.fpga.configure().is_err() {
-        //         panic!("Unable to configure fpga");
-        //     }
+        loop {
+            let encoder_values = match ctx.local.fpga.set_velocities([1.0, 1.0, 1.0, 1.0], 0.0) {
+                Ok(encoder_values) => {
+                    log::info!("Encoder Values: {:?}", encoder_values);
+                    encoder_values
+                },
+                Err(_) => [0.0; 4],
+            };
 
-        //     if ctx.local.fpga.motors_en(true).is_err() {
-        //         panic!("Unable to enable motors");
-        //     }
+            log::info!("Fpga Status: {:#010b}", ctx.local.fpga.status);
 
-        //     *ctx.local.initialized = true;
-        // }
-
-        let body_velocity = Vector3::new(0.0, 0.5, 0.0);
-
-        let wheel_velocities = ctx.local.motion_control.body_to_wheels(body_velocity);
-    
-        let encoder_values = match ctx.local.fpga.set_velocities([1.0, 1.0, 1.0, 1.0], 0.0) {
-            Ok(encoder_values) => {
-                log::info!("Encoder Values: {:?}", encoder_values);
-                encoder_values
-            },
-            Err(_) => [0.0; 4],
-        };
-        // let encoder_values = match ctx.local.fpga.set_velocities(wheel_velocities.into(), 0.0) {
-        //     Ok(encoder_values) => encoder_values,
-        //     Err(_) => [0.0; 4],
-        // };
-
-        let now = ctx.local.gpt.count();
-        // log::info!("Delta: {}", now - *ctx.local.last_gpt);
-        *ctx.local.last_gpt = now;
-
-        if let Ok(drv) = ctx.local.fpga.check_drv() {
-            log::info!("DRV: [{:#010b}, {:#010b}, {:#010b}]", drv[0], drv[1], drv[2]);
+            log::info!("Encoder Values: {:?}", encoder_values);
         }
-
-        log::info!("Fpga Status: {:#010b}", ctx.local.fpga.status);
-
-        // log::info!("{:?}", encoder_values);
-
-        motion_control_delay::spawn().ok();
     }
 
     #[task(priority = 1)]

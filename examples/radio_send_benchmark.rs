@@ -151,7 +151,7 @@ mod app {
 
             send_status::spawn().ok();
         } else {
-
+            print_error::spawn().ok();
         }
 
         (
@@ -254,13 +254,17 @@ mod app {
     async fn print_error(ctx: print_error::Context) {
         Systick::delay(1_000u32.millis()).await;
 
-        let error = ctx.local.error.unwrap();
+        log::info!("ERROR");
 
-        for _ in 0..5 {
-            log::info!("Error Occurred: {:?}", error);
 
-            Systick::delay(500u32.millis()).await;
-        }
+
+        // let error = ctx.local.error.unwrap();
+
+        // for _ in 0..5 {
+        //     log::info!("Error Occurred: {:?}", error);
+
+        //     Systick::delay(500u32.millis()).await;
+        // }
 
         (
             ctx.shared.shared_spi,
@@ -270,6 +274,6 @@ mod app {
             log::info!("Configuration: {:?}", radio.get_registers(spi, delay));
         });
 
-        panic!("Error Occurred: {:?}", error);
+        // panic!("Error Occurred: {:?}", error);
     }
 }

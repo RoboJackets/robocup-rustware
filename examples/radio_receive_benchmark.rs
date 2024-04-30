@@ -130,7 +130,7 @@ mod app {
         let mut shared_spi = Lpspi::new(shared_spi_block, shared_spi_pins);
 
         shared_spi.disabled(|spi| {
-            spi.set_clock_hz(LPSPI_FREQUENCY, 1_000_000u32);
+            spi.set_clock_hz(LPSPI_FREQUENCY, 5_000_000u32);
             spi.set_mode(MODE_0);
         });
 
