@@ -34,7 +34,7 @@ mod app {
 
     type Delay = Blocking<Gpt1, GPT1_FREQUENCY>;
     type CE = Output<P0>;
-    type CSN = Output<P9>;
+    type CSN = Output<P6>;
     type SharedSPI = Lpspi<board::LpspiPins<P26, P39, P27, P38>, 3>;
 
     #[local]
@@ -54,6 +54,7 @@ mod app {
             pins,
             mut gpio1,
             mut gpio2,
+            mut gpio4,
             usb,
             mut gpt1,
             ..
@@ -87,7 +88,7 @@ mod app {
         });
 
         let ce = gpio1.output(pins.p0);
-        let csn = gpio2.output(pins.p9);
+        let csn = gpio2.output(pins.p6);
 
         // Initialize the Radio
         let mut radio = Radio::new(ce, csn);

@@ -42,7 +42,9 @@ use bsp::hal::gpt::ClockSource;
 )]
 mod app {
 
-    use fpga::{error::FpgaError, DutyCycle};
+    use core::convert::Infallible;
+
+    use fpga::error::FpgaError;
 
     // this allows us to define our packages outside the app module
     // we're essetially "bringing them all in"
@@ -59,7 +61,7 @@ mod app {
     const SECOND_DELAY: u32 = SYST_MONO_FACTOR * 1000;    // 1 s delay
 
     // MOTION SPEED in DUTY CYCLE
-    const SPEED: i16 = 63;
+    const SPEED: f32 = 0.247;
     // timer stuff
     const GPT1_FREQUENCY: u32 = 1_000;
     const GPT1_CLOCK_SOURCE: ClockSource = ClockSource::HighFrequencyReferenceClock;
@@ -67,7 +69,7 @@ mod app {
 
     // type definitions to simplify Local and Shared Definitions
     type Delay = Blocking<Gpt1, GPT1_FREQUENCY>;
-    type Fpga = FPGA<board::Lpspi4, gpio::Output<P9>, P29, gpio::Output<P28>, P30, Delay>;
+    type Fpga = FPGA<board::Lpspi4, gpio::Output<P9>, P29, gpio::Output<P28>, P30, Delay, bsp::hal::lpspi::LpspiError, Infallible>;
 
     // struct that holds local resources which can be accessed via the context
     #[local]
@@ -206,15 +208,10 @@ mod app {
             log::info!("moving forward!");
             Systick::delay(TEN_MS_DELAY.millis()).await;
             for _ in 0..100 {
-                // forward direction duty cycles
-                let mut duty_cycles = [DutyCycle::from(SPEED as i16),     // motor 1
-                                DutyCycle::from(SPEED as i16),                            // motor 2
-                                DutyCycle::from(-SPEED as i16),                             // motor 3
-                                DutyCycle::from(-SPEED as i16),                             // motor 4
-                                DutyCycle::from(256 as i16)];                            // dribbler
+                let duty_cycles = [SPEED, SPEED, -SPEED, -SPEED];                        // dribbler
                 // write duty cycle
-                match fpga.set_duty_cycles(&mut duty_cycles) {
-                    Ok(status) => log::info!("wrote duty cycles fpga status: {:b}", status),
+                match fpga.set_duty_cycles(duty_cycles, 0.0) {
+                    Ok(_) => log::info!("wrote duty cycles fpga status: {:b}", fpga.status()),
                     Err(e) => panic!("error writing duty cycles... {:?}", e),
                 };
                 Systick::delay(HUNDRED_MS_DELAY.millis()).await;
@@ -224,15 +221,10 @@ mod app {
             log::info!("moving backwards!");
             Systick::delay(TEN_MS_DELAY.millis()).await;
             for _ in 0..100 {
-                // forward direction duty cycles
-                let mut duty_cycles = [DutyCycle::from(-SPEED as i16),     // motor 1
-                                DutyCycle::from(-SPEED as i16),                            // motor 2
-                                DutyCycle::from(SPEED as i16),                           // motor 3
-                                DutyCycle::from(SPEED as i16),                           // motor 4
-                                DutyCycle::from(256 as i16)];                           // dribbler
+                let duty_cycles = [-SPEED, -SPEED, SPEED, SPEED];                         // dribbler
                 // write duty cycle
-                match fpga.set_duty_cycles(&mut duty_cycles) {
-                    Ok(status) => log::info!("wrote duty cycles fpga status: {:b}", status),
+                match fpga.set_duty_cycles(duty_cycles, 0.0) {
+                    Ok(_) => log::info!("wrote duty cycles fpga status: {:b}", fpga.status()),
                     Err(e) => panic!("error writing duty cycles... {:?}", e),
                 };
                 Systick::delay(HUNDRED_MS_DELAY.millis()).await;
@@ -242,15 +234,10 @@ mod app {
             log::info!("spinning!");
             Systick::delay(TEN_MS_DELAY.millis()).await;
             for _ in 0..100 {
-                // forward direction duty cycles
-                let mut duty_cycles = [DutyCycle::from(SPEED as i16), 
-                                DutyCycle::from(SPEED as i16), 
-                                DutyCycle::from(SPEED as i16),
-                                DutyCycle::from(SPEED as i16),
-                                DutyCycle::from(256 as i16)];
+                let duty_cycles = [SPEED, SPEED, SPEED, SPEED];
                 // write duty cycle
-                match fpga.set_duty_cycles(&mut duty_cycles) {
-                    Ok(status) => log::info!("wrote duty cycles fpga status: {:b}", status),
+                match fpga.set_duty_cycles(duty_cycles, 0.0) {
+                    Ok(_) => log::info!("wrote duty cycles fpga status: {:b}", fpga.status()),
                     Err(e) => panic!("error writing duty cycles... {:?}", e),
                 };
                 Systick::delay(HUNDRED_MS_DELAY.millis()).await;
@@ -260,15 +247,10 @@ mod app {
             log::info!("standby...");
             Systick::delay(TEN_MS_DELAY.millis()).await;
             for _ in 0..100 {
-                // forward direction duty cycles
-                let mut duty_cycles = [DutyCycle::from(0 as i16), 
-                                DutyCycle::from(0 as i16), 
-                                DutyCycle::from(0 as i16),
-                                DutyCycle::from(0 as i16),
-                                DutyCycle::from(256 as i16)];
+                let duty_cycles = [0.0, 0.0, 0.0, 0.0];
                 // write duty cycle
-                match fpga.set_duty_cycles(&mut duty_cycles) {
-                    Ok(status) => log::info!("wrote duty cycles fpga status: {:b}", status),
+                match fpga.set_duty_cycles(duty_cycles, 0.0) {
+                    Ok(_) => log::info!("wrote duty cycles fpga status: {:b}", fpga.status()),
                     Err(e) => panic!("error writing duty cycles... {:?}", e),
                 };
                 Systick::delay(HUNDRED_MS_DELAY.millis()).await;

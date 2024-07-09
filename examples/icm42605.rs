@@ -30,7 +30,8 @@ mod app {
 
     #[local]
     struct Local {
-        imu: Imu,
+        delay: Blocking<hal::pit::Pit<0>, PERCLK_FREQUENCY>,
+        i2c: Option<Lpi2c1>,
     }
 
     #[shared]
@@ -55,17 +56,13 @@ mod app {
 
         let mut delay = Blocking::<_, PERCLK_FREQUENCY>::from_pit(pit);
 
-        let imu = match IMU::new(i2c, &mut delay) {
-            Ok(imu) => imu,
-            Err(_err) => panic!("Unable to Initialize IMU"),
-        };
-
         icm::spawn().ok();
 
         (
             Shared {},
             Local {
-                imu,
+                delay,
+                i2c: Some(i2c),
             },
         )
     }
@@ -77,13 +74,20 @@ mod app {
         }
     }
 
-    #[task(local = [imu], priority = 1)]
+    #[task(local = [i2c, delay], priority = 1)]
     async fn icm(ctx: icm::Context) {
-        Systick::delay(1_000u32.millis()).await;
+        Systick::delay(5_000u32.millis()).await;
+        let i2c = ctx.local.i2c.take().unwrap();
+
+        let mut imu = match IMU::new(i2c, ctx.local.delay) {
+            Ok(imu) => imu,
+            Err(_) => panic!("Unable to Initialize IMU"),
+        };
+
         log::info!("Using IMU");
 
         loop {
-            let gyro_z = match ctx.local.imu.gyro_z() {
+            let gyro_z = match imu.gyro_z() {
                 Ok(gyro_z) => gyro_z,
                 Err(_err) => {
                     log::info!("Unable to Read Gyro Z");
@@ -91,7 +95,7 @@ mod app {
                 },
             };
 
-            let accel_x = match ctx.local.imu.accel_x() {
+            let accel_x = match imu.accel_x() {
                 Ok(accel_x) => accel_x,
                 Err(_err) => {
                     log::info!("Unable to Read Accel X");
@@ -99,7 +103,7 @@ mod app {
                 }
             };
 
-            let accel_y = match ctx.local.imu.accel_y() {
+            let accel_y = match imu.accel_y() {
                 Ok(accel_y) => accel_y,
                 Err(_err) => {
                     log::info!("Unable to Read Accel Y");

@@ -1,7 +1,5 @@
 //!
-//! Mock Manual is an example that has everything except for the FPGA moving.
-//! 
-//! Any motion controls will be logged to the console
+//! Benchmark the Radio by continually receiving packets.
 //! 
 
 #![no_std]
@@ -9,9 +7,15 @@
 #![feature(type_alias_impl_trait)]
 
 use embedded_alloc::Heap;
+use rtic_nrf24l01::config::power_amplifier::PowerAmplifier;
 
 #[global_allocator]
 static HEAP: Heap = Heap::empty();
+
+// Radio Channel
+const RADIO_CHANNEL: u8 = 70;
+// PA Level
+const PA_LEVEL: PowerAmplifier = PowerAmplifier::PALow;
 
 use teensy4_panic as _;
 
@@ -26,18 +30,17 @@ mod app {
 
     use embedded_hal::spi::MODE_0;
 
-    use nalgebra::Vector3;
+    use teensy4_pins::t41::*;
+
     use teensy4_bsp as bsp;
     use bsp::board::{self, LPSPI_FREQUENCY};
-
-    use teensy4_pins::t41::*;
 
     use teensy4_bsp::hal as hal;
     use hal::lpspi::{LpspiError, Lpspi, Pins};
     use hal::gpio::{Output, Input, Trigger, Port};
-    use hal::gpt::{ClockSource, Gpt1, Gpt2};
+    use hal::gpt::{ClockSource, Gpt2};
     use hal::timer::Blocking;
-    
+
     use bsp::ral as ral;
     use ral::lpspi::LPSPI3;
 
@@ -48,10 +51,8 @@ mod app {
     use packed_struct::prelude::*;
 
     use robojackets_robocup_rtp::{ControlMessage, CONTROL_MESSAGE_SIZE};
-    use robojackets_robocup_rtp::{RobotStatusMessage, RobotStatusMessageBuilder, ROBOT_STATUS_SIZE};
+    use robojackets_robocup_rtp::{RobotStatusMessage, RobotStatusMessageBuilder};
     use robojackets_robocup_rtp::{BASE_STATION_ADDRESS, ROBOT_RADIO_ADDRESSES};
-
-    use main::motion_control::MotionControl;
 
     // Constants
     const GPT_FREQUENCY: u32 = 1_000;
@@ -61,79 +62,64 @@ mod app {
     const HEAP_SIZE: usize = 1024;
     static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
 
-    const MOTION_CONTROL_DELAY_MS: u32 = 1000;
+    const SEND_DELAY_MS: u32 = 100;
+
+    // Total Packets to Send
+    const TOTAL_SEND_PACKETS: usize = 100;
 
     // Type Definitions
-    // FPGA Spi
-    type _SPI = Lpspi<board::LpspiPins<P11, P12, P13, P10>, 4>;
-    // Shared Spi
     type SharedSPI = Lpspi<board::LpspiPins<P26, P39, P27, P38>, 3>;
-    type RadioCE = Output<P0>;
-    type RadioCSN = Output<P6>;
-    type RadioInterrupt = Input<P1>;
-    // Delays
-    type Delay1 = Blocking<Gpt1, GPT_FREQUENCY>;
+    type RadioCE = Output<P20>;
+    type RadioCSN = Output<P14>;
+    type RadioInterrupt = Input<P15>;
     type Delay2 = Blocking<Gpt2, GPT_FREQUENCY>;
-    // GPIO Ports
     type Gpio1 = Port<1>;
 
     #[local]
     struct Local {
-        radio: Radio<RadioCE, RadioCSN, SharedSPI, Delay2, Infallible, LpspiError>,
-        motion_controller: MotionControl,
+        total_packets: usize,
     }
 
     #[shared]
     struct Shared {
+        radio: Radio<RadioCE, RadioCSN, SharedSPI, Delay2, Infallible, LpspiError>,
         shared_spi: SharedSPI,
-        delay1: Delay1,
         delay2: Delay2,
         rx_int: RadioInterrupt,
-        gpio1: Gpio1,
         robot_status: RobotStatusMessage,
         control_message: Option<ControlMessage>,
+        gpio1: Gpio1,
     }
 
     #[init]
     fn init(ctx: init::Context) -> (Shared, Local) {
-        // Initialize the Heap
         unsafe { HEAP.init(HEAP_MEM.as_ptr() as usize, HEAP_SIZE); }
 
-        // Grab the board peripherals
         let board::Resources {
-            pins,
+            mut pins,
             mut gpio1,
             mut gpio2,
+            mut gpio3,
+            mut gpio4,
             usb,
+            lpi2c1,
+            lpspi4,
             mut gpt1,
             mut gpt2,
+            pit: (pit0, pit1, pit2, pit3),
             ..
         } = board::t41(ctx.device);
 
-        // Setup USB Logging
         bsp::LoggingFrontend::default_log().register_usb(usb);
 
-        // Initialize Systick Async Delay
         let systick_token = rtic_monotonics::create_systick_token!();
         Systick::start(ctx.core.SYST, 600_000_000, systick_token);
 
-        // Gpt 1 as blocking delay
-        gpt1.disable();
-        gpt1.set_divider(GPT_DIVIDER);
-        gpt1.set_clock_source(GPT_CLOCK_SOURCE);
-        let delay1 = Blocking::<_, GPT_FREQUENCY>::from_gpt(gpt1);
-
-        // Gpt 2 as blocking delay
         gpt2.disable();
         gpt2.set_divider(GPT_DIVIDER);
         gpt2.set_clock_source(GPT_CLOCK_SOURCE);
         let mut delay2 = Blocking::<_, GPT_FREQUENCY>::from_gpt(gpt2);
 
-        // Setup Rx Interrupt
-        let rx_int = gpio1.input(pins.p1);
-        gpio1.set_interrupt(&rx_int, Some(Trigger::FallingEdge));
-
-        // Initialize Shared SPI
         let shared_spi_pins = Pins {
             pcs0: pins.p38,
             sck: pins.p27,
@@ -144,59 +130,69 @@ mod app {
         let mut shared_spi = Lpspi::new(shared_spi_block, shared_spi_pins);
 
         shared_spi.disabled(|spi| {
-            spi.set_clock_hz(LPSPI_FREQUENCY, 10_000_000u32);
+            spi.set_clock_hz(LPSPI_FREQUENCY, 5_000_000u32);
             spi.set_mode(MODE_0);
         });
 
-        // Init radio cs pin and ce pin
-        let radio_cs = gpio2.output(pins.p6);
-        let ce = gpio1.output(pins.p0);
+        let radio_cs = gpio1.output(pins.p14);
+        let ce = gpio1.output(pins.p20);
 
-        // Initialize radio
         let mut radio = Radio::new(ce, radio_cs);
         if radio.begin(&mut shared_spi, &mut delay2).is_err() {
             panic!("Unable to Initialize the Radio");
         }
 
-        radio.set_pa_level(power_amplifier::PowerAmplifier::PALow, &mut shared_spi, &mut delay2);
+        radio.set_pa_level(PA_LEVEL, &mut shared_spi, &mut delay2);
+        radio.set_channel(RADIO_CHANNEL, &mut shared_spi, &mut delay2);
         radio.set_payload_size(CONTROL_MESSAGE_SIZE as u8, &mut shared_spi, &mut delay2);
         radio.open_writing_pipe(BASE_STATION_ADDRESS, &mut shared_spi, &mut delay2);
         radio.open_reading_pipe(1, ROBOT_RADIO_ADDRESSES[ROBOT_ID as usize], &mut shared_spi, &mut delay2);
         radio.start_listening(&mut shared_spi, &mut delay2);
 
-        // Set an initial robot status
-        let initial_robot_status = RobotStatusMessageBuilder::new().build();
+        let initial_radio_status = RobotStatusMessageBuilder::new().build();
 
-        rx_int.clear_triggered();
+        let rx_int = gpio1.input(pins.p15);
+        gpio1.set_interrupt(&rx_int, Some(Trigger::Low));
 
-        motion_control_loop::spawn().ok();
+        blink::spawn().ok();
 
         (
             Shared {
                 shared_spi,
-                delay1,
                 delay2,
                 rx_int,
-                gpio1,
-                robot_status: initial_robot_status,
+                robot_status: initial_radio_status,
                 control_message: None,
+                gpio1,
+                radio,
             },
             Local {
-                radio,
-                motion_controller: MotionControl::new(MOTION_CONTROL_DELAY_MS),
+                total_packets: 0,
             }
         )
     }
 
-    #[idle]
-    fn idle(_: idle::Context) -> ! {
+    #[task]
+    async fn blink(_ctx: blink::Context) {
         loop {
-            cortex_m::asm::wfi();
+            log::info!("On");
+
+            Systick::delay(1000u32.millis()).await;
+
+            log::info!("Off");
+
+            Systick::delay(1000u32.millis()).await;
         }
     }
 
-    #[task(binds = GPIO1_COMBINED_0_15, shared = [rx_int, gpio1], priority = 2)]
+    #[task(
+        binds = GPIO1_COMBINED_16_31,
+        shared = [rx_int, gpio1],
+        priority = 1
+    )]
     fn radio_interrupt(ctx: radio_interrupt::Context) {
+        log::info!("Command Received");
+
         if (ctx.shared.rx_int, ctx.shared.gpio1).lock(|rx_int, gpio1| {
             if rx_int.is_triggered() {
                 rx_int.clear_triggered();
@@ -209,75 +205,42 @@ mod app {
         }
     }
 
-    #[task(shared = [rx_int, gpio1, shared_spi, delay2, control_message, robot_status], local = [radio], priority = 2)]
+    #[task(
+        local = [total_packets],
+        shared = [rx_int, gpio1, shared_spi, delay2, control_message, robot_status, radio],
+        priority = 1,
+    )]
     async fn receive_command(ctx: receive_command::Context) {
         (
             ctx.shared.shared_spi,
             ctx.shared.delay2,
             ctx.shared.control_message,
             ctx.shared.robot_status,
-        ).lock(|spi, delay, command, robot_status| {
+            ctx.shared.radio,
+        ).lock(|spi, delay, control_message, robot_status, radio| {
             let mut read_buffer = [0u8; CONTROL_MESSAGE_SIZE];
-            ctx.local.radio.read(&mut read_buffer, spi, delay);
+            radio.read(&mut read_buffer, spi, delay);
 
             let control_message = match ControlMessage::unpack_from_slice(&read_buffer[..]) {
                 Ok(control_message) => control_message,
-                Err(err) => {
-                    log::info!("Error Unpacking Control Command: {:?}", err);
-                    return;
-                },
-            };
-
-            *command = Some(control_message);
-
-            ctx.local.radio.set_payload_size(ROBOT_STATUS_SIZE as u8, spi, delay);
-            ctx.local.radio.stop_listening(spi, delay);
-
-            let packed_data = match robot_status.pack() {
-                Ok(bytes) => bytes,
-                Err(err) => {
-                    log::info!("Error Packing Robot Status: {:?}", err);
+                Err(_err) => {
+                    log::info!("Error Unpacking Control Command: {:?}", _err);
                     return;
                 }
             };
 
-            for _ in 0..5 {
-                let report = ctx.local.radio.write(&packed_data, spi, delay);
-                if report {
-                    break;
-                }
-            }
+            *ctx.local.total_packets += 1;
 
-            ctx.local.radio.set_payload_size(CONTROL_MESSAGE_SIZE as u8, spi, delay);
-            ctx.local.radio.start_listening(spi, delay);
+            log::info!("Control Command Received: {:?}", control_message);
+
+            radio.flush_rx(spi, delay);
         });
 
         (ctx.shared.rx_int, ctx.shared.gpio1).lock(|rx_int, gpio1| {
             rx_int.clear_triggered();
             gpio1.set_interrupt(&rx_int, Some(Trigger::FallingEdge));
         });
-    }
 
-    #[task(shared = [delay1, control_message], local = [motion_controller], priority = 1)]
-    async fn motion_control_loop(mut ctx: motion_control_loop::Context) {
-        let body_velocities = ctx.shared.control_message.lock(|control_message| {
-            match control_message {
-                Some(control_message) => control_message.get_velocity(),
-                None => Vector3::new(0.0, 0.0, 0.0),
-            }
-        });
-
-        let wheel_velocities = ctx.local.motion_controller.body_to_wheels(body_velocities);
-
-        log::info!("Wheel Velocities: {:?}", wheel_velocities);
-
-        motion_control_delay::spawn().ok();
-    }
-
-    #[task(priority = 1)]
-    async fn motion_control_delay(_ctx: motion_control_delay::Context) {
-        Systick::delay(MOTION_CONTROL_DELAY_MS.millis()).await;
-
-        motion_control_loop::spawn().ok();
+        log::info!("Received {} Total Packets", *ctx.local.total_packets);
     }
 }

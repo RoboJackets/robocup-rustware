@@ -71,11 +71,11 @@ mod app {
         loop {
             log::info!("On");
 
-            Systick::delay(1_000u32.millis()).await;
+            Systick::delay(1000u32.millis()).await;
 
             log::info!("Off");
 
-            Systick::delay(1_000u32.millis()).await;
+            Systick::delay(1000u32.millis()).await;
         }
     }
 }
