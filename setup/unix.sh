@@ -34,7 +34,8 @@ echo "Making Teensy Loader CLI"
 make -C "${currentDir}/teensy_loader_cli"
 
 echo "Moving Executable"
-mv "${currentDir}/teensy_loader_cli/teensy_loader_cli" ${currentDir}/../teensy_loader_cli
+mv "${currentDir}/teensy_loader_cli/teensy_loader_cli" ${currentDir}/loader
 
 echo "Cleaning Up"
 rm -rf "${currentDir}/teensy_loader_cli"
+mv "${currentDir}/loader" "${currentDir}/teensy_loader_cli"
