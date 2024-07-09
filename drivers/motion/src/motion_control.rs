@@ -15,21 +15,12 @@ pub const WHEEL_RADIUS: f32 = 0.02786;
 
 pub const SCALE_FACTOR: f32 = 0.75;
 /// Weighting for IMU Sensor Readings
-#[cfg(feature = "robot-0")]
 pub const ALPHA: f32 = 0.15;
-//#[cfg(feature = "robot-1")]
-pub const ALPHA: f32 = 0.30;
 /// Weighting for the IMU Sensor Readings on High Acceleration
-#[cfg(feature = "robot-0")]
-pub const HIGH_ALPHA: f32 = 0.80;
-//#[cfg(feature = "robot-1")]
 pub const HIGH_ALPHA: f32 = 0.80;
 /// High Acceleration Cutoff (squared) (We should weight the accelerometer higher if there
 /// is a high acceleration)
-#[cfg(feature = "robot-0")]
 pub const HIGH_ACCELERATION_CUTOFF: f32 = 0.5 * 0.5;
-// #[cfg(feature = "robot-1")]
-pub const HIGH_ACCELERATION_CUTOFF: f32 = 0.0001 * 0.0001;
 /// Factor with which to correct headings my
 pub const CORRECT_FACTOR: f32 = 0.5;
 /// Number of timesteps to wait for measurements to stabilize

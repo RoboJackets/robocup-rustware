@@ -74,10 +74,10 @@ mod app {
     static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
 
     const MOTION_CONTROL_DELAY_US: u32 = 200;
-    const MAX_COUNTER_VALUE: u32 = 100;
+    const MAX_COUNTER_VALUE: u32 = 500;
 
     const PA_LEVEL: PowerAmplifier = PowerAmplifier::PALow;
-    const RF_CHANNEL: u8 = 15;
+    const RF_CHANNEL: u8 = 70;
 
     // Type Definitions
     // FPGA Spi
@@ -421,7 +421,7 @@ mod app {
         *ctx.local.last_time = now;
 
         let wheel_velocities = ctx.local.motion_controller.control_update(
-            Vector3::new(accel_x, accel_y, gyro),
+            Vector3::new(-accel_y, accel_x, gyro),
             *ctx.local.last_encoders,
             body_velocities,
             delta,

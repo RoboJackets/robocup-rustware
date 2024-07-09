@@ -13,7 +13,7 @@ use rtic_nrf24l01::config::power_amplifier::PowerAmplifier;
 static HEAP: Heap = Heap::empty();
 
 // Radio Channel
-const RADIO_CHANNEL: u8 = 15;
+const RADIO_CHANNEL: u8 = 70;
 // PA Level
 const PA_LEVEL: PowerAmplifier = PowerAmplifier::PALow;
 
