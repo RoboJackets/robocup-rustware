@@ -13,6 +13,15 @@
 #![no_std]
 #![no_main]
 
+use core::mem::MaybeUninit;
+
+use embedded_alloc::Heap;
+#[global_allocator]
+static HEAP: Heap = Heap::empty();
+
+const HEAP_SIZE: usize = 1024;
+static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
+
 use teensy4_panic as _;
 
 use teensy4_bsp::{self as bsp, board, hal::timer::Blocking};
@@ -63,6 +72,9 @@ fn least_squares(y: &[f32]) -> (f32, f32) {
 
 #[bsp::rt::entry]
 fn main() -> ! {
+    // Initialize the Heap
+    unsafe { HEAP.init(HEAP_MEM.as_ptr() as usize, HEAP_SIZE); }
+
     let board::Resources {
         mut pins,
         mut gpio2,
