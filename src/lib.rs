@@ -28,3 +28,15 @@ pub const ROBOT_ID: u8 = 3;
 pub const ROBOT_ID: u8 = 4;
 #[cfg(feature = "robot-5")]
 pub const ROBOT_ID: u8 = 5;
+
+
+// Clock Parameters
+use teensy4_bsp::hal::gpt::ClockSource;
+use teensy4_bsp::board::PERCLK_FREQUENCY;
+
+/// Frequency of the GPT Clocks
+pub const GPT_FREQUENCY: u32 = 1_000;
+/// Reference clock for the GPT clocks
+pub const GPT_CLOCK_SOURCE: ClockSource = ClockSource::HighFrequencyReferenceClock;
+/// Divider for the GPT clocks
+pub const GPT_DIVIDER: u32 = PERCLK_FREQUENCY / GPT_FREQUENCY;
