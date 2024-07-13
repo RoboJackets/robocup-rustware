@@ -26,8 +26,6 @@ mod app {
 
     use rtic_monotonics::systick::*;
 
-    type Imu = IMU<Lpi2c1>;
-
     #[local]
     struct Local {
         delay: Blocking<hal::pit::Pit<0>, PERCLK_FREQUENCY>,
@@ -54,7 +52,7 @@ mod app {
         let systick_token = rtic_monotonics::create_systick_token!();
         Systick::start(ctx.core.SYST, 600_000_000, systick_token);
 
-        let mut delay = Blocking::<_, PERCLK_FREQUENCY>::from_pit(pit);
+        let delay = Blocking::<_, PERCLK_FREQUENCY>::from_pit(pit);
 
         icm::spawn().ok();
 

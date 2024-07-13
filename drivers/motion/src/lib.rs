@@ -7,8 +7,6 @@ use nalgebra::base::*;
 pub mod motion_control;
 pub use motion_control::MotionControl;
 
-pub mod motion_control_clock;
-
 pub const WHEEL_RADIUS: f32 = 0.02786;
 pub const REAR_WHEEL_DIST: f32 = 0.077874;
 pub const FRONT_WHEEL_DIST: f32 = 0.078089;

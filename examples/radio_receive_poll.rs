@@ -37,14 +37,14 @@ mod app {
 
     use teensy4_bsp::hal as hal;
     use hal::lpspi::{LpspiError, Lpspi, Pins};
-    use hal::gpio::{Output, Input, Trigger, Port};
+    use hal::gpio::{Output, Trigger};
     use hal::gpt::{ClockSource, Gpt2};
     use hal::timer::Blocking;
 
     use bsp::ral as ral;
     use ral::lpspi::LPSPI3;
 
-    use rtic_nrf24l01::{Radio, config::*};
+    use rtic_nrf24l01::Radio;
 
     use rtic_monotonics::systick::*;
 
@@ -62,18 +62,11 @@ mod app {
     const HEAP_SIZE: usize = 1024;
     static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
 
-    const SEND_DELAY_MS: u32 = 100;
-
-    // Total Packets to Send
-    const TOTAL_SEND_PACKETS: usize = 100;
-
     // Type Definitions
     type SharedSPI = Lpspi<board::LpspiPins<P26, P39, P27, P38>, 3>;
     type RadioCE = Output<P20>;
     type RadioCSN = Output<P14>;
-    type RadioInterrupt = Input<P15>;
     type Delay2 = Blocking<Gpt2, GPT_FREQUENCY>;
-    type Gpio1 = Port<1>;
 
     #[local]
     struct Local {
@@ -85,10 +78,8 @@ mod app {
         radio: Radio<RadioCE, RadioCSN, SharedSPI, Delay2, Infallible, LpspiError>,
         shared_spi: SharedSPI,
         delay2: Delay2,
-        rx_int: RadioInterrupt,
         robot_status: RobotStatusMessage,
         control_message: Option<ControlMessage>,
-        gpio1: Gpio1,
     }
 
     #[init]
@@ -96,17 +87,10 @@ mod app {
         unsafe { HEAP.init(HEAP_MEM.as_ptr() as usize, HEAP_SIZE); }
 
         let board::Resources {
-            mut pins,
+            pins,
             mut gpio1,
-            mut gpio2,
-            mut gpio3,
-            mut gpio4,
             usb,
-            lpi2c1,
-            lpspi4,
-            mut gpt1,
             mut gpt2,
-            pit: (pit0, pit1, pit2, pit3),
             ..
         } = board::t41(ctx.device);
 
@@ -131,8 +115,8 @@ mod app {
 
         shared_spi.disabled(|spi| {
             spi.set_clock_hz(LPSPI_FREQUENCY, 1_000_000u32);
-            spi.set_mode(MODE_0);
         });
+        shared_spi.set_mode(MODE_0);
 
         let radio_cs = gpio1.output(pins.p14);
         let ce = gpio1.output(pins.p20);
@@ -162,10 +146,8 @@ mod app {
             Shared {
                 shared_spi,
                 delay2,
-                rx_int,
                 robot_status: initial_radio_status,
                 control_message: None,
-                gpio1,
                 radio,
             },
             Local {
@@ -198,7 +180,7 @@ mod app {
             ctx.shared.control_message,
             ctx.shared.robot_status,
             ctx.shared.radio
-        ).lock(|spi, delay, control_message, robot_status, radio| {
+        ).lock(|spi, delay, _control_message, _robot_status, radio| {
             if radio.packet_ready(spi, delay) {
                 let mut buffer = [0u8; CONTROL_MESSAGE_SIZE];
                 radio.read(&mut buffer, spi, delay);
@@ -216,7 +198,7 @@ mod app {
     }
 
     #[task]
-    async fn wait(ctx: wait::Context) {
+    async fn wait(_ctx: wait::Context) {
         Systick::delay(50u32.millis()).await;
 
         poll_receive::spawn().ok();

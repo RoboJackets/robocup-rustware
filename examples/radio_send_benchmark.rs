@@ -43,14 +43,14 @@ mod app {
 
     use teensy4_bsp::hal as hal;
     use hal::lpspi::{LpspiError, Lpspi, Pins};
-    use hal::gpio::{Output, Input, Port};
+    use hal::gpio::Output;
     use hal::gpt::{ClockSource, Gpt2};
     use hal::timer::Blocking;
 
     use bsp::ral as ral;
     use ral::lpspi::LPSPI3;
 
-    use rtic_nrf24l01::{Radio, config::*};
+    use rtic_nrf24l01::Radio;
 
     use rtic_monotonics::systick::*;
 
@@ -72,9 +72,7 @@ mod app {
     type SharedSPI = Lpspi<board::LpspiPins<P26, P39, P27, P38>, 3>;
     type RadioCE = Output<P20>;
     type RadioCSN = Output<P14>;
-    type RadioInterrupt = Input<P15>;
     type Delay2 = Blocking<Gpt2, GPT_FREQUENCY>;
-    type Gpio1 = Port<1>;
 
     #[local]
     struct Local {
@@ -94,17 +92,10 @@ mod app {
         unsafe { HEAP.init(HEAP_MEM.as_ptr() as usize, HEAP_SIZE); }
 
         let board::Resources {
-            mut pins,
+            pins,
             mut gpio1,
-            mut gpio2,
-            mut gpio3,
-            mut gpio4,
             usb,
-            lpi2c1,
-            lpspi4,
-            mut gpt1,
             mut gpt2,
-            pit: (pit0, pit1, pit2, pit3),
             ..
         } = board::t41(ctx.device);
 
@@ -129,8 +120,8 @@ mod app {
 
         shared_spi.disabled(|spi| {
             spi.set_clock_hz(LPSPI_FREQUENCY, 1_000_000u32);
-            spi.set_mode(MODE_0);
         });
+        shared_spi.set_mode(MODE_0);
 
         let radio_cs = gpio1.output(pins.p14);
         let ce = gpio1.output(pins.p20);
@@ -240,7 +231,7 @@ mod app {
     }
 
     #[task(priority = 1)]
-    async fn wait_for_next_send(ctx: wait_for_next_send::Context) {
+    async fn wait_for_next_send(_ctx: wait_for_next_send::Context) {
         Systick::delay(SEND_DELAY_MS.millis()).await;
 
         send_status::spawn().ok();

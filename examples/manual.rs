@@ -46,7 +46,7 @@ mod app {
     use bsp::ral as ral;
     use ral::lpspi::LPSPI3;
 
-    use rtic_nrf24l01::{Radio, config::*};
+    use rtic_nrf24l01::Radio;
 
     use rtic_monotonics::systick::*;
 
@@ -179,9 +179,7 @@ mod app {
             },
             FPGA_SPI_FREQUENCY,
         );
-        spi.disabled(|spi| {
-            spi.set_mode(FPGA_SPI_MODE);
-        });
+        spi.set_mode(FPGA_SPI_MODE);
 
         // Initialize IMU
         let i2c = board::lpi2c(lpi2c1, pins.p19, pins.p18, board::Lpi2cClockSpeed::KHz400);
@@ -203,8 +201,8 @@ mod app {
 
         shared_spi.disabled(|spi| {
             spi.set_clock_hz(LPSPI_FREQUENCY, 5_000_000u32);
-            spi.set_mode(MODE_0);
         });
+        shared_spi.set_mode(MODE_0);
 
         // Init radio cs pin and ce pin
         let radio_cs = gpio1.output(pins.p14);

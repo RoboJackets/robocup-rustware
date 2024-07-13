@@ -54,7 +54,6 @@ mod app {
             pins,
             mut gpio1,
             mut gpio2,
-            mut gpio4,
             usb,
             mut gpt1,
             ..
@@ -83,9 +82,9 @@ mod app {
         let mut shared_spi = hal::lpspi::Lpspi::new(shared_spi_block, spi_pins);
 
         shared_spi.disabled(|spi| {
-            spi.set_clock_hz(LPSPI_FREQUENCY, 10_000_000u32);
-            spi.set_mode(MODE_0);
+            spi.set_clock_hz(LPSPI_FREQUENCY, 5_000_000);
         });
+        shared_spi.set_mode(MODE_0);
 
         let ce = gpio1.output(pins.p0);
         let csn = gpio2.output(pins.p6);

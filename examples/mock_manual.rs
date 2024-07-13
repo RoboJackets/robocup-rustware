@@ -51,7 +51,7 @@ mod app {
     use robojackets_robocup_rtp::{RobotStatusMessage, RobotStatusMessageBuilder, ROBOT_STATUS_SIZE};
     use robojackets_robocup_rtp::{BASE_STATION_ADDRESS, ROBOT_RADIO_ADDRESSES};
 
-    use main::motion_control::MotionControl;
+    use motion::MotionControl;
 
     // Constants
     const GPT_FREQUENCY: u32 = 1_000;
@@ -145,8 +145,8 @@ mod app {
 
         shared_spi.disabled(|spi| {
             spi.set_clock_hz(LPSPI_FREQUENCY, 10_000_000u32);
-            spi.set_mode(MODE_0);
         });
+        shared_spi.set_mode(MODE_0);
 
         // Init radio cs pin and ce pin
         let radio_cs = gpio2.output(pins.p6);
@@ -183,7 +183,7 @@ mod app {
             },
             Local {
                 radio,
-                motion_controller: MotionControl::new(MOTION_CONTROL_DELAY_MS),
+                motion_controller: MotionControl::new(),
             }
         )
     }

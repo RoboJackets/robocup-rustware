@@ -7,7 +7,7 @@ use teensy4_panic as _;
 #[rtic::app(device = teensy4_bsp, peripherals = true, dispatchers = [GPT2])]
 mod app {
     use embedded_hal::spi::MODE_0;
-    use rtic_nrf24l01::error::RadioError;
+
     use rtic_nrf24l01::{Radio, config::*};
 
     use teensy4_bsp::hal::gpio::Output;
@@ -83,9 +83,9 @@ mod app {
         );
 
         spi.disabled(|spi| {
-            spi.set_clock_hz(board::LPSPI_FREQUENCY, 10_000_000u32);
-            spi.set_mode(MODE_0);
+            spi.set_clock_hz(board::LPSPI_FREQUENCY, 5_000_000);
         });
+        spi.set_mode(MODE_0);
 
         let ce = gpio1.output(pins.p0);
         let csn = gpio2.output(pins.p9);

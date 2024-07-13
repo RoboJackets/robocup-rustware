@@ -446,7 +446,7 @@ impl<SPI, CS, INIT, PROG, DONE, DELAY, SPIE, GPIOE> FPGA<SPI, CS, INIT, PROG, DO
         self.spi_transfer(&mut write_buffer[..])?;
 
         let delta = (i16::from_be_bytes(write_buffer[9..11].try_into().unwrap()) as f32) * (1.0 / 18.432) * 256.0;
-        let mut delta_encoders = [
+        let delta_encoders = [
             (i16::from_be_bytes(write_buffer[1..3].try_into().unwrap()) as f32),
             (i16::from_be_bytes(write_buffer[3..5].try_into().unwrap()) as f32),
             (i16::from_be_bytes(write_buffer[5..7].try_into().unwrap()) as f32),
