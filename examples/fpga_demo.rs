@@ -25,6 +25,11 @@ use fpga::FPGA_SPI_FREQUENCY;
 use fpga::FPGA_SPI_MODE;
 use fpga::FPGA;
 
+use embedded_alloc::Heap;
+
+#[global_allocator]
+static HEAP: Heap = Heap::empty();
+
 //// THE APP MODULE ////
 //// device: board support package
 //// perihperals: refers to a specific boards hardware e.g. gpio, spi, etc
@@ -117,7 +122,7 @@ mod app {
         let cs = gpio2.output(pins.p9);
 
         // configure SPI
-        spi.set_mode(FPGA_SPI_MODE);
+        spi.disabled(|spi| spi.set_mode(FPGA_SPI_MODE));
 
         // initialize pins for FPGA
         let init_b = gpio4.input(pins.p29);
@@ -171,7 +176,7 @@ mod app {
                 FpgaError::SPI(spi_e) => panic!("SPI error with info: {:?}", spi_e),
                 FpgaError::CSPin(cs_e) => panic!("CS pin error: {:?}", cs_e), 
                 FpgaError::InitPin(init_e) => panic!("Init pin error: {:?}", init_e),
-                FpgaError::ProgPin(prog_e) => panic!("Prog pin error: {:?}", prog_e),
+                FpgaError::ProgPin( prog_e) => panic!("Prog pin error: {:?}", prog_e),
                 FpgaError::DonePin(done_e) => panic!("Done pin error: {:?}", done_e),
                 FpgaError::FPGATimeout(code) => panic!("Fpga timed out?? code: {:x}", code),
             },

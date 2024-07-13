@@ -4,6 +4,11 @@
 
 use teensy4_panic as _;
 
+use embedded_alloc::Heap;
+
+#[global_allocator]
+static HEAP: Heap = Heap::empty();
+
 #[rtic::app(device = teensy4_bsp, peripherals = true, dispatchers = [GPT2])]
 mod app {
     use embedded_hal::spi::MODE_0;
@@ -79,8 +84,8 @@ mod app {
 
         shared_spi.disabled(|spi| {
             spi.set_clock_hz(LPSPI_FREQUENCY, 5_000_000);
+            spi.set_mode(MODE_0);
         });
-        shared_spi.set_mode(MODE_0);
 
         let ce = gpio1.output(pins.p20);
         let csn = gpio1.output(pins.p14);
@@ -92,7 +97,7 @@ mod app {
         }
         radio.set_pa_level(BASE_AMPLIFICATION_LEVEL, &mut shared_spi, &mut delay);
         radio.set_channel(CHANNEL, &mut shared_spi, &mut delay);
-        radio.set_payload_size(CONTROL_MESSAGE_SIZE as u8, &mut shared_spi, &mut delay);
+        radio.set_payload_size(4, &mut shared_spi, &mut delay);
         radio.open_writing_pipe(BASE_STATION_ADDRESS, &mut shared_spi, &mut delay);
         radio.open_reading_pipe(1, RADIO_ADDRESS, &mut shared_spi, &mut delay);
         radio.start_listening(&mut shared_spi, &mut delay);
@@ -119,6 +124,8 @@ mod app {
 
     #[task(priority = 1)]
     async fn wait_one_second(_ctx: wait_one_second::Context) {
+        log::info!("Waiting");
+        
         Systick::delay(1_000u32.millis()).await;
 
         ping_pong::spawn().ok();

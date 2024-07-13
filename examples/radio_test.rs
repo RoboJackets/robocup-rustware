@@ -81,8 +81,8 @@ mod app {
 
         shared_spi.disabled(|spi| {
             spi.set_clock_hz(LPSPI_FREQUENCY, 5_000_000u32);
+            spi.set_mode(MODE_0);
         });
-        shared_spi.set_mode(MODE_0);
 
         // Init radio cs pin and ce pin
         let radio_cs = gpio1.output(pins.p14);

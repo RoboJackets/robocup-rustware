@@ -9,3 +9,4 @@ fi
 sleep 0.5
 
 # sudo minicom
+# sudo screen /dev/tty.usbmodem14101

@@ -132,7 +132,7 @@ mod app {
             },
             FPGA_SPI_FREQUENCY,
         );
-        fpga_spi.set_mode(FPGA_SPI_MODE);
+        fpga_spi.disabled(|spi| spi.set_mode(FPGA_SPI_MODE));
 
         let cs = gpio2.output(pins.p9);
         let init_b = gpio4.input(pins.p29);

@@ -90,7 +90,6 @@ mod app {
         imu: Imu,
         last_encoders: Vector4<f32>,
         chain_timer: Chained01,
-        led_pin: Output<P22>,
 
         radio_error: Result<(), RadioError>,
     }
@@ -165,7 +164,7 @@ mod app {
             },
             FPGA_SPI_FREQUENCY,
         );
-        spi.set_mode(FPGA_SPI_MODE);
+        spi.disabled(|spi| spi.set_mode(FPGA_SPI_MODE));
 
         // Initialize IMU
         let i2c = board::lpi2c(lpi2c1, pins.p19, pins.p18, board::Lpi2cClockSpeed::KHz400);
@@ -187,14 +186,12 @@ mod app {
 
         shared_spi.disabled(|spi| {
             spi.set_clock_hz(LPSPI_FREQUENCY, 5_000_000u32);
+            spi.set_mode(MODE_0);
         });
-        shared_spi.set_mode(MODE_0);
 
         // Init radio cs pin and ce pin
         let radio_cs = gpio1.output(pins.p14);
         let ce = gpio1.output(pins.p20);
-
-        let led_pin = gpio1.output(pins.p22);
 
         // Initialize radio
         let mut radio = Radio::new(ce, radio_cs);
@@ -207,6 +204,8 @@ mod app {
             radio.open_writing_pipe(BASE_STATION_ADDRESS, &mut shared_spi, &mut delay2);
             radio.open_reading_pipe(1, RADIO_ADDRESS, &mut shared_spi, &mut delay2);
             radio.start_listening(&mut shared_spi, &mut delay2);
+        } else {
+            panic!("Unable to initialize radio");
         }
 
         // Initialize pins for the FPGA
@@ -248,7 +247,6 @@ mod app {
                 last_encoders: Vector4::zeros(),
                 chain_timer: chained_timer,
                 radio_error,
-                led_pin,
             }
         )
     }
@@ -260,10 +258,10 @@ mod app {
         }
     }
 
-    #[task(binds = GPIO1_COMBINED_16_31, shared = [rx_int, gpio1], local = [led_pin], priority = 2)]
+    #[task(binds = GPIO1_COMBINED_16_31, shared = [rx_int, gpio1], priority = 2)]
     fn radio_interrupt(ctx: radio_interrupt::Context) {
         if (ctx.shared.rx_int, ctx.shared.gpio1).lock(|rx_int, gpio1| {
-            ctx.local.led_pin.toggle();
+            // ctx.local.led_pin.toggle();
             if rx_int.is_triggered() {
                 rx_int.clear_triggered();
                 gpio1.set_interrupt(&rx_int, None);
