@@ -16,3 +16,6 @@ pub use clock::*;
 
 pub mod robot;
 pub use robot::robot_config::*;
+
+pub mod peripherals;
+pub use peripherals::*;

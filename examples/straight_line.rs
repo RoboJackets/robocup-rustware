@@ -28,23 +28,16 @@ pub fn from_sign_magnitude(value: u16) -> i16 {
 mod app {
     use super::*;
 
-    use core::convert::Infallible;
     use core::mem::MaybeUninit;
 
     use imxrt_iomuxc::prelude::*;
 
     use nalgebra::Vector3;
-    use teensy4_bsp::board::Lpi2c1;
     use teensy4_bsp as bsp;
     use bsp::board;
     use bsp::board::PERCLK_FREQUENCY;
 
-    use teensy4_pins::t41::*;
-
     use teensy4_bsp::hal as hal;
-    use hal::lpspi::Lpspi;
-    use hal::gpio::Output;
-    use hal::gpt::{ClockSource, Gpt1};
     use hal::timer::Blocking;
     use hal::pit::Chained01;
 
@@ -61,23 +54,18 @@ mod app {
 
     use icm42605_driver::IMU;
 
-    // Constants
-    const GPT_FREQUENCY: u32 = 1_500;
-    const GPT_CLOCK_SOURCE: ClockSource = ClockSource::HighFrequencyReferenceClock;
-    const GPT_DIVIDER: u32 = board::PERCLK_FREQUENCY / GPT_FREQUENCY;
+    use main::{
+        Fpga,
+        Imu,
+        GPT_FREQUENCY,
+        GPT_CLOCK_SOURCE,
+        GPT_DIVIDER,
+    };
 
     const HEAP_SIZE: usize = 8192;
     static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
 
     const MOTION_CONTROL_DELAY_US: u32 = 1000;
-
-    // Type Definitions
-    // FPGA Spi
-    type FpgaSpi = Lpspi<board::LpspiPins<P11, P12, P13, P10>, 4>;
-    type Fpga = FPGA<FpgaSpi, Output<P9>, P29, Output<P28>, P30, Delay1, hal::lpspi::LpspiError, Infallible>;
-    // Delays
-    type Delay1 = Blocking<Gpt1, GPT_FREQUENCY>;
-    type Imu = IMU<Lpi2c1>;
 
     #[local]
     struct Local {

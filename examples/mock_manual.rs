@@ -19,7 +19,6 @@ use teensy4_panic as _;
 mod app {
     use super::*;
 
-    use core::convert::Infallible;
     use core::mem::MaybeUninit;
 
     use main::ROBOT_ID;
@@ -30,12 +29,9 @@ mod app {
     use teensy4_bsp as bsp;
     use bsp::board::{self, LPSPI_FREQUENCY};
 
-    use teensy4_pins::t41::*;
-
     use teensy4_bsp::hal as hal;
-    use hal::lpspi::{LpspiError, Lpspi, Pins};
-    use hal::gpio::{Output, Input, Trigger, Port};
-    use hal::gpt::{ClockSource, Gpt1, Gpt2};
+    use hal::lpspi::{Lpspi, Pins};
+    use hal::gpio::Trigger;
     use hal::timer::Blocking;
     
     use bsp::ral as ral;
@@ -53,33 +49,26 @@ mod app {
 
     use motion::MotionControl;
 
-    // Constants
-    const GPT_FREQUENCY: u32 = 1_000;
-    const GPT_CLOCK_SOURCE: ClockSource = ClockSource::HighFrequencyReferenceClock;
-    const GPT_DIVIDER: u32 = board::PERCLK_FREQUENCY / GPT_FREQUENCY;
+    use main::{
+        SharedSPI,
+        RFRadio,
+        RadioInterrupt,
+        Delay1,
+        Delay2,
+        Gpio1,
+        GPT_FREQUENCY,
+        GPT_CLOCK_SOURCE,
+        GPT_DIVIDER,
+    };
 
     const HEAP_SIZE: usize = 1024;
     static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
 
     const MOTION_CONTROL_DELAY_MS: u32 = 1000;
 
-    // Type Definitions
-    // FPGA Spi
-    type _SPI = Lpspi<board::LpspiPins<P11, P12, P13, P10>, 4>;
-    // Shared Spi
-    type SharedSPI = Lpspi<board::LpspiPins<P26, P39, P27, P38>, 3>;
-    type RadioCE = Output<P0>;
-    type RadioCSN = Output<P6>;
-    type RadioInterrupt = Input<P1>;
-    // Delays
-    type Delay1 = Blocking<Gpt1, GPT_FREQUENCY>;
-    type Delay2 = Blocking<Gpt2, GPT_FREQUENCY>;
-    // GPIO Ports
-    type Gpio1 = Port<1>;
-
     #[local]
     struct Local {
-        radio: Radio<RadioCE, RadioCSN, SharedSPI, Delay2, Infallible, LpspiError>,
+        radio: RFRadio,
         motion_controller: MotionControl,
     }
 
@@ -103,7 +92,6 @@ mod app {
         let board::Resources {
             pins,
             mut gpio1,
-            mut gpio2,
             usb,
             mut gpt1,
             mut gpt2,
@@ -130,7 +118,7 @@ mod app {
         let mut delay2 = Blocking::<_, GPT_FREQUENCY>::from_gpt(gpt2);
 
         // Setup Rx Interrupt
-        let rx_int = gpio1.input(pins.p1);
+        let rx_int = gpio1.input(pins.p15);
         gpio1.set_interrupt(&rx_int, Some(Trigger::FallingEdge));
 
         // Initialize Shared SPI
@@ -144,13 +132,13 @@ mod app {
         let mut shared_spi = Lpspi::new(shared_spi_block, shared_spi_pins);
 
         shared_spi.disabled(|spi| {
-            spi.set_clock_hz(LPSPI_FREQUENCY, 10_000_000u32);
+            spi.set_clock_hz(LPSPI_FREQUENCY, 5_000_000u32);
         });
         shared_spi.set_mode(MODE_0);
 
         // Init radio cs pin and ce pin
-        let radio_cs = gpio2.output(pins.p6);
-        let ce = gpio1.output(pins.p0);
+        let radio_cs = gpio1.output(pins.p14);
+        let ce = gpio1.output(pins.p20);
 
         // Initialize radio
         let mut radio = Radio::new(ce, radio_cs);

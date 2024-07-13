@@ -25,23 +25,15 @@ mod app {
     use bsp::board;
 
     use teensy4_bsp::hal as hal;
-    use hal::gpt::{ClockSource, Gpt2};
     use hal::timer::Blocking;
     use hal::pit::Chained01;
 
     use rtic_monotonics::systick::*;
 
-    // Constants
-    const GPT_FREQUENCY: u32 = 1_000;
-    const GPT_CLOCK_SOURCE: ClockSource = ClockSource::HighFrequencyReferenceClock;
-    const GPT_DIVIDER: u32 = board::PERCLK_FREQUENCY / GPT_FREQUENCY;
+    use main::{Delay2, GPT_FREQUENCY, GPT_CLOCK_SOURCE, GPT_DIVIDER};
 
     const HEAP_SIZE: usize = 8192;
     static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
-
-    // Type Definitions
-    // Delays
-    type Delay2 = Blocking<Gpt2, GPT_FREQUENCY>;
 
     #[local]
     struct Local {

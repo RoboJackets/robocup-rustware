@@ -11,9 +11,6 @@ use teensy4_panic as _; // allows program to panic and print panic messages
 use imxrt_iomuxc::prelude::*;
 
 //// ASSOCIATED TPYES FOR INSTANCES ////
-use teensy4_pins::common::*; // pad to pin definitions
-use bsp::hal::gpio; // gpio module
-use bsp::hal::gpt::Gpt1; // tpye definition for GPT1
 use bsp::hal::timer::Blocking;
 ////////////////////////////////////////
 
@@ -28,9 +25,6 @@ use fpga::FPGA_SPI_FREQUENCY;
 use fpga::FPGA_SPI_MODE;
 use fpga::FPGA;
 
-// spi traits to use the transfer and write transactions
-use bsp::hal::gpt::ClockSource;
-
 //// THE APP MODULE ////
 //// device: board support package
 //// perihperals: refers to a specific boards hardware e.g. gpio, spi, etc
@@ -41,10 +35,9 @@ use bsp::hal::gpt::ClockSource;
     dispatchers = [GPT2]
 )]
 mod app {
-
-    use core::convert::Infallible;
-
     use fpga::error::FpgaError;
+
+    use main::{Fpga, GPT_FREQUENCY, GPT_CLOCK_SOURCE, GPT_DIVIDER};
 
     // this allows us to define our packages outside the app module
     // we're essetially "bringing them all in"
@@ -64,15 +57,6 @@ mod app {
     const SPEED: f32 = 1.0;
     const SLOW_SPEED: f32 = 0.32;
     const FAST_SPEED: f32 = 0.128;
-
-    // timer stuff
-    const GPT1_FREQUENCY: u32 = 1_000;
-    const GPT1_CLOCK_SOURCE: ClockSource = ClockSource::HighFrequencyReferenceClock;
-    const GPT1_DIVIDER: u32 = board::PERCLK_FREQUENCY / GPT1_FREQUENCY;
-
-    // type definitions to simplify calling conventions
-    type Delay = Blocking<Gpt1, GPT1_FREQUENCY>;
-    type Fpga = FPGA<board::Lpspi4, gpio::Output<P9>, P29, gpio::Output<P28>, P30, Delay, bsp::hal::lpspi::LpspiError, Infallible>;
 
     // struct that holds local resources which can be accessed via the context
     #[local]
@@ -116,9 +100,9 @@ mod app {
 
         // gpt1 as blocking delay
         gpt1.disable();
-        gpt1.set_divider(GPT1_DIVIDER);
-        gpt1.set_clock_source(GPT1_CLOCK_SOURCE);
-        let delay = Blocking::<_, GPT1_FREQUENCY>::from_gpt(gpt1);
+        gpt1.set_divider(GPT_DIVIDER);
+        gpt1.set_clock_source(GPT_CLOCK_SOURCE);
+        let delay = Blocking::<_, GPT_FREQUENCY>::from_gpt(gpt1);
 
         // initalize spi
         // use pin 9 as chop select manially :) maybe it'll fix the issue???
