@@ -25,7 +25,7 @@ mod app {
 
     use rtic_monotonics::systick::*;
 
-    use robojackets_robocup_rtp::{CONTROL_MESSAGE_SIZE, BASE_STATION_ADDRESS};
+    use robojackets_robocup_rtp::BASE_STATION_ADDRESS;
 
     use main::{
         RFRadio,
@@ -125,7 +125,7 @@ mod app {
     #[task(priority = 1)]
     async fn wait_one_second(_ctx: wait_one_second::Context) {
         log::info!("Waiting");
-        
+
         Systick::delay(1_000u32.millis()).await;
 
         ping_pong::spawn().ok();

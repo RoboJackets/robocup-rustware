@@ -30,11 +30,9 @@ mod app {
     use bsp::board::{self, LPSPI_FREQUENCY};
     use bsp::board::PERCLK_FREQUENCY;
 
-    use teensy4_pins::t41::*;
-
     use teensy4_bsp::hal as hal;
     use hal::lpspi::{Lpspi, Pins};
-    use hal::gpio::{Output, Trigger};
+    use hal::gpio::Trigger;
     use hal::timer::Blocking;
     use hal::pit::Chained01;
     
@@ -73,6 +71,7 @@ mod app {
         GPT_DIVIDER,
         BASE_AMPLIFICATION_LEVEL,
         RADIO_ADDRESS,
+        ROBOT_ID,
         CHANNEL,
     };
 
@@ -223,7 +222,7 @@ mod app {
         };
 
         // Set an initial robot status
-        let initial_robot_status = RobotStatusMessageBuilder::new().build();
+        let initial_robot_status = RobotStatusMessageBuilder::new().robot_id(ROBOT_ID).build();
 
         rx_int.clear_triggered();
 
