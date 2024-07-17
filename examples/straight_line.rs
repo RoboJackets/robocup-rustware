@@ -225,7 +225,7 @@ mod app {
             delta,
         );
     
-        let encoder_values = match ctx.local.fpga.set_velocities(wheel_velocities.into(), 0.0) {
+        let encoder_values = match ctx.local.fpga.set_velocities(wheel_velocities.into(), false) {
             Ok(encoder_values) => {
                 log::info!("Encoder Values: {:?}", encoder_values);
                 encoder_values

@@ -397,7 +397,7 @@ impl<SPI, CS, INIT, PROG, DONE, DELAY, SPIE, GPIOE> FPGA<SPI, CS, INIT, PROG, DO
     pub fn set_velocities(
         &mut self,
         mut wheel_velocities: [f32; 4],
-        _dribbler_velocity: f32,
+        dribble: bool,
     ) -> Result<[f32; 4], FpgaError<SPIE, GPIOE>> {
         let mut write_buffer = [0u8; 12];
         write_buffer[0] = Instruction::R_ENC_W_VEL.opcode();
@@ -408,8 +408,14 @@ impl<SPI, CS, INIT, PROG, DONE, DELAY, SPIE, GPIOE> FPGA<SPI, CS, INIT, PROG, DO
 
         duty_cycles_to_fpga(wheel_velocities, &mut write_buffer[1..9]);
 
-        // TODO: Write Dribbler
-        write_buffer[10] = 0x01;
+        // If the last bit is 1 the dribbler goes (however this byte
+        // seems to need to be not zero)
+        // if dribble {
+        //     write_buffer[10] = 0b1111_1111;
+        // } else {
+        //     write_buffer[10] = 0b1111_1110;
+        // }
+        write_buffer[10] = 0b1111_1111;
         write_buffer[11] = 0x00;
 
         self.spi_transfer(&mut write_buffer[..])?;

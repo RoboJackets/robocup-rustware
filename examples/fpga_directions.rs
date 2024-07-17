@@ -25,7 +25,6 @@ mod app {
     use embedded_hal::spi::MODE_0;
 
     use nalgebra::{Vector3, Vector4};
-    use rtic_nrf24l01::error::RadioError;
     use teensy4_bsp as bsp;
     use bsp::board::{self, LPSPI_FREQUENCY};
     use bsp::board::PERCLK_FREQUENCY;
@@ -43,10 +42,7 @@ mod app {
 
     use rtic_monotonics::systick::*;
 
-    use packed_struct::prelude::*;
-
     use robojackets_robocup_rtp::{ControlMessage, CONTROL_MESSAGE_SIZE};
-    use robojackets_robocup_rtp::{RobotStatusMessage, RobotStatusMessageBuilder, ROBOT_STATUS_SIZE};
     use robojackets_robocup_rtp::BASE_STATION_ADDRESS;
 
     use motion::MotionControl;
@@ -59,50 +55,27 @@ mod app {
     use icm42605_driver::IMU;
 
     use main::{
-        Fpga,
-        SharedSPI,
-        RFRadio,
-        RadioInterrupt,
-        Delay2,
-        Gpio1,
-        Imu,
-        GPT_FREQUENCY,
-        GPT_CLOCK_SOURCE,
-        GPT_DIVIDER,
-        BASE_AMPLIFICATION_LEVEL,
-        RADIO_ADDRESS,
-        ROBOT_ID,
-        CHANNEL,
+        Fpga, Imu, BASE_AMPLIFICATION_LEVEL, CHANNEL, GPT_CLOCK_SOURCE, GPT_DIVIDER, GPT_FREQUENCY, RADIO_ADDRESS
     };
 
     const HEAP_SIZE: usize = 1024;
     static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
 
     const MOTION_CONTROL_DELAY_US: u32 = 200;
-    const DIE_TIME_US: u64 = 250_000;
 
     #[local]
     struct Local {
-        radio: RFRadio,
         motion_controller: MotionControl,
         fpga: Fpga,
         imu: Imu,
         last_encoders: Vector4<f32>,
         chain_timer: Chained01,
-
-        radio_error: Result<(), RadioError>,
     }
 
     #[shared]
     struct Shared {
-        shared_spi: SharedSPI,
-        delay2: Delay2,
-        rx_int: RadioInterrupt,
-        gpio1: Gpio1,
-        robot_status: RobotStatusMessage,
         control_message: Option<ControlMessage>,
         counter: u32,
-        elapsed_time: u64,
     }
 
     #[init]
@@ -222,32 +195,21 @@ mod app {
             Err(_) => panic!("Unable to initialize the FPGA"),
         };
 
-        // Set an initial robot status
-        let initial_robot_status = RobotStatusMessageBuilder::new().robot_id(ROBOT_ID).build();
-
         rx_int.clear_triggered();
 
         motion_control_loop::spawn().ok();
 
         (
             Shared {
-                shared_spi,
-                delay2,
-                rx_int,
-                gpio1,
-                robot_status: initial_robot_status,
                 control_message: None,
                 counter: 0,
-                elapsed_time: 0,
             },
             Local {
-                radio,
                 motion_controller: MotionControl::new(),
                 fpga,
                 imu,
                 last_encoders: Vector4::zeros(),
                 chain_timer: chained_timer,
-                radio_error,
             }
         )
     }
@@ -259,90 +221,12 @@ mod app {
         }
     }
 
-    #[task(binds = GPIO1_COMBINED_16_31, shared = [rx_int, gpio1, elapsed_time], priority = 2)]
-    fn radio_interrupt(ctx: radio_interrupt::Context) {
-        if (ctx.shared.rx_int, ctx.shared.gpio1, ctx.shared.elapsed_time).lock(|rx_int, gpio1, elapsed_time| {
-            // ctx.local.led_pin.toggle();
-            if rx_int.is_triggered() {
-                *elapsed_time = 0;
-                rx_int.clear_triggered();
-                gpio1.set_interrupt(&rx_int, None);
-                return true;
-            }
-            false
-        }) {
-            receive_command::spawn().ok();
-        }
-    }
-
     #[task(
-        shared = [rx_int, gpio1, shared_spi, delay2, control_message, robot_status, counter],
-        local = [radio],
-        priority = 2
-    )]
-    async fn receive_command(ctx: receive_command::Context) {
-        (
-            ctx.shared.shared_spi,
-            ctx.shared.delay2,
-            ctx.shared.control_message,
-            ctx.shared.robot_status,
-            ctx.shared.counter,
-        ).lock(|spi, delay, command, robot_status, counter| {
-            let mut read_buffer = [0u8; CONTROL_MESSAGE_SIZE];
-            ctx.local.radio.read(&mut read_buffer, spi, delay);
-
-            let control_message = match ControlMessage::unpack_from_slice(&read_buffer[..]) {
-                Ok(control_message) => control_message,
-                Err(_err) => {
-                    #[cfg(feature = "debug")]
-                    log::info!("Error Unpacking Control Command: {:?}", _err);
-                    return;
-                },
-            };
-
-            *counter = 0;
-
-            #[cfg(feature = "debug")]
-            log::info!("Control Command Received: {:?}", control_message);
-
-            *command = Some(control_message);
-
-            ctx.local.radio.set_payload_size(ROBOT_STATUS_SIZE as u8, spi, delay);
-            ctx.local.radio.stop_listening(spi, delay);
-
-            let packed_data = match robot_status.pack() {
-                Ok(bytes) => bytes,
-                Err(_err) => {
-                    #[cfg(feature = "debug")]
-                    log::info!("Error Packing Robot Status: {:?}", _err);
-
-                    return;
-                }
-            };
-
-            for _ in 0..5 {
-                let report = ctx.local.radio.write(&packed_data, spi, delay);
-                if report {
-                    break;
-                }
-            }
-
-            ctx.local.radio.set_payload_size(CONTROL_MESSAGE_SIZE as u8, spi, delay);
-            ctx.local.radio.start_listening(spi, delay);
-        });
-
-        (ctx.shared.rx_int, ctx.shared.gpio1).lock(|rx_int, gpio1| {
-            rx_int.clear_triggered();
-            gpio1.set_interrupt(&rx_int, Some(Trigger::FallingEdge));
-        });
-    }
-
-    #[task(
-        shared = [control_message, counter, elapsed_time],
-        local = [fpga, motion_controller, imu, last_encoders, chain_timer, initialized: bool = false, iteration: u32 = 0, last_time: u64 = 0],
+        shared = [control_message, counter],
+        local = [fpga, motion_controller, imu, last_encoders, chain_timer, initialized: bool = false, iteration: u32 = 0, last_time: u64 = 0, cumulative_time: u64 = 0, body_velocity: Vector3<f32> = Vector3::new(0.0, 1.0, 0.0), correct_direction: bool = false],
         priority = 1
     )]
-    async fn motion_control_loop(mut ctx: motion_control_loop::Context) {
+    async fn motion_control_loop(ctx: motion_control_loop::Context) {
         if !*ctx.local.initialized {
             if ctx.local.fpga.configure().is_err() {
                 panic!("Unable to configure fpga");
@@ -356,14 +240,9 @@ mod app {
 
             *ctx.local.initialized = true;
             *ctx.local.last_time = ctx.local.chain_timer.current_timer_value();
-        }
 
-        let (mut body_velocities, dribbler_enabled) = ctx.shared.control_message.lock(|control_message| {
-            match control_message {
-                Some(control_message) => (control_message.get_velocity(), *control_message.dribbler_speed != 0),
-                None => (Vector3::new(0.0, 0.0, 0.0), false),
-            }
-        });
+            log::info!("Fpga Initialized");
+        }
 
         let gyro = match ctx.local.imu.gyro_z() {
             Ok(gyro) => gyro,
@@ -395,26 +274,24 @@ mod app {
         let now = ctx.local.chain_timer.current_timer_value();
         let delta = *ctx.local.last_time - now;
         *ctx.local.last_time = now;
-        let elapsed_time = ctx.shared.elapsed_time.lock(|elapsed_time| {
-            *elapsed_time += delta;
-            *elapsed_time
-        });
+        *ctx.local.cumulative_time += delta;
 
-        if elapsed_time > DIE_TIME_US {
-            body_velocities = Vector3::zeros();
-        }
-
+        // log::info!("Target Velocity: {:?}", *ctx.local.body_velocity);
         let wheel_velocities = ctx.local.motion_controller.control_update(
             Vector3::new(-accel_y, accel_x, gyro),
             *ctx.local.last_encoders,
-            body_velocities,
+            *ctx.local.body_velocity,
             delta,
         );
 
         #[cfg(feature = "debug")]
         log::info!("Moving at {:?}", wheel_velocities);
 
-        let encoder_velocities = match ctx.local.fpga.set_velocities(wheel_velocities.into(), dribbler_enabled) {
+        if *ctx.local.iteration == 0 {
+            log::info!("Starting FPGA");
+        }
+
+        let encoder_velocities = match ctx.local.fpga.set_velocities(wheel_velocities.into(), false) {
             Ok(encoder_velocities) => encoder_velocities,
             Err(_err) => {
                 #[cfg(feature = "debug")]
@@ -422,6 +299,28 @@ mod app {
                 [0.0; 4]
             }
         };
+
+        if ctx.local.body_velocity[0] == 0.0 {
+            if !*ctx.local.correct_direction {
+                if encoder_velocities[0] > 0.0 &&
+                    encoder_velocities[1] > 0.0 &&
+                    encoder_velocities[2] < 0.0 &&
+                    encoder_velocities[3] < 0.0 {
+                    log::info!("Moving Forward after {} us", ctx.local.cumulative_time);
+                    *ctx.local.correct_direction = true;
+                }
+            }
+        } else {
+            if !*ctx.local.correct_direction {
+                if encoder_velocities[0] < 0.0 &&
+                    encoder_velocities[1] > 0.0 &&
+                    encoder_velocities[2] > 0.0 &&
+                    encoder_velocities[3] < 0.0 {
+                    log::info!("Moving Left after {} us", ctx.local.cumulative_time);
+                    *ctx.local.correct_direction = true;
+                }
+            }
+        }
 
         #[cfg(feature = "debug")]
         log::info!("Fpga Status: {:#010b}", ctx.local.fpga.status);
@@ -433,6 +332,20 @@ mod app {
             encoder_velocities[3],
         );
 
+        *ctx.local.iteration += 1;
+        if *ctx.local.correct_direction && *ctx.local.cumulative_time > 10_000 {
+            if ctx.local.body_velocity[0] == 0.0 {
+                log::info!("Moving Right");
+                *ctx.local.body_velocity = Vector3::new(1.0, 0.0, 0.0);
+            } else {
+                log::info!("Moving Forward");
+                *ctx.local.body_velocity = Vector3::new(0.0, 1.0, 0.0);
+            }
+            *ctx.local.iteration = 0;
+            *ctx.local.correct_direction = false;
+            *ctx.local.cumulative_time = 0;
+        }
+
         motion_control_delay::spawn().ok();
     }
 
@@ -441,23 +354,5 @@ mod app {
         Systick::delay(MOTION_CONTROL_DELAY_US.micros()).await;
 
         motion_control_loop::spawn().ok();
-    }
-
-    #[task(
-        local = [radio_error],
-        priority = 1
-    )]
-    async fn print_radio_error(ctx: print_radio_error::Context) {
-        Systick::delay(1_000u32.millis()).await;
-
-        let error = ctx.local.radio_error.unwrap();
-
-        for _ in 0..5 {
-            log::info!("Radio Error Occurred: {:?}", error);
-
-            Systick::delay(500u32.millis()).await;
-        }
-
-        panic!("Radio Error Occurred: {:?}", error);
     }
 }

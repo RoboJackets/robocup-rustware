@@ -183,23 +183,24 @@ mod app {
         
         // drive forward at different speeds -> should be measuring different encoder values
         loop {
-            for motor in 0..4 {
-                let target_velocity = match motor {
-                    0 => [1.0, 0.0, 0.0, 0.0],
-                    1 => [0.0, 1.0, 0.0, 0.0],
-                    2 => [0.0, 0.0, 1.0, 0.0],
-                    _ => [0.0, 0.0, 0.0, 1.0],
+            for motor in 0..5 {
+                let (target_velocity, dribbler) = match motor {
+                    0 => ([1.0, 0.0, 0.0, 0.0], false),
+                    1 => ([0.0, 1.0, 0.0, 0.0], false),
+                    2 => ([0.0, 0.0, 1.0, 0.0], false),
+                    3 => ([0.0, 0.0, 0.0, 1.0], false),
+                    _ => ([0.0, 0.0, 0.0, 0.0], true),
                 };
 
                 for i in 0..2_500 {
                     if i % 100 == 0 {
-                        if let Ok(velocities) = fpga.set_velocities(target_velocity, 0.0) {
+                        if let Ok(velocities) = fpga.set_velocities(target_velocity, dribbler) {
                             log::info!("Wheels are moving at {:?}", velocities);
                         } else {
                             log::error!("Unable to set FPGA wheel velocities");
                         }
                     } else {
-                        if fpga.set_velocities(target_velocity, 0.0).is_err() {
+                        if fpga.set_velocities(target_velocity, dribbler).is_err() {
                             log::error!("Unable to set FPGA wheel velocities");
                         }
                     }
@@ -208,13 +209,15 @@ mod app {
                 }
 
                 for _ in 0..200 {
-                    if fpga.set_velocities([0.0, 0.0, 0.0, 0.0], 0.0).is_err() {
+                    if fpga.set_velocities([0.0, 0.0, 0.0, 0.0], false).is_err() {
                         log::error!("Unable to Stop the FPGA wheels");
                     }
 
                     Systick::delay(200u32.micros()).await;
                 }
             }
+
+
         }
     }
 

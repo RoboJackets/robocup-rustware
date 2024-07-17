@@ -195,7 +195,7 @@ fn main() -> ! {
             }
 
             for _ in 0..200 {
-                if fpga.set_velocities([1.0, 1.0, 1.0, 1.0], 0.0).is_err() {
+                if fpga.set_velocities([1.0, 1.0, 1.0, 1.0], false).is_err() {
                     log::error!("Unable to move motors");
                     return false;
                 }
@@ -204,7 +204,7 @@ fn main() -> ! {
             }
 
             for _ in 0..800 {
-                if let Ok(encoder_velocities) = fpga.set_velocities([1.0, 1.0, 1.0, 1.0], 0.0) {
+                if let Ok(encoder_velocities) = fpga.set_velocities([1.0, 1.0, 1.0, 1.0], false) {
                     for (i, velocity) in encoder_velocities.iter().enumerate() {
                         if *velocity < 0.5 || *velocity > 1.5 {
                             log::error!("Encoder {} is not reading in range.  It reads {}", i, velocity);

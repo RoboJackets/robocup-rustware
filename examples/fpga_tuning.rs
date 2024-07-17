@@ -152,7 +152,7 @@ fn main() -> ! {
             };
 
             for i in 0..ITERATIONS {
-                if let Ok(encoder_velocities) = fpga.set_velocities(target_velocity, 0.0) {
+                if let Ok(encoder_velocities) = fpga.set_velocities(target_velocity, false) {
                     if i > STABLIZATION_ITERATIONS {
                         motor_errors[motor][trial] = 
                             (motor_errors[motor][trial] * (ITERATIONS - STABLIZATION_ITERATIONS) as f32 +

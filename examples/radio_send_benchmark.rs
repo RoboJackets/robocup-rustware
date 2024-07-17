@@ -181,7 +181,7 @@ mod app {
         ).lock(|robot_status, radio, spi, delay| {
             let new_robot_status = RobotStatusMessageBuilder::new()
                 .robot_id(ROBOT_ID)
-                .team(Team::Blue)
+                .team(Team::Yellow)
                 .ball_sense_status(!*ctx.local.last_ball_sense)
                 .kick_status(!*ctx.local.last_kick_status)
                 .build();
