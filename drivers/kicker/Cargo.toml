@@ -1,0 +1,17 @@
+[package]
+name = "kicker"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+
+[dependencies.embedded-hal]
+version = "~0.2"
+
+[dependencies.hal-extensions]
+path = "../hal-extensions"
+
+[dependencies.robojackets-robocup-rtp]
+version = "0.4.1"
+default-features = false
+features = ["nostd"]

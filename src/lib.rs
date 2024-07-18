@@ -19,3 +19,6 @@ pub use robot::robot_config::*;
 
 pub mod peripherals;
 pub use peripherals::*;
+
+pub mod spi;
+pub use spi::*;

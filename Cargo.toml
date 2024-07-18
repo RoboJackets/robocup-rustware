@@ -75,6 +75,9 @@ path = "drivers/motion"
 [dependencies.controller]
 path = "drivers/controller"
 
+[dependencies.hal-extensions]
+path = "drivers/hal-extensions"
+
 [dependencies.w25q128]
 git = "https://github.com/N8BWert/w25q128.git"
 
@@ -87,6 +90,8 @@ members = [
     "drivers/controller",
     "drivers/icm42605-driver",
     "tools",
+    "drivers/kicker",
+    "drivers/hal-extensions",
 ]
 
 # overrides the release build optimization level

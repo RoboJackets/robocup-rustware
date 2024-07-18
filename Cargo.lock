@@ -255,6 +255,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1d758ba1b47b00caf47f24925c0074ecb20d6dfcffe7f6d53395c0465674841a"
 
 [[package]]
+name = "hal-extensions"
+version = "0.1.0"
+dependencies = [
+ "embedded-hal 0.2.7",
+]
+
+[[package]]
 name = "hashbrown"
 version = "0.14.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -367,6 +374,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "kicker"
+version = "0.1.0"
+dependencies = [
+ "embedded-hal 0.2.7",
+ "hal-extensions",
+]
+
+[[package]]
 name = "libm"
 version = "0.2.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -395,6 +410,7 @@ dependencies = [
  "embedded-hal 0.2.7",
  "fixed-queue",
  "fpga-rs",
+ "hal-extensions",
  "icm42605-driver",
  "imxrt-hal",
  "imxrt-iomuxc",
