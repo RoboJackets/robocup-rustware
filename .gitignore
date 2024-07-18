@@ -4,3 +4,5 @@
 teensy_loader_cli
 teensy_loader_cli/**
 setup/teensy_loader_cli/**
+control/target
+control/teensy_loader_cli
