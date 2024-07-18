@@ -410,12 +410,12 @@ impl<SPI, CS, INIT, PROG, DONE, DELAY, SPIE, GPIOE> FPGA<SPI, CS, INIT, PROG, DO
 
         // If the last bit is 1 the dribbler goes (however this byte
         // seems to need to be not zero)
-        // if dribble {
-        //     write_buffer[10] = 0b1111_1111;
-        // } else {
-        //     write_buffer[10] = 0b1111_1110;
-        // }
-        write_buffer[10] = 0b1111_1111;
+        if dribble {
+            write_buffer[10] = 0b1111_1111;
+        } else {
+            write_buffer[10] = 0b1111_1110;
+        }
+        // write_buffer[10] = 0b1111_1111;
         write_buffer[11] = 0x00;
 
         self.spi_transfer(&mut write_buffer[..])?;

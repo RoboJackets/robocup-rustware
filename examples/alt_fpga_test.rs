@@ -20,7 +20,7 @@ mod app {
 
     use core::convert::Infallible;
     use bsp::board;
-    use main::{SharedSPI, Delay1, GPT_CLOCK_SOURCE, GPT_DIVIDER, GPT_FREQUENCY};
+    use main::{Delay1, Delay2, SharedSPI, GPT_CLOCK_SOURCE, GPT_DIVIDER, GPT_FREQUENCY};
     use rtic_monotonics::systick::*;
     use bsp::hal::timer::Blocking;
     use bsp::hal::lpspi::{Lpspi, Pins, LpspiError};
@@ -31,10 +31,12 @@ mod app {
     use fpga_rs::{FPGA, FPGA_SPI_FREQUENCY, FPGA_SPI_MODE};
     use teensy4_pins::t41::*;
     use bsp::hal::gpio::Output;
+    use embedded_hal::blocking::delay::DelayMs;
 
     #[local]
     struct Local {
         fpga: FPGA<SharedSPI, Output<P9>, P29, Output<P28>, P30, Delay1, LpspiError, Infallible>,
+        delay2: Delay2,
     }
 
     #[shared]
@@ -52,6 +54,7 @@ mod app {
             mut gpio4,
             usb,
             mut gpt1,
+            mut gpt2,
             ..
         } = board::t41(ctx.device);
 
@@ -64,6 +67,11 @@ mod app {
         gpt1.set_divider(GPT_DIVIDER);
         gpt1.set_clock_source(GPT_CLOCK_SOURCE);
         let delay = Blocking::<_, GPT_FREQUENCY>::from_gpt(gpt1);
+
+        gpt2.disable();
+        gpt2.set_divider(GPT_DIVIDER);
+        gpt2.set_clock_source(GPT_CLOCK_SOURCE);
+        let delay2 = Blocking::<_, GPT_FREQUENCY>::from_gpt(gpt2);
 
         let spi_pins = Pins {
             pcs0: pins.p38,
@@ -98,6 +106,7 @@ mod app {
             },
             Local {
                 fpga,
+                delay2,
             }
         )
     }
@@ -109,28 +118,29 @@ mod app {
         }
     }
 
-    #[task(local = [fpga], priority = 1)]
+    #[task(local = [fpga, delay2], priority = 1)]
     async fn init_fpga(cx: init_fpga::Context) {
         // acquire fpga instance from local resources
         let fpga = cx.local.fpga;
+        let delay = cx.local.delay2;
         
         // start the test :)
         log::info!("[INIT] FPGA ENCODER DEMO");
-        Systick::delay(1_000u32.millis()).await;
+        delay.delay_ms(1000u32);
         
         // attempt to configure the fpga :)
         match fpga.configure() {
             Ok(_) => log::info!("Configuration worked???"),
             Err(_) => panic!("Unable to configure fpga"),
         }
-        Systick::delay(10u32.millis()).await;
+        delay.delay_ms(10u32);
 
         // enable motors
         match fpga.motors_en(true){
             Ok(status) => log::info!(" enabled motors fpga status: {:b}", status),
             Err(e) => panic!("error enabling motors... {:?}", e),
         };
-        Systick::delay(10u32.millis()).await;
+        delay.delay_ms(10u32);
 
         
         // drive forward at different speeds -> should be measuring different encoder values
@@ -144,7 +154,7 @@ mod app {
                     _ => ([0.0, 0.0, 0.0, 0.0], true),
                 };
 
-                for i in 0..2_500 {
+                for i in 0..200 {
                     if i % 100 == 0 {
                         if let Ok(velocities) = fpga.set_velocities(target_velocity, dribbler) {
                             log::info!("Wheels are moving at {:?}", velocities);
@@ -157,7 +167,7 @@ mod app {
                         }
                     }
 
-                    Systick::delay(200u32.micros()).await;
+                    delay.delay_ms(5u32);
                 }
 
                 for _ in 0..200 {
@@ -165,7 +175,7 @@ mod app {
                         log::error!("Unable to Stop the FPGA wheels");
                     }
 
-                    Systick::delay(200u32.micros()).await;
+                    delay.delay_ms(5u32);
                 }
             }
 

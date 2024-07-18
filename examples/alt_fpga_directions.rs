@@ -140,7 +140,7 @@ mod app {
         let shared_spi_block = unsafe { LPSPI3::instance() };
         let mut fpga_spi = Lpspi::new(shared_spi_block, spi_pins);
         fpga_spi.disabled(|spi| {
-            spi.set_clock_hz(LPSPI_FREQUENCY / 8, 400_000);
+            spi.set_clock_hz(LPSPI_FREQUENCY, 400_000);
             spi.set_mode(MODE_0);
         });
 
@@ -322,7 +322,7 @@ mod app {
 
     #[task(priority = 1)]
     async fn motion_control_delay(_ctx: motion_control_delay::Context) {
-        Systick::delay(MOTION_CONTROL_DELAY_US.micros()).await;
+        Systick::delay(5u32.millis()).await;
 
         motion_control_loop::spawn().ok();
     }
