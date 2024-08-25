@@ -18,35 +18,30 @@ use teensy4_panic as _;
 mod app {
     use super::*;
 
-    use core::convert::Infallible;
     use core::mem::MaybeUninit;
 
     use imxrt_iomuxc::prelude::*;
 
-    use main::ROBOT_ID;
-
     use embedded_hal::spi::MODE_0;
 
     use nalgebra::{Vector3, Vector4};
-    use rtic_nrf24l01::config::power_amplifier::PowerAmplifier;
     use rtic_nrf24l01::error::RadioError;
     use teensy4_bsp as bsp;
     use bsp::board::{self, LPSPI_FREQUENCY};
-    use bsp::board::{Lpi2c1, PERCLK_FREQUENCY};
+    use bsp::board::PERCLK_FREQUENCY;
 
     use teensy4_pins::t41::*;
 
     use teensy4_bsp::hal as hal;
-    use hal::lpspi::{LpspiError, Lpspi, Pins};
-    use hal::gpio::{Output, Input, Trigger, Port};
-    use hal::gpt::{ClockSource, Gpt1, Gpt2};
+    use hal::lpspi::{Lpspi, Pins};
+    use hal::gpio::{Output, Trigger};
     use hal::timer::Blocking;
     use hal::pit::Chained01;
     
     use bsp::ral as ral;
     use ral::lpspi::LPSPI3;
 
-    use rtic_nrf24l01::{Radio, config::*};
+    use rtic_nrf24l01::Radio;
 
     use rtic_monotonics::systick::*;
 
@@ -54,7 +49,7 @@ mod app {
 
     use robojackets_robocup_rtp::{ControlMessage, CONTROL_MESSAGE_SIZE};
     use robojackets_robocup_rtp::{RobotStatusMessage, RobotStatusMessageBuilder, ROBOT_STATUS_SIZE};
-    use robojackets_robocup_rtp::{BASE_STATION_ADDRESS, ROBOT_RADIO_ADDRESSES};
+    use robojackets_robocup_rtp::BASE_STATION_ADDRESS;
 
     use motion::MotionControl;
 
@@ -65,40 +60,31 @@ mod app {
 
     use icm42605_driver::IMU;
 
-    // Constants
-    const GPT_FREQUENCY: u32 = 1_000;
-    const GPT_CLOCK_SOURCE: ClockSource = ClockSource::HighFrequencyReferenceClock;
-    const GPT_DIVIDER: u32 = board::PERCLK_FREQUENCY / GPT_FREQUENCY;
+    use main::{
+        Fpga,
+        SharedSPI,
+        RFRadio,
+        RadioInterrupt,
+        Delay2,
+        Gpio1,
+        Imu,
+        GPT_FREQUENCY,
+        GPT_CLOCK_SOURCE,
+        GPT_DIVIDER,
+        BASE_AMPLIFICATION_LEVEL,
+        RADIO_ADDRESS,
+        CHANNEL,
+    };
 
     const HEAP_SIZE: usize = 1024;
     static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
 
-    const MOTION_CONTROL_DELAY_US: u32 = 3000;
-    const MAX_COUNTER_VALUE: u32 = 100;
-
-    const PA_LEVEL: PowerAmplifier = PowerAmplifier::PALow;
-    const RF_CHANNEL: u8 = 15;
-
-    // Type Definitions
-    // FPGA Spi
-    type SPI = Lpspi<board::LpspiPins<P11, P12, P13, P10>, 4>;
-    type Fpga = FPGA<SPI, Output<P9>, P29, Output<P28>, P30, Delay1, hal::lpspi::LpspiError, Infallible>;
-    // Shared Spi
-    type SharedSPI = Lpspi<board::LpspiPins<P26, P39, P27, P38>, 3>;
-    type RadioCE = Output<P20>;
-    type RadioCSN = Output<P14>;
-    type RadioInterrupt = Input<P15>;
-    // Delays
-    type Delay1 = Blocking<Gpt1, GPT_FREQUENCY>;
-    type Delay2 = Blocking<Gpt2, GPT_FREQUENCY>;
-    // GPIO Ports
-    type Gpio1 = Port<1>;
-    // IMU
-    type Imu = IMU<Lpi2c1>;
+    const MOTION_CONTROL_DELAY_US: u32 = 200;
+    const MAX_COUNTER_VALUE: u32 = 500;
 
     #[local]
     struct Local {
-        radio: Radio<RadioCE, RadioCSN, SharedSPI, Delay2, Infallible, LpspiError>,
+        radio: RFRadio,
         motion_controller: MotionControl,
         fpga: Fpga,
         imu: Imu,
@@ -179,9 +165,7 @@ mod app {
             },
             FPGA_SPI_FREQUENCY,
         );
-        spi.disabled(|spi| {
-            spi.set_mode(FPGA_SPI_MODE);
-        });
+        spi.set_mode(FPGA_SPI_MODE);
 
         // Initialize IMU
         let i2c = board::lpi2c(lpi2c1, pins.p19, pins.p18, board::Lpi2cClockSpeed::KHz400);
@@ -203,8 +187,8 @@ mod app {
 
         shared_spi.disabled(|spi| {
             spi.set_clock_hz(LPSPI_FREQUENCY, 5_000_000u32);
-            spi.set_mode(MODE_0);
         });
+        shared_spi.set_mode(MODE_0);
 
         // Init radio cs pin and ce pin
         let radio_cs = gpio1.output(pins.p14);
@@ -217,11 +201,11 @@ mod app {
         let radio_error = radio.begin(&mut shared_spi, &mut delay2);
 
         if !radio_error.is_err() {
-            radio.set_pa_level(PA_LEVEL, &mut shared_spi, &mut delay2);
-            radio.set_channel(RF_CHANNEL, &mut shared_spi, &mut delay2);
+            radio.set_pa_level(BASE_AMPLIFICATION_LEVEL, &mut shared_spi, &mut delay2);
+            radio.set_channel(CHANNEL, &mut shared_spi, &mut delay2);
             radio.set_payload_size(CONTROL_MESSAGE_SIZE as u8, &mut shared_spi, &mut delay2);
             radio.open_writing_pipe(BASE_STATION_ADDRESS, &mut shared_spi, &mut delay2);
-            radio.open_reading_pipe(1, ROBOT_RADIO_ADDRESSES[ROBOT_ID as usize], &mut shared_spi, &mut delay2);
+            radio.open_reading_pipe(1, RADIO_ADDRESS, &mut shared_spi, &mut delay2);
             radio.start_listening(&mut shared_spi, &mut delay2);
         }
 
@@ -360,37 +344,17 @@ mod app {
     )]
     async fn motion_control_loop(mut ctx: motion_control_loop::Context) {
         if !*ctx.local.initialized {
-            match ctx.local.fpga.configure() {
-                Ok(_) => {
-                    #[cfg(feature = "debug")]
-                    log::info!("Fpga Configured")
-                },
-                Err(_) => {
-                    for _ in 0..5 {
-                        log::info!("Fpga Could Not Be Configured");
-
-                        Systick::delay(500u32.millis()).await;
-                    }
-                    panic!("Unable to Configure Fpga")
-                },
+            if ctx.local.fpga.configure().is_err() {
+                panic!("Unable to configure fpga");
             }
 
-            match ctx.local.fpga.motors_en(true) {
-                Ok(_status) => {
-                    #[cfg(feature = "debug")]
-                    log::info!("Enabled motors fpga: {:010b}", _status)
-                },
-                Err(_) => {
-                    for _ in 0..5 {
-                        log::info!("Motors Could Not Be Enabled");
+            Systick::delay(10u32.millis()).await;
 
-                        Systick::delay(500u32.millis()).await;
-                    }
-                    panic!("Unable to Enable Motors")
-                },
+            if ctx.local.fpga.motors_en(true).is_err() {
+                panic!("Unable to enable motors");
             }
+
             *ctx.local.initialized = true;
-
             *ctx.local.last_time = ctx.local.chain_timer.current_timer_value();
         }
 
@@ -401,7 +365,10 @@ mod app {
             }
         });
 
-        let counter = ctx.shared.counter.lock(|counter| *counter);
+        let counter = ctx.shared.counter.lock(|counter| {
+            *counter += 1;
+            *counter
+        });
         if counter > MAX_COUNTER_VALUE {
             body_velocities = Vector3::new(0.0, 0.0, 0.0);
         }
@@ -437,11 +404,8 @@ mod app {
         let delta = *ctx.local.last_time - now;
         *ctx.local.last_time = now;
 
-        #[cfg(feature = "debug")]
-        log::info!("Delta: {:?}", delta);
-
         let wheel_velocities = ctx.local.motion_controller.control_update(
-            Vector3::new(accel_x, accel_y, gyro),
+            Vector3::new(-accel_y, accel_x, gyro),
             *ctx.local.last_encoders,
             body_velocities,
             delta,
@@ -458,6 +422,9 @@ mod app {
                 [0.0; 4]
             }
         };
+
+        #[cfg(feature = "debug")]
+        log::info!("Fpga Status: {:#010b}", ctx.local.fpga.status);
 
         *ctx.local.last_encoders = Vector4::new(
             encoder_velocities[0],

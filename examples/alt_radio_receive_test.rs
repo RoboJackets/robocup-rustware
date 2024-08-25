@@ -13,7 +13,7 @@ use rtic_nrf24l01::config::power_amplifier::PowerAmplifier;
 static HEAP: Heap = Heap::empty();
 
 // PA Level
-const PA_LEVEL: PowerAmplifier = PowerAmplifier::PAMin;
+const PA_LEVEL: PowerAmplifier = PowerAmplifier::PAMax;
 
 use teensy4_panic as _;
 
@@ -21,10 +21,12 @@ use teensy4_panic as _;
 mod app {
     use super::*;
 
+    use core::convert::Infallible;
     use core::mem::MaybeUninit;
 
     use embedded_hal::spi::MODE_0;
 
+    use imxrt_hal::lpspi::LpspiError;
     use teensy4_bsp as bsp;
     use bsp::board::{self, LPSPI_FREQUENCY};
 
@@ -47,16 +49,7 @@ mod app {
     use robojackets_robocup_rtp::BASE_STATION_ADDRESS;
 
     use main::{
-        SharedSPI,
-        RFRadio,
-        RadioInterrupt,
-        Delay2,
-        Gpio1,
-        CHANNEL,
-        RADIO_ADDRESS,
-        GPT_FREQUENCY,
-        GPT_CLOCK_SOURCE,
-        GPT_DIVIDER,
+        Delay2, FpgaSpi, Gpio1, RFRadio, RadioCE, RadioCSN, RadioInterrupt, SharedSPI, CHANNEL, GPT_CLOCK_SOURCE, GPT_DIVIDER, GPT_FREQUENCY, RADIO_ADDRESS
     };
 
     const HEAP_SIZE: usize = 1024;
@@ -69,8 +62,8 @@ mod app {
 
     #[shared]
     struct Shared {
-        radio: RFRadio,
-        shared_spi: SharedSPI,
+        radio: rtic_nrf24l01::Radio<RadioCE, RadioCSN, FpgaSpi, Delay2, Infallible, LpspiError>,
+        shared_spi: FpgaSpi,
         delay2: Delay2,
         rx_int: RadioInterrupt,
         robot_status: RobotStatusMessage,
@@ -86,6 +79,7 @@ mod app {
             pins,
             mut gpio1,
             usb,
+            lpspi4,
             mut gpt2,
             ..
         } = board::t41(ctx.device);
@@ -100,17 +94,19 @@ mod app {
         gpt2.set_clock_source(GPT_CLOCK_SOURCE);
         let mut delay2 = Blocking::<_, GPT_FREQUENCY>::from_gpt(gpt2);
 
-        let shared_spi_pins = Pins {
-            pcs0: pins.p38,
-            sck: pins.p27,
-            sdo: pins.p26,
-            sdi: pins.p39,
-        };
-        let shared_spi_block = unsafe { LPSPI3::instance() };
-        let mut shared_spi = Lpspi::new(shared_spi_block, shared_spi_pins);
-
+        // Initialize Fpga SPI
+        let mut shared_spi = board::lpspi(
+            lpspi4,
+            board::LpspiPins {
+                pcs0: pins.p10,
+                sck: pins.p13,
+                sdo: pins.p11,
+                sdi: pins.p12,
+            },
+            1_000_000,
+        );
         shared_spi.disabled(|spi| {
-            spi.set_clock_hz(LPSPI_FREQUENCY, 5_000_000u32);
+            spi.set_clock_hz(LPSPI_FREQUENCY, 1_000_000);
             spi.set_mode(MODE_0);
         });
 

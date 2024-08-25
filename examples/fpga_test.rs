@@ -48,19 +48,6 @@ mod app {
     // we're essetially "bringing them all in"
     use super::*;
 
-    // accounts for our syst_clock to be in 10 kHz (normal is 1 kHz)
-    // this means that the granularity for the delay is 0.1 ms per tick
-    // therefore we multiply our delay time by a factor of 10
-    const SYST_MONO_FACTOR: u32 = 10;
-
-    // delay in miliseconds
-    const TEN_MS_DELAY: u32 = SYST_MONO_FACTOR * 10;            // 10 ms
-    const HUNDRED_MS_DELAY: u32 = SYST_MONO_FACTOR * 100;       // 100 ms ms
-    const SECOND_DELAY: u32 = SYST_MONO_FACTOR * 1000;    // 1 s delay
-
-    // MOTION SPEED in DUTY CYCLE
-    const SPEED: f32 = 0.247;
-
     // struct that holds local resources which can be accessed via the context
     #[local]
     struct Local {
@@ -99,7 +86,7 @@ mod app {
 
         // systick monotonic setup
         let systick_token = rtic_monotonics::create_systick_token!();
-        Systick::start(cx.core.SYST, 36_000_000, systick_token);
+        Systick::start(cx.core.SYST, 600_000_000, systick_token);
 
         // gpt1 as blocking delay
         gpt1.disable();
@@ -167,8 +154,11 @@ mod app {
     async fn init_fpga(cx: init_fpga::Context) {
         // acquire fpga instance from local resources
         let fpga = cx.local.fpga;
-        Systick::delay(SECOND_DELAY.millis()).await;
-
+        
+        // start the test :)
+        log::info!("[INIT] FPGA ENCODER DEMO");
+        Systick::delay(1_000u32.millis()).await;
+        
         // attempt to configure the fpga :)
         match fpga.configure() {
             Ok(_) => log::info!("Configuration worked???"),
@@ -176,73 +166,58 @@ mod app {
                 FpgaError::SPI(spi_e) => panic!("SPI error with info: {:?}", spi_e),
                 FpgaError::CSPin(cs_e) => panic!("CS pin error: {:?}", cs_e), 
                 FpgaError::InitPin(init_e) => panic!("Init pin error: {:?}", init_e),
-                FpgaError::ProgPin( prog_e) => panic!("Prog pin error: {:?}", prog_e),
+                FpgaError::ProgPin(prog_e) => panic!("Prog pin error: {:?}", prog_e),
                 FpgaError::DonePin(done_e) => panic!("Done pin error: {:?}", done_e),
                 FpgaError::FPGATimeout(code) => panic!("Fpga timed out?? code: {:x}", code),
             },
         };
-        Systick::delay(TEN_MS_DELAY.millis()).await;
+        Systick::delay(10u32.millis()).await;
 
         // enable motors
         match fpga.motors_en(true){
             Ok(status) => log::info!(" enabled motors fpga status: {:b}", status),
             Err(e) => panic!("error enabling motors... {:?}", e),
         };
-        Systick::delay(TEN_MS_DELAY.millis()).await;
+        Systick::delay(10u32.millis()).await;
 
-        // TODO: Verify that each duty cycle corresponds to each respective motor
+        
+        // drive forward at different speeds -> should be measuring different encoder values
         loop {
-            // move forward for 2 seconds
-            log::info!("moving forward!");
-            Systick::delay(TEN_MS_DELAY.millis()).await;
-            for _ in 0..100 {
-                let duty_cycles = [SPEED, SPEED, -SPEED, -SPEED];                        // dribbler
-                // write duty cycle
-                match fpga.set_duty_cycles(duty_cycles, 0.0) {
-                    Ok(_) => log::info!("wrote duty cycles fpga status: {:b}", fpga.status()),
-                    Err(e) => panic!("error writing duty cycles... {:?}", e),
+            for motor in 0..5 {
+                let (target_velocity, dribbler) = match motor {
+                    0 => ([0.35, 0.0, 0.0, 0.0], false),
+                    1 => ([0.0, 0.35, 0.0, 0.0], false),
+                    2 => ([0.0, 0.0, 0.35, 0.0], false),
+                    3 => ([0.0, 0.0, 0.0, 0.35], false),
+                    _ => ([0.0, 0.0, 0.0, 0.0], true),
                 };
-                Systick::delay(HUNDRED_MS_DELAY.millis()).await;
+
+                for i in 0..2_500 {
+                    if i % 100 == 0 {
+                        if let Ok(velocities) = fpga.set_velocities(target_velocity, dribbler) {
+                            log::info!("Wheels are moving at {:?}", velocities);
+                        } else {
+                            log::error!("Unable to set FPGA wheel velocities");
+                        }
+                    } else {
+                        if fpga.set_velocities(target_velocity, dribbler).is_err() {
+                            log::error!("Unable to set FPGA wheel velocities");
+                        }
+                    }
+
+                    Systick::delay(200u32.micros()).await;
+                }
+
+                for _ in 0..200 {
+                    if fpga.set_velocities([0.0, 0.0, 0.0, 0.0], false).is_err() {
+                        log::error!("Unable to Stop the FPGA wheels");
+                    }
+
+                    Systick::delay(200u32.micros()).await;
+                }
             }
 
-            // move backwards for 2 seconds
-            log::info!("moving backwards!");
-            Systick::delay(TEN_MS_DELAY.millis()).await;
-            for _ in 0..100 {
-                let duty_cycles = [-SPEED, -SPEED, SPEED, SPEED];                         // dribbler
-                // write duty cycle
-                match fpga.set_duty_cycles(duty_cycles, 0.0) {
-                    Ok(_) => log::info!("wrote duty cycles fpga status: {:b}", fpga.status()),
-                    Err(e) => panic!("error writing duty cycles... {:?}", e),
-                };
-                Systick::delay(HUNDRED_MS_DELAY.millis()).await;
-            }
 
-            // spin for 5 seconds
-            log::info!("spinning!");
-            Systick::delay(TEN_MS_DELAY.millis()).await;
-            for _ in 0..100 {
-                let duty_cycles = [SPEED, SPEED, SPEED, SPEED];
-                // write duty cycle
-                match fpga.set_duty_cycles(duty_cycles, 0.0) {
-                    Ok(_) => log::info!("wrote duty cycles fpga status: {:b}", fpga.status()),
-                    Err(e) => panic!("error writing duty cycles... {:?}", e),
-                };
-                Systick::delay(HUNDRED_MS_DELAY.millis()).await;
-            }
-
-            // still for 3 seconds
-            log::info!("standby...");
-            Systick::delay(TEN_MS_DELAY.millis()).await;
-            for _ in 0..100 {
-                let duty_cycles = [0.0, 0.0, 0.0, 0.0];
-                // write duty cycle
-                match fpga.set_duty_cycles(duty_cycles, 0.0) {
-                    Ok(_) => log::info!("wrote duty cycles fpga status: {:b}", fpga.status()),
-                    Err(e) => panic!("error writing duty cycles... {:?}", e),
-                };
-                Systick::delay(HUNDRED_MS_DELAY.millis()).await;
-            }
         }
     }
 

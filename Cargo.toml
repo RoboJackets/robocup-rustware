@@ -48,7 +48,7 @@ features = ["cortex-m-systick"]
 
 # teensy4-bsp is the board support package for teensy 4.0/4.1
 [dependencies.teensy4-bsp]
-version = "0.4.5"
+version = "=0.4.5"
 features = [
     # Use the BSP's runtime. This lets you write your
     # `main()` function.
@@ -56,6 +56,9 @@ features = [
     # Remove me if you don't want logging.
     "usb-logging",
 ]
+
+[dependencies.imxrt-hal]
+version = "=0.5.4"
 
 # allows for debugging messages when panicking
 [dependencies.teensy4-panic]

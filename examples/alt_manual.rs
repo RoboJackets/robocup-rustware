@@ -18,8 +18,11 @@ use teensy4_panic as _;
 mod app {
     use super::*;
 
+    use core::convert::Infallible;
     use core::mem::MaybeUninit;
 
+    use imxrt_hal::gpio::Output;
+    use imxrt_hal::lpspi::LpspiError;
     use imxrt_iomuxc::prelude::*;
 
     use embedded_hal::spi::MODE_0;
@@ -51,29 +54,15 @@ mod app {
 
     use motion::MotionControl;
 
-    use fpga_rs as fpga;
-    use fpga::FPGA_SPI_FREQUENCY;
-    use fpga::FPGA_SPI_MODE;
-    use fpga::FPGA;
+    use fpga_rs::{FPGA, FPGA_SPI_FREQUENCY, FPGA_SPI_MODE};
 
     use icm42605_driver::IMU;
 
     use main::{
-        Fpga,
-        SharedSPI,
-        RFRadio,
-        RadioInterrupt,
-        Delay2,
-        Gpio1,
-        Imu,
-        GPT_FREQUENCY,
-        GPT_CLOCK_SOURCE,
-        GPT_DIVIDER,
-        BASE_AMPLIFICATION_LEVEL,
-        RADIO_ADDRESS,
-        ROBOT_ID,
-        CHANNEL,
+        Delay1, Delay2, FpgaSpi, Gpio1, Imu, RFRadio, RadioCE, RadioCSN, RadioInterrupt, SharedSPI, BASE_AMPLIFICATION_LEVEL, CHANNEL, GPT_CLOCK_SOURCE, GPT_DIVIDER, GPT_FREQUENCY, RADIO_ADDRESS, ROBOT_ID
     };
+
+    use teensy4_pins::t41::*;
 
     const HEAP_SIZE: usize = 1024;
     static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
@@ -83,19 +72,17 @@ mod app {
 
     #[local]
     struct Local {
-        radio: RFRadio,
+        radio: rtic_nrf24l01::Radio<RadioCE, RadioCSN, FpgaSpi, Delay2, Infallible, LpspiError>,
         motion_controller: MotionControl,
-        fpga: Fpga,
+        fpga: FPGA<SharedSPI, Output<P9>, P29, Output<P28>, P30, Delay1, LpspiError, Infallible>,
         imu: Imu,
         last_encoders: Vector4<f32>,
         chain_timer: Chained01,
-
-        radio_error: Result<(), RadioError>,
     }
 
     #[shared]
     struct Shared {
-        shared_spi: SharedSPI,
+        shared_spi: FpgaSpi,
         delay2: Delay2,
         rx_int: RadioInterrupt,
         gpio1: Gpio1,
@@ -154,7 +141,7 @@ mod app {
         gpio1.set_interrupt(&rx_int, Some(Trigger::FallingEdge));
 
         // Initialize Fpga SPI
-        let mut spi = board::lpspi(
+        let mut shared_spi = board::lpspi(
             lpspi4,
             board::LpspiPins {
                 pcs0: pins.p10,
@@ -162,9 +149,9 @@ mod app {
                 sdo: pins.p11,
                 sdi: pins.p12,
             },
-            FPGA_SPI_FREQUENCY,
+            400_000,
         );
-        spi.disabled(|spi| spi.set_mode(FPGA_SPI_MODE));
+        shared_spi.disabled(|spi| spi.set_mode(MODE_0));
 
         // Initialize IMU
         let i2c = board::lpi2c(lpi2c1, pins.p19, pins.p18, board::Lpi2cClockSpeed::KHz400);
@@ -182,11 +169,11 @@ mod app {
             sdi: pins.p39,
         };
         let shared_spi_block = unsafe { LPSPI3::instance() };
-        let mut shared_spi = Lpspi::new(shared_spi_block, shared_spi_pins);
+        let mut spi = Lpspi::new(shared_spi_block, shared_spi_pins);
 
-        shared_spi.disabled(|spi| {
-            spi.set_clock_hz(LPSPI_FREQUENCY, 5_000_000u32);
-            spi.set_mode(MODE_0);
+        spi.disabled(|spi| {
+            spi.set_clock_hz(LPSPI_FREQUENCY, FPGA_SPI_FREQUENCY);
+            spi.set_mode(FPGA_SPI_MODE);
         });
 
         // Init radio cs pin and ce pin
@@ -247,7 +234,6 @@ mod app {
                 imu,
                 last_encoders: Vector4::zeros(),
                 chain_timer: chained_timer,
-                radio_error,
             }
         )
     }
@@ -412,7 +398,7 @@ mod app {
         );
 
         #[cfg(feature = "debug")]
-        log::info!("Moving at {:?}", wheel_velocities);
+        log::info!("Attempting to move at {:?}", wheel_velocities);
 
         let encoder_velocities = match ctx.local.fpga.set_velocities(wheel_velocities.into(), dribbler_enabled) {
             Ok(encoder_velocities) => encoder_velocities,
@@ -422,6 +408,9 @@ mod app {
                 [0.0; 4]
             }
         };
+
+        #[cfg(feature = "debug")]
+        log::info!("Moving at {:?}", encoder_velocities);
 
         #[cfg(feature = "debug")]
         log::info!("Fpga Status: {:#010b}", ctx.local.fpga.status);
@@ -441,23 +430,5 @@ mod app {
         Systick::delay(MOTION_CONTROL_DELAY_US.micros()).await;
 
         motion_control_loop::spawn().ok();
-    }
-
-    #[task(
-        local = [radio_error],
-        priority = 1
-    )]
-    async fn print_radio_error(ctx: print_radio_error::Context) {
-        Systick::delay(1_000u32.millis()).await;
-
-        let error = ctx.local.radio_error.unwrap();
-
-        for _ in 0..5 {
-            log::info!("Radio Error Occurred: {:?}", error);
-
-            Systick::delay(500u32.millis()).await;
-        }
-
-        panic!("Radio Error Occurred: {:?}", error);
     }
 }

@@ -28,32 +28,18 @@ pub fn from_sign_magnitude(value: u16) -> i16 {
 mod app {
     use super::*;
 
-    use core::convert::Infallible;
     use core::mem::MaybeUninit;
 
     use imxrt_iomuxc::prelude::*;
 
-    use main::collect::{MotionControlHeader, MotionControlReading};
-
-    use embedded_hal::spi::MODE_0;
-
     use nalgebra::Vector3;
-    use teensy4_bsp::board::Lpi2c1;
     use teensy4_bsp as bsp;
     use bsp::board;
     use bsp::board::PERCLK_FREQUENCY;
 
-    use teensy4_pins::t41::*;
-
     use teensy4_bsp::hal as hal;
-    use hal::lpspi::{LpspiError, Lpspi, Pins};
-    use hal::gpio::Output;
-    use hal::gpt::{ClockSource, Gpt1, Gpt2};
     use hal::timer::Blocking;
     use hal::pit::Chained01;
-    
-    use bsp::ral as ral;
-    use ral::lpspi::LPSPI3;
 
     use rtic_monotonics::systick::*;
 
@@ -68,29 +54,18 @@ mod app {
 
     use icm42605_driver::IMU;
 
-    use w25q128::StorageModule;
-
-    // Constants
-    const GPT_FREQUENCY: u32 = 1_500;
-    const GPT_CLOCK_SOURCE: ClockSource = ClockSource::HighFrequencyReferenceClock;
-    const GPT_DIVIDER: u32 = board::PERCLK_FREQUENCY / GPT_FREQUENCY;
+    use main::{
+        Fpga,
+        Imu,
+        GPT_FREQUENCY,
+        GPT_CLOCK_SOURCE,
+        GPT_DIVIDER,
+    };
 
     const HEAP_SIZE: usize = 8192;
     static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
 
     const MOTION_CONTROL_DELAY_US: u32 = 1000;
-    const TASK_START_DELAY_MS: u32 = 2_000;
-
-    // Type Definitions
-    // FPGA Spi
-    type FpgaSpi = Lpspi<board::LpspiPins<P11, P12, P13, P10>, 4>;
-    type Fpga = FPGA<FpgaSpi, Output<P9>, P29, Output<P28>, P30, Delay1, hal::lpspi::LpspiError, Infallible>;
-    // Shared SPI
-    type SharedSPI = Lpspi<board::LpspiPins<P26, P39, P27, P38>, 3>;
-    // Delays
-    type Delay1 = Blocking<Gpt1, GPT_FREQUENCY>;
-    type Delay2 = Blocking<Gpt2, GPT_FREQUENCY>;
-    type Imu = IMU<Lpi2c1>;
 
     #[local]
     struct Local {
@@ -121,7 +96,6 @@ mod app {
             lpi2c1,
             lpspi4,
             mut gpt1,
-            mut gpt2,
             pit: (pit0, pit1, pit2, _pit3),
             ..
         } = board::t41(ctx.device);
@@ -158,9 +132,7 @@ mod app {
             },
             FPGA_SPI_FREQUENCY,
         );
-        fpga_spi.disabled(|spi| {
-            spi.set_mode(FPGA_SPI_MODE);
-        });
+        fpga_spi.disabled(|spi| spi.set_mode(FPGA_SPI_MODE));
 
         let cs = gpio2.output(pins.p9);
         let init_b = gpio4.input(pins.p29);
@@ -253,7 +225,7 @@ mod app {
             delta,
         );
     
-        let encoder_values = match ctx.local.fpga.set_velocities(wheel_velocities.into(), 0.0) {
+        let encoder_values = match ctx.local.fpga.set_velocities(wheel_velocities.into(), false) {
             Ok(encoder_values) => {
                 log::info!("Encoder Values: {:?}", encoder_values);
                 encoder_values
