@@ -22,10 +22,12 @@ mod app {
 
     use imxrt_iomuxc::prelude::*;
 
-    use embedded_hal::spi::MODE_0;
+    use embedded_hal::{
+        spi::MODE_0,
+        blocking::delay::DelayMs,
+    };
 
     use nalgebra::{Vector3, Vector4};
-    use rtic_nrf24l01::error::RadioError;
     use teensy4_bsp as bsp;
     use bsp::board::{self, LPSPI_FREQUENCY};
     use bsp::board::PERCLK_FREQUENCY;
@@ -85,16 +87,14 @@ mod app {
     struct Local {
         radio: RFRadio,
         motion_controller: MotionControl,
-        fpga: Fpga,
         imu: Imu,
         last_encoders: Vector4<f32>,
         chain_timer: Chained01,
-
-        radio_error: Result<(), RadioError>,
     }
 
     #[shared]
     struct Shared {
+        fpga: Fpga,
         shared_spi: SharedSPI,
         delay2: Delay2,
         rx_int: RadioInterrupt,
@@ -151,7 +151,7 @@ mod app {
 
         // Setup Rx Interrupt
         let rx_int = gpio1.input(pins.p15);
-        gpio1.set_interrupt(&rx_int, Some(Trigger::FallingEdge));
+        gpio1.set_interrupt(&rx_int, None);
 
         // Initialize Fpga SPI
         let mut spi = board::lpspi(
@@ -227,13 +227,14 @@ mod app {
 
         rx_int.clear_triggered();
 
-        motion_control_loop::spawn().ok();
+        motion_control_init::spawn().ok();
 
         (
             Shared {
                 shared_spi,
                 delay2,
                 rx_int,
+                fpga,
                 gpio1,
                 robot_status: initial_robot_status,
                 control_message: None,
@@ -243,11 +244,9 @@ mod app {
             Local {
                 radio,
                 motion_controller: MotionControl::new(),
-                fpga,
                 imu,
                 last_encoders: Vector4::zeros(),
                 chain_timer: chained_timer,
-                radio_error,
             }
         )
     }
@@ -338,22 +337,35 @@ mod app {
     }
 
     #[task(
-        shared = [control_message, counter, elapsed_time],
-        local = [fpga, motion_controller, imu, last_encoders, chain_timer, initialized: bool = false, iteration: u32 = 0, last_time: u64 = 0],
+        shared = [fpga, rx_int, gpio1, delay2],
+        priority = 1
+    )]
+    async fn motion_control_init(ctx: motion_control_init::Context) {
+        (ctx.shared.fpga, ctx.shared.rx_int, ctx.shared.gpio1, ctx.shared.delay2).lock(|fpga, rx_int, gpio1, delay2| {
+            if fpga.configure().is_err() {
+                panic!("Unable to configure fpga");
+            }
+
+            delay2.delay_ms(10u32);
+
+            if fpga.motors_en(true).is_err() {
+                panic!("Unable to enable motors");
+            }
+
+            gpio1.set_interrupt(&rx_int, Some(Trigger::FallingEdge));
+            rx_int.clear_triggered();
+        });
+
+        motion_control_loop::spawn().ok();
+    }
+
+    #[task(
+        shared = [control_message, counter, elapsed_time, fpga, rx_int, gpio1, delay2],
+        local = [motion_controller, imu, last_encoders, chain_timer, initialized: bool = false, iteration: u32 = 0, last_time: u64 = 0],
         priority = 1
     )]
     async fn motion_control_loop(mut ctx: motion_control_loop::Context) {
         if !*ctx.local.initialized {
-            if ctx.local.fpga.configure().is_err() {
-                panic!("Unable to configure fpga");
-            }
-
-            Systick::delay(10u32.millis()).await;
-
-            if ctx.local.fpga.motors_en(true).is_err() {
-                panic!("Unable to enable motors");
-            }
-
             *ctx.local.initialized = true;
             *ctx.local.last_time = ctx.local.chain_timer.current_timer_value();
         }
@@ -414,14 +426,16 @@ mod app {
         #[cfg(feature = "debug")]
         log::info!("Moving at {:?}", wheel_velocities);
 
-        let encoder_velocities = match ctx.local.fpga.set_velocities(wheel_velocities.into(), dribbler_enabled) {
-            Ok(encoder_velocities) => encoder_velocities,
-            Err(_err) => {
-                #[cfg(feature = "debug")]
-                log::info!("Unable to Read Encoder Values");
-                [0.0; 4]
+        let encoder_velocities = ctx.shared.fpga.lock(|fpga| {
+            match fpga.set_velocities(wheel_velocities.into(), dribbler_enabled) {
+                Ok(encoder_velocities) => encoder_velocities,
+                Err(_err) => {
+                    #[cfg(feature = "debug")]
+                    log::info!("Unable to Read Encoder Values");
+                    [0.0; 4]
+                }
             }
-        };
+        });
 
         #[cfg(feature = "debug")]
         log::info!("Fpga Status: {:#010b}", ctx.local.fpga.status);
@@ -441,23 +455,5 @@ mod app {
         Systick::delay(MOTION_CONTROL_DELAY_US.micros()).await;
 
         motion_control_loop::spawn().ok();
-    }
-
-    #[task(
-        local = [radio_error],
-        priority = 1
-    )]
-    async fn print_radio_error(ctx: print_radio_error::Context) {
-        Systick::delay(1_000u32.millis()).await;
-
-        let error = ctx.local.radio_error.unwrap();
-
-        for _ in 0..5 {
-            log::info!("Radio Error Occurred: {:?}", error);
-
-            Systick::delay(500u32.millis()).await;
-        }
-
-        panic!("Radio Error Occurred: {:?}", error);
     }
 }
