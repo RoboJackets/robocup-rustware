@@ -18,32 +18,29 @@ use teensy4_panic as _;
 mod app {
     use super::*;
 
+    use core::convert::Infallible;
     use core::mem::MaybeUninit;
 
-    use imxrt_iomuxc::prelude::*;
+    use embedded_hal::blocking::delay::DelayMs;
 
-    use embedded_hal::spi::MODE_0;
+    use fpga_rs::error::FpgaError;
+    use imxrt_hal::lpspi::LpspiError;
+    use imxrt_iomuxc::prelude::*;
 
     use nalgebra::{Vector3, Vector4};
     use teensy4_bsp as bsp;
-    use bsp::board::{self, LPSPI_FREQUENCY};
+    use bsp::board;
     use bsp::board::PERCLK_FREQUENCY;
 
     use teensy4_bsp::hal as hal;
-    use hal::lpspi::{Lpspi, Pins};
+    use hal::lpi2c::ControllerStatus;
     use hal::gpio::Trigger;
     use hal::timer::Blocking;
     use hal::pit::Chained01;
-    
-    use bsp::ral as ral;
-    use ral::lpspi::LPSPI3;
-
-    use rtic_nrf24l01::Radio;
 
     use rtic_monotonics::systick::*;
 
-    use robojackets_robocup_rtp::{ControlMessage, CONTROL_MESSAGE_SIZE};
-    use robojackets_robocup_rtp::BASE_STATION_ADDRESS;
+    use robojackets_robocup_rtp::ControlMessage;
 
     use motion::MotionControl;
 
@@ -52,10 +49,10 @@ mod app {
     use fpga::FPGA_SPI_MODE;
     use fpga::FPGA;
 
-    use icm42605_driver::IMU;
+    use icm42605_driver::{IMU, ImuError};
 
     use main::{
-        Fpga, Imu, BASE_AMPLIFICATION_LEVEL, CHANNEL, GPT_CLOCK_SOURCE, GPT_DIVIDER, GPT_FREQUENCY, RADIO_ADDRESS
+        Fpga, Imu, PitDelay, GPT_CLOCK_SOURCE, GPT_DIVIDER, GPT_FREQUENCY
     };
 
     const HEAP_SIZE: usize = 1024;
@@ -66,16 +63,22 @@ mod app {
     #[local]
     struct Local {
         motion_controller: MotionControl,
-        fpga: Fpga,
-        imu: Imu,
         last_encoders: Vector4<f32>,
         chain_timer: Chained01,
     }
 
     #[shared]
     struct Shared {
+        fpga: Fpga,
+        imu: Imu,
+        pit_delay: PitDelay,
         control_message: Option<ControlMessage>,
         counter: u32,
+
+        // Errors
+        imu_initialization_error: Option<ImuError<ControllerStatus>>,
+        fpga_programming_error: Option<FpgaError<LpspiError, Infallible>>,
+        fpga_initialization_error: Option<FpgaError<LpspiError, Infallible>>,
     }
 
     #[init]
@@ -94,7 +97,6 @@ mod app {
             lpi2c1,
             lpspi4,
             mut gpt1,
-            mut gpt2,
             pit: (pit0, pit1, pit2, _pit3),
             ..
         } = board::t41(ctx.device);
@@ -111,12 +113,6 @@ mod app {
         gpt1.set_divider(GPT_DIVIDER);
         gpt1.set_clock_source(GPT_CLOCK_SOURCE);
         let delay1 = Blocking::<_, GPT_FREQUENCY>::from_gpt(gpt1);
-
-        // Gpt 2 as blocking delay
-        gpt2.disable();
-        gpt2.set_divider(GPT_DIVIDER);
-        gpt2.set_clock_source(GPT_CLOCK_SOURCE);
-        let mut delay2 = Blocking::<_, GPT_FREQUENCY>::from_gpt(gpt2);
 
         // Chained Pit<0> and Pit<1>
         let mut chained_timer = Chained01::new(pit0, pit1);
@@ -141,45 +137,8 @@ mod app {
 
         // Initialize IMU
         let i2c = board::lpi2c(lpi2c1, pins.p19, pins.p18, board::Lpi2cClockSpeed::KHz400);
-        let mut pit_delay = Blocking::<_, PERCLK_FREQUENCY>::from_pit(pit2);
-        let imu = match IMU::new(i2c, &mut pit_delay) {
-            Ok(imu) => imu,
-            Err(_err) => panic!("Unable to Initialize IMU"),
-        };
-
-        // Initialize Shared SPI
-        let shared_spi_pins = Pins {
-            pcs0: pins.p38,
-            sck: pins.p27,
-            sdo: pins.p26,
-            sdi: pins.p39,
-        };
-        let shared_spi_block = unsafe { LPSPI3::instance() };
-        let mut shared_spi = Lpspi::new(shared_spi_block, shared_spi_pins);
-
-        shared_spi.disabled(|spi| {
-            spi.set_clock_hz(LPSPI_FREQUENCY, 5_000_000u32);
-            spi.set_mode(MODE_0);
-        });
-
-        // Init radio cs pin and ce pin
-        let radio_cs = gpio1.output(pins.p14);
-        let ce = gpio1.output(pins.p20);
-
-        // Initialize radio
-        let mut radio = Radio::new(ce, radio_cs);
-        let radio_error = radio.begin(&mut shared_spi, &mut delay2);
-
-        if !radio_error.is_err() {
-            radio.set_pa_level(BASE_AMPLIFICATION_LEVEL, &mut shared_spi, &mut delay2);
-            radio.set_channel(CHANNEL, &mut shared_spi, &mut delay2);
-            radio.set_payload_size(CONTROL_MESSAGE_SIZE as u8, &mut shared_spi, &mut delay2);
-            radio.open_writing_pipe(BASE_STATION_ADDRESS, &mut shared_spi, &mut delay2);
-            radio.open_reading_pipe(1, RADIO_ADDRESS, &mut shared_spi, &mut delay2);
-            radio.start_listening(&mut shared_spi, &mut delay2);
-        } else {
-            panic!("Unable to initialize radio");
-        }
+        let pit_delay = Blocking::<_, PERCLK_FREQUENCY>::from_pit(pit2);
+        let imu = IMU::new(i2c);
 
         // Initialize pins for the FPGA
         let cs = gpio2.output(pins.p9);
@@ -190,24 +149,26 @@ mod app {
         let done = gpio3.input(pins.p30);
 
         // Initialize the FPGA
-        let fpga = match FPGA::new(spi, cs, init_b, prog_b, done, delay1) {
-            Ok(fpga) => fpga,
-            Err(_) => panic!("Unable to initialize the FPGA"),
-        };
+        let fpga = FPGA::new(spi, cs, init_b, prog_b, done, delay1).expect("Unable to modify peripheral pins for FPGA");
 
         rx_int.clear_triggered();
 
-        motion_control_loop::spawn().ok();
+        initialize_imu::spawn().ok();
 
         (
             Shared {
                 control_message: None,
                 counter: 0,
+                fpga,
+                imu,
+                pit_delay,
+
+                imu_initialization_error: None,
+                fpga_programming_error: None,
+                fpga_initialization_error: None,
             },
             Local {
                 motion_controller: MotionControl::new(),
-                fpga,
-                imu,
                 last_encoders: Vector4::zeros(),
                 chain_timer: chained_timer,
             }
@@ -222,54 +183,98 @@ mod app {
     }
 
     #[task(
-        shared = [control_message, counter],
-        local = [fpga, motion_controller, imu, last_encoders, chain_timer, initialized: bool = false, iteration: u32 = 0, last_time: u64 = 0],
+        shared = [imu, pit_delay, imu_initialization_error],
         priority = 1
     )]
-    async fn motion_control_loop(ctx: motion_control_loop::Context) {
+    async fn initialize_imu(ctx: initialize_imu::Context) {
+        (ctx.shared.imu, ctx.shared.pit_delay, ctx.shared.imu_initialization_error).lock(|imu, pit_delay, imu_initialization_error| {
+            if let Err(err) = imu.init(pit_delay) {
+                *imu_initialization_error = Some(err);
+            }
+        });
+
+        initialize_fpga::spawn().ok();
+    }
+
+    #[task(
+        shared = [fpga, pit_delay, imu_initialization_error, fpga_programming_error, fpga_initialization_error],
+        priority = 1,
+    )]
+    async fn initialize_fpga(ctx: initialize_fpga::Context) {
+        let fully_initialized = (
+            ctx.shared.fpga,
+            ctx.shared.pit_delay,
+            ctx.shared.imu_initialization_error,
+            ctx.shared.fpga_programming_error,
+            ctx.shared.fpga_initialization_error,
+        ).lock(|fpga, pit_delay, imu_initialization_error, fpga_programming_error, fpga_initialization_error| {
+            if let Err(err) = fpga.configure() {
+                *fpga_programming_error = Some(err);
+                return false;
+            }
+            pit_delay.delay_ms(10u8);
+            if let Err(err) = fpga.motors_en(true) {
+                *fpga_initialization_error = Some(err);
+                return false;
+            }
+
+            if imu_initialization_error.is_some() {
+                return false;
+            }
+
+            true
+        });
+
+        if fully_initialized {
+            motion_control_loop::spawn().ok();
+        } else {
+            error_report::spawn().ok();
+        }
+    }
+
+    #[task(
+        shared = [control_message, counter, fpga, imu],
+        local = [motion_controller, last_encoders, chain_timer, initialized: bool = false, iteration: u32 = 0, last_time: u64 = 0],
+        priority = 1
+    )]
+    async fn motion_control_loop(mut ctx: motion_control_loop::Context) {
         if !*ctx.local.initialized {
-            if ctx.local.fpga.configure().is_err() {
-                panic!("Unable to configure fpga");
-            }
-
-            Systick::delay(10u32.millis()).await;
-
-            if ctx.local.fpga.motors_en(true).is_err() {
-                panic!("Unable to enable motors");
-            }
-
             *ctx.local.initialized = true;
             *ctx.local.last_time = ctx.local.chain_timer.current_timer_value();
         }
 
         let body_velocities = Vector3::new(0.0, 1.0, 0.0);
 
-        let gyro = match ctx.local.imu.gyro_z() {
-            Ok(gyro) => gyro,
-            Err(_err) => {
-                #[cfg(feature = "debug")]
-                log::info!("Unable to Read Gyro");
-                0.0
-            }
-        };
+        let (gyro, accel_x, accel_y) = ctx.shared.imu.lock(|imu| {
+            let gyro = match imu.gyro_z() {
+                Ok(gyro) => gyro,
+                Err(_err) => {
+                    #[cfg(feature = "debug")]
+                    log::info!("Unable to Read Gyro");
+                    0.0
+                }
+            };
+    
+            let accel_x = match imu.accel_x() {
+                Ok(accel_x) => accel_x,
+                Err(_err) => {
+                    #[cfg(feature = "debug")]
+                    log::info!("Unable to Read Accel X");
+                    0.0
+                }
+            };
+    
+            let accel_y = match imu.accel_y() {
+                Ok(accel_y) => accel_y,
+                Err(_err) => {
+                    #[cfg(feature = "debug")]
+                    log::info!("Unable to Read Accel Y");
+                    0.0
+                }
+            };
 
-        let accel_x = match ctx.local.imu.accel_x() {
-            Ok(accel_x) => accel_x,
-            Err(_err) => {
-                #[cfg(feature = "debug")]
-                log::info!("Unable to Read Accel X");
-                0.0
-            }
-        };
-
-        let accel_y = match ctx.local.imu.accel_y() {
-            Ok(accel_y) => accel_y,
-            Err(_err) => {
-                #[cfg(feature = "debug")]
-                log::info!("Unable to Read Accel Y");
-                0.0
-            }
-        };
+            (gyro, accel_x, accel_y)
+        });
 
         let now = ctx.local.chain_timer.current_timer_value();
         let delta = *ctx.local.last_time - now;
@@ -285,14 +290,16 @@ mod app {
         #[cfg(feature = "debug")]
         log::info!("Moving at {:?}", wheel_velocities);
 
-        let encoder_velocities = match ctx.local.fpga.set_velocities(wheel_velocities.into(), false) {
-            Ok(encoder_velocities) => encoder_velocities,
-            Err(_err) => {
-                #[cfg(feature = "debug")]
-                log::info!("Unable to Read Encoder Values");
-                [0.0; 4]
+        let encoder_velocities = ctx.shared.fpga.lock(|fpga| {
+            match fpga.set_velocities(wheel_velocities.into(), false) {
+                Ok(encoder_velocities) => encoder_velocities,
+                Err(_err) => {
+                    #[cfg(feature = "debug")]
+                    log::info!("Unable to Read Encoder Values");
+                    [0.0; 4]
+                }
             }
-        };
+        });
 
         #[cfg(feature = "debug")]
         log::info!("Fpga Status: {:#010b}", ctx.local.fpga.status);
@@ -312,5 +319,31 @@ mod app {
         Systick::delay(MOTION_CONTROL_DELAY_US.micros()).await;
 
         motion_control_loop::spawn().ok();
+    }
+
+    #[task(
+        shared = [imu_initialization_error, fpga_programming_error, fpga_initialization_error],
+        priority = 1
+    )]
+    async fn error_report(ctx: error_report::Context) {
+        let (imu_initialization_error, fpga_programming_error, fpga_initialization_error) =
+        (
+            ctx.shared.imu_initialization_error,
+            ctx.shared.fpga_programming_error,
+            ctx.shared.fpga_initialization_error
+        ).lock(|imu_init_error, fpga_prog_error, fpga_init_error| {
+            (
+                imu_init_error.take(),
+                fpga_prog_error.take(),
+                fpga_init_error.take(),
+            )
+        });
+
+        for _ in 0..5 {
+            log::error!("IMU-INIT: {:?}\nFPGA-PROG: {:?}\nFPGA-INIT: {:?}", imu_initialization_error, fpga_programming_error, fpga_initialization_error);
+            Systick::delay(1_000u32.millis()).await;
+        }
+
+        panic!("IMU-INIT: {:?}\nFPGA-PROG: {:?}\nFPGA-INIT: {:?}", imu_initialization_error, fpga_programming_error, fpga_initialization_error);
     }
 }

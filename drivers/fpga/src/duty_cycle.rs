@@ -30,17 +30,17 @@
 pub struct DutyCycle(u16);
 
 impl DutyCycle {
-    // constructor used on read duty cycle function
+    /// constructor used on read duty cycle function
     pub fn new(value: u16) -> Self {
         DutyCycle(value)
     }
 
-    // shifts and masks the upper 8 bits
+    /// shifts and masks the upper 8 bits
     pub fn msb(&mut self) -> u8 {
         ((self.0 >> 8) & 0xFF) as u8
     }
 
-    // masks the lower 8 bits
+    /// masks the lower 8 bits
     pub fn lsb(&mut self) -> u8 {
         (self.0 & 0xFF) as u8
     }
