@@ -7,6 +7,8 @@
 #![no_main]
 #![feature(type_alias_impl_trait)]
 
+use core::mem::MaybeUninit;
+
 ///
 /// This is a demo example file that turns on and off the onboard led.
 ///
@@ -14,8 +16,17 @@
 ///
 use teensy4_panic as _;
 
+use embedded_alloc::Heap;
+
+const HEAP_SIZE: usize = 1024;
+static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
+#[global_allocator]
+static HEAP: Heap = Heap::empty();
+
 #[rtic::app(device = teensy4_bsp, peripherals = true, dispatchers = [GPT2])]
 mod app {
+    use super::*;
+
     use embedded_hal::blocking::delay::DelayMs;
     use icm42605_driver::{IMU, ImuError};
 
@@ -46,6 +57,9 @@ mod app {
 
     #[init]
     fn init(ctx: init::Context) -> (Shared, Local) {
+        // Initialize the Heap
+        unsafe { HEAP.init(HEAP_MEM.as_ptr() as usize, HEAP_SIZE); }
+
         let board::Resources {
             pins,
             usb,
