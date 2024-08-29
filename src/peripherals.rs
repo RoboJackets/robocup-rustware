@@ -8,12 +8,13 @@ use core::convert::Infallible;
 
 use teensy4_pins::t41::*;
 
-use teensy4_bsp::board::{self, Lpi2c1};
+use teensy4_bsp::board::{self, Lpi2c1, PERCLK_FREQUENCY};
 use teensy4_bsp::hal::{
     lpspi::{LpspiError, Lpspi},
     gpio::{Output, Input, Port},
     gpt::{Gpt1, Gpt2},
     timer::Blocking,
+    pit::Pit2,
 };
 
 use fpga_rs::FPGA;
@@ -39,6 +40,8 @@ pub type RFRadio = rtic_nrf24l01::Radio<RadioCE, RadioCSN, SharedSPI, Delay2, In
 pub type Delay1 = Blocking<Gpt1, GPT_FREQUENCY>;
 /// The general-purpose delay shared by different peripherals
 pub type Delay2 = Blocking<Gpt2, GPT_FREQUENCY>;
+/// The PIT-defined delay for initializing the IMU.
+pub type PitDelay = Blocking<Pit2, PERCLK_FREQUENCY>;
 /// The first GPIO port
 pub type Gpio1 = Port<1>;
 /// The second GPIO port

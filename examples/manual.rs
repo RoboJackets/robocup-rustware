@@ -22,10 +22,12 @@ mod app {
 
     use imxrt_iomuxc::prelude::*;
 
-    use embedded_hal::spi::MODE_0;
+    use embedded_hal::{
+        spi::MODE_0,
+        blocking::delay::DelayMs,
+    };
 
     use nalgebra::{Vector3, Vector4};
-    use rtic_nrf24l01::error::RadioError;
     use teensy4_bsp as bsp;
     use bsp::board::{self, LPSPI_FREQUENCY};
     use bsp::board::PERCLK_FREQUENCY;
@@ -59,20 +61,9 @@ mod app {
     use icm42605_driver::IMU;
 
     use main::{
-        Fpga,
-        SharedSPI,
-        RFRadio,
-        RadioInterrupt,
-        Delay2,
-        Gpio1,
-        Imu,
-        GPT_FREQUENCY,
-        GPT_CLOCK_SOURCE,
-        GPT_DIVIDER,
-        BASE_AMPLIFICATION_LEVEL,
-        RADIO_ADDRESS,
-        ROBOT_ID,
-        CHANNEL,
+        Delay2, Fpga, Gpio1, Imu, PitDelay, RFRadio, RadioInterrupt, SharedSPI, BASE_AMPLIFICATION_LEVEL,
+        CHANNEL, GPT_CLOCK_SOURCE, GPT_DIVIDER, GPT_FREQUENCY, RADIO_ADDRESS, ROBOT_ID, ImuInitError,
+        FPGAInitError, FPGAProgError, RadioInitError,
     };
 
     const HEAP_SIZE: usize = 1024;
@@ -83,26 +74,36 @@ mod app {
 
     #[local]
     struct Local {
-        radio: RFRadio,
         motion_controller: MotionControl,
-        fpga: Fpga,
-        imu: Imu,
         last_encoders: Vector4<f32>,
         chain_timer: Chained01,
-
-        radio_error: Result<(), RadioError>,
     }
 
     #[shared]
     struct Shared {
+        // Peripherals
         shared_spi: SharedSPI,
         delay2: Delay2,
         rx_int: RadioInterrupt,
         gpio1: Gpio1,
+        pit_delay: PitDelay,
+
+        // Drivers
+        fpga: Fpga,
+        imu: Imu,
+        radio: RFRadio,
+
+        // Motion Control
         robot_status: RobotStatusMessage,
         control_message: Option<ControlMessage>,
         counter: u32,
         elapsed_time: u64,
+
+        // Errors
+        imu_init_error: Option<ImuInitError>,
+        fpga_prog_error: Option<FPGAProgError>,
+        fpga_init_error: Option<FPGAInitError>,
+        radio_init_error: Option<RadioInitError>,
     }
 
     #[init]
@@ -143,7 +144,7 @@ mod app {
         gpt2.disable();
         gpt2.set_divider(GPT_DIVIDER);
         gpt2.set_clock_source(GPT_CLOCK_SOURCE);
-        let mut delay2 = Blocking::<_, GPT_FREQUENCY>::from_gpt(gpt2);
+        let delay2 = Blocking::<_, GPT_FREQUENCY>::from_gpt(gpt2);
 
         // Chained Pit<0> and Pit<1>
         let mut chained_timer = Chained01::new(pit0, pit1);
@@ -151,7 +152,7 @@ mod app {
 
         // Setup Rx Interrupt
         let rx_int = gpio1.input(pins.p15);
-        gpio1.set_interrupt(&rx_int, Some(Trigger::FallingEdge));
+        gpio1.set_interrupt(&rx_int, None);
 
         // Initialize Fpga SPI
         let mut spi = board::lpspi(
@@ -168,11 +169,8 @@ mod app {
 
         // Initialize IMU
         let i2c = board::lpi2c(lpi2c1, pins.p19, pins.p18, board::Lpi2cClockSpeed::KHz400);
-        let mut pit_delay = Blocking::<_, PERCLK_FREQUENCY>::from_pit(pit2);
-        let imu = match IMU::new(i2c, &mut pit_delay) {
-            Ok(imu) => imu,
-            Err(_err) => panic!("Unable to Initialize IMU"),
-        };
+        let pit_delay = Blocking::<_, PERCLK_FREQUENCY>::from_pit(pit2);
+        let imu = IMU::new(i2c);
 
         // Initialize Shared SPI
         let shared_spi_pins = Pins {
@@ -194,19 +192,7 @@ mod app {
         let ce = gpio1.output(pins.p20);
 
         // Initialize radio
-        let mut radio = Radio::new(ce, radio_cs);
-        let radio_error = radio.begin(&mut shared_spi, &mut delay2);
-
-        if !radio_error.is_err() {
-            radio.set_pa_level(BASE_AMPLIFICATION_LEVEL, &mut shared_spi, &mut delay2);
-            radio.set_channel(CHANNEL, &mut shared_spi, &mut delay2);
-            radio.set_payload_size(CONTROL_MESSAGE_SIZE as u8, &mut shared_spi, &mut delay2);
-            radio.open_writing_pipe(BASE_STATION_ADDRESS, &mut shared_spi, &mut delay2);
-            radio.open_reading_pipe(1, RADIO_ADDRESS, &mut shared_spi, &mut delay2);
-            radio.start_listening(&mut shared_spi, &mut delay2);
-        } else {
-            panic!("Unable to initialize radio");
-        }
+        let radio = Radio::new(ce, radio_cs);
 
         // Initialize pins for the FPGA
         let cs = gpio2.output(pins.p9);
@@ -227,27 +213,33 @@ mod app {
 
         rx_int.clear_triggered();
 
-        motion_control_loop::spawn().ok();
+        initialize_imu::spawn().ok();
 
         (
             Shared {
                 shared_spi,
                 delay2,
                 rx_int,
+                fpga,
                 gpio1,
                 robot_status: initial_robot_status,
                 control_message: None,
                 counter: 0,
                 elapsed_time: 0,
+                radio,
+                imu,
+                pit_delay,
+
+                // Errors
+                imu_init_error: None,
+                radio_init_error: None,
+                fpga_prog_error: None,
+                fpga_init_error: None,
             },
             Local {
-                radio,
                 motion_controller: MotionControl::new(),
-                fpga,
-                imu,
                 last_encoders: Vector4::zeros(),
                 chain_timer: chained_timer,
-                radio_error,
             }
         )
     }
@@ -257,6 +249,95 @@ mod app {
         loop {
             cortex_m::asm::wfi();
         }
+    }
+
+    #[task(
+        shared = [imu, pit_delay, imu_init_error],
+        priority = 1
+    )]
+    async fn initialize_imu(ctx: initialize_imu::Context) {
+        (ctx.shared.imu, ctx.shared.pit_delay, ctx.shared.imu_init_error).lock(|imu, pit_delay, imu_init_error| {
+            if let Err(err) = imu.init(pit_delay) {
+                *imu_init_error = Some(err);
+            }
+        });
+
+        initialize_radio::spawn().ok();
+    }
+
+    #[task(
+        shared = [radio, shared_spi, delay2, radio_init_error],
+        priority = 1
+    )]
+    async fn initialize_radio(ctx: initialize_radio::Context) {
+        (ctx.shared.radio, ctx.shared.shared_spi, ctx.shared.delay2, ctx.shared.radio_init_error).lock(|radio, spi, delay, radio_init_error| {
+            match radio.begin(spi, delay) {
+                Ok(_) => {
+                    radio.set_pa_level(BASE_AMPLIFICATION_LEVEL, spi, delay);
+                    radio.set_channel(CHANNEL, spi, delay);
+                    radio.set_payload_size(CONTROL_MESSAGE_SIZE as u8, spi, delay);
+                    radio.open_writing_pipe(BASE_STATION_ADDRESS, spi, delay);
+                    radio.open_reading_pipe(1, RADIO_ADDRESS, spi, delay);
+                },
+                Err(err) => *radio_init_error = Some(err),
+            }
+        });
+
+        initialize_fpga::spawn().ok();
+    }
+
+    #[task(
+        shared = [fpga, pit_delay, imu_init_error, fpga_init_error, fpga_prog_error, radio_init_error],
+        priority = 1
+    )]
+    async fn initialize_fpga(ctx: initialize_fpga::Context) {
+        let fully_initialized = (
+            ctx.shared.fpga,
+            ctx.shared.pit_delay,
+            ctx.shared.imu_init_error,
+            ctx.shared.fpga_init_error,
+            ctx.shared.fpga_prog_error,
+            ctx.shared.radio_init_error,
+        ).lock(|fpga, pit_delay, imu_init_error, fpga_init_error, fpga_prog_error, radio_init_error| {
+            if let Err(err) = fpga.configure() {
+                *fpga_prog_error = Some(err);
+                return false;
+            }
+            pit_delay.delay_ms(10u8);
+
+            if let Err(err) = fpga.motors_en(true) {
+                *fpga_init_error = Some(err);
+                return false;
+            }
+
+            imu_init_error.is_none() && radio_init_error.is_none()
+        });
+
+        if fully_initialized {
+            start_listening::spawn().ok();
+        } else {
+            error_report::spawn().ok();
+        }
+    }
+
+    #[task(
+        shared = [radio, shared_spi, delay2, gpio1, rx_int],
+        priority = 1
+    )]
+    async fn start_listening(ctx: start_listening::Context) {
+        (
+            ctx.shared.radio,
+            ctx.shared.shared_spi,
+            ctx.shared.delay2,
+            ctx.shared.gpio1,
+            ctx.shared.rx_int,
+        ).lock(|radio, spi, delay, gpio1, rx_int| {
+            rx_int.clear_triggered();
+            gpio1.set_interrupt(rx_int, Some(Trigger::FallingEdge));
+            radio.start_listening(spi, delay);
+        });
+
+        motion_control_loop::spawn().ok();
     }
 
     #[task(binds = GPIO1_COMBINED_16_31, shared = [rx_int, gpio1, elapsed_time], priority = 2)]
@@ -276,8 +357,7 @@ mod app {
     }
 
     #[task(
-        shared = [rx_int, gpio1, shared_spi, delay2, control_message, robot_status, counter],
-        local = [radio],
+        shared = [radio, rx_int, gpio1, shared_spi, delay2, control_message, robot_status, counter],
         priority = 2
     )]
     async fn receive_command(ctx: receive_command::Context) {
@@ -287,9 +367,10 @@ mod app {
             ctx.shared.control_message,
             ctx.shared.robot_status,
             ctx.shared.counter,
-        ).lock(|spi, delay, command, robot_status, counter| {
+            ctx.shared.radio,
+        ).lock(|spi, delay, command, robot_status, counter, radio| {
             let mut read_buffer = [0u8; CONTROL_MESSAGE_SIZE];
-            ctx.local.radio.read(&mut read_buffer, spi, delay);
+            radio.read(&mut read_buffer, spi, delay);
 
             let control_message = match ControlMessage::unpack_from_slice(&read_buffer[..]) {
                 Ok(control_message) => control_message,
@@ -307,9 +388,6 @@ mod app {
 
             *command = Some(control_message);
 
-            ctx.local.radio.set_payload_size(ROBOT_STATUS_SIZE as u8, spi, delay);
-            ctx.local.radio.stop_listening(spi, delay);
-
             let packed_data = match robot_status.pack() {
                 Ok(bytes) => bytes,
                 Err(_err) => {
@@ -320,15 +398,18 @@ mod app {
                 }
             };
 
+            radio.set_payload_size(ROBOT_STATUS_SIZE as u8, spi, delay);
+            radio.stop_listening(spi, delay);
+
             for _ in 0..5 {
-                let report = ctx.local.radio.write(&packed_data, spi, delay);
+                let report = radio.write(&packed_data, spi, delay);
                 if report {
                     break;
                 }
             }
 
-            ctx.local.radio.set_payload_size(CONTROL_MESSAGE_SIZE as u8, spi, delay);
-            ctx.local.radio.start_listening(spi, delay);
+            radio.set_payload_size(CONTROL_MESSAGE_SIZE as u8, spi, delay);
+            radio.start_listening(spi, delay);
         });
 
         (ctx.shared.rx_int, ctx.shared.gpio1).lock(|rx_int, gpio1| {
@@ -338,22 +419,12 @@ mod app {
     }
 
     #[task(
-        shared = [control_message, counter, elapsed_time],
-        local = [fpga, motion_controller, imu, last_encoders, chain_timer, initialized: bool = false, iteration: u32 = 0, last_time: u64 = 0],
+        shared = [imu, control_message, counter, elapsed_time, fpga, rx_int, gpio1, delay2],
+        local = [motion_controller, last_encoders, chain_timer, initialized: bool = false, iteration: u32 = 0, last_time: u64 = 0],
         priority = 1
     )]
     async fn motion_control_loop(mut ctx: motion_control_loop::Context) {
         if !*ctx.local.initialized {
-            if ctx.local.fpga.configure().is_err() {
-                panic!("Unable to configure fpga");
-            }
-
-            Systick::delay(10u32.millis()).await;
-
-            if ctx.local.fpga.motors_en(true).is_err() {
-                panic!("Unable to enable motors");
-            }
-
             *ctx.local.initialized = true;
             *ctx.local.last_time = ctx.local.chain_timer.current_timer_value();
         }
@@ -365,32 +436,36 @@ mod app {
             }
         });
 
-        let gyro = match ctx.local.imu.gyro_z() {
-            Ok(gyro) => gyro,
-            Err(_err) => {
-                #[cfg(feature = "debug")]
-                log::info!("Unable to Read Gyro");
-                0.0
-            }
-        };
+        let (gyro, accel_x, accel_y) = ctx.shared.imu.lock(|imu| {
+            let gyro = match imu.gyro_z() {
+                Ok(gyro) => gyro,
+                Err(_err) => {
+                    #[cfg(feature = "debug")]
+                    log::info!("Unable to Read Gyro");
+                    0.0
+                }
+            };
+    
+            let accel_x = match imu.accel_x() {
+                Ok(accel_x) => accel_x,
+                Err(_err) => {
+                    #[cfg(feature = "debug")]
+                    log::info!("Unable to Read Accel X");
+                    0.0
+                }
+            };
+    
+            let accel_y = match imu.accel_y() {
+                Ok(accel_y) => accel_y,
+                Err(_err) => {
+                    #[cfg(feature = "debug")]
+                    log::info!("Unable to Read Accel Y");
+                    0.0
+                }
+            };
 
-        let accel_x = match ctx.local.imu.accel_x() {
-            Ok(accel_x) => accel_x,
-            Err(_err) => {
-                #[cfg(feature = "debug")]
-                log::info!("Unable to Read Accel X");
-                0.0
-            }
-        };
-
-        let accel_y = match ctx.local.imu.accel_y() {
-            Ok(accel_y) => accel_y,
-            Err(_err) => {
-                #[cfg(feature = "debug")]
-                log::info!("Unable to Read Accel Y");
-                0.0
-            }
-        };
+            (gyro, accel_x, accel_y)
+        });
 
         let now = ctx.local.chain_timer.current_timer_value();
         let delta = *ctx.local.last_time - now;
@@ -414,17 +489,21 @@ mod app {
         #[cfg(feature = "debug")]
         log::info!("Moving at {:?}", wheel_velocities);
 
-        let encoder_velocities = match ctx.local.fpga.set_velocities(wheel_velocities.into(), dribbler_enabled) {
-            Ok(encoder_velocities) => encoder_velocities,
-            Err(_err) => {
-                #[cfg(feature = "debug")]
-                log::info!("Unable to Read Encoder Values");
-                [0.0; 4]
-            }
-        };
+        let encoder_velocities = ctx.shared.fpga.lock(|fpga| {
+            let encoder_velocities = match fpga.set_velocities(wheel_velocities.into(), dribbler_enabled) {
+                Ok(encoder_velocities) => encoder_velocities,
+                Err(_err) => {
+                    #[cfg(feature = "debug")]
+                    log::info!("Unable to Read Encoder Values");
+                    [0.0; 4]
+                }
+            };
 
-        #[cfg(feature = "debug")]
-        log::info!("Fpga Status: {:#010b}", ctx.local.fpga.status);
+            #[cfg(feature = "debug")]
+            log::info!("Fpga Status: {:#010b}", fpga.status);
+            
+            encoder_velocities
+        });
 
         *ctx.local.last_encoders = Vector4::new(
             encoder_velocities[0],
@@ -444,20 +523,30 @@ mod app {
     }
 
     #[task(
-        local = [radio_error],
+        shared = [imu_init_error, fpga_prog_error, fpga_init_error, radio_init_error],
         priority = 1
     )]
-    async fn print_radio_error(ctx: print_radio_error::Context) {
-        Systick::delay(1_000u32.millis()).await;
-
-        let error = ctx.local.radio_error.unwrap();
+    async fn error_report(ctx: error_report::Context) {
+        let (imu_init_error, fpga_prog_error, fpga_init_error, radio_init_error) =
+        (
+            ctx.shared.imu_init_error,
+            ctx.shared.fpga_prog_error,
+            ctx.shared.fpga_init_error,
+            ctx.shared.radio_init_error,
+        ).lock(|imu_init_error, fpga_prog_error, fpga_init_error, radio_init_error| {
+            (
+                imu_init_error.take(),
+                fpga_prog_error.take(),
+                fpga_init_error.take(),
+                radio_init_error.take(),
+            )
+        });
 
         for _ in 0..5 {
-            log::info!("Radio Error Occurred: {:?}", error);
-
-            Systick::delay(500u32.millis()).await;
+            log::error!("IMU-INIT: {:?}\nFPGA-PROG: {:?}\nFPGA-INIT: {:?}\nRADIO-INIT: {:?}", imu_init_error, fpga_prog_error, fpga_init_error, radio_init_error);
+            Systick::delay(1_000u32.millis()).await;
         }
 
-        panic!("Radio Error Occurred: {:?}", error);
+        panic!("IMU-INIT: {:?}\nFPGA-PROG: {:?}\nFPGA-INIT: {:?}\nRADIO-INIT: {:?}", imu_init_error, fpga_prog_error, fpga_init_error, radio_init_error);
     }
 }

@@ -1,10 +1,14 @@
+//!
+//! Driver for the Spartan 3e FPGA on the current Robojackets Robocup control board.
+//! 
+
 #![allow(unused_assignments)]
 #![no_std]
 #![crate_type = "lib"]
+#![deny(missing_docs)]
 
 // import instructions & helper/wrapper structs
-pub mod instructions;
-
+pub(crate) mod instructions;
 use instructions::Instruction;
 
 // import helper/wrapper for DutyCycles
@@ -12,12 +16,14 @@ pub mod duty_cycle;
 pub use duty_cycle::DutyCycle;
 
 // import fpga configuration array
-pub mod config_bin;
+pub(crate) mod config_bin;
 use config_bin::FPGA_BYTES;
 
 // import fpga error type
 pub mod error;
 use error::FpgaError;
+
+use core::fmt::Debug;
 
 // embedded hal traits
 use embedded_hal::digital::v2::OutputPin; 
@@ -32,13 +38,14 @@ use embedded_hal::spi::{self, Mode};
 use teensy4_bsp as bsp;
 use bsp::hal::gpio::Input;
 
-/// use this constants when configuring the spi :)
-/// (IMPORTANT): move into the structs module?
+/// The expected SPI frequency for the spi line connected to the FPGA
 pub const FPGA_SPI_FREQUENCY: u32 = 400_000;
+/// The expected SPI mode for the spi line connected to the FPGA
 pub const FPGA_SPI_MODE: Mode = spi::Mode{
     polarity: spi::Polarity::IdleLow,
     phase: spi::Phase::CaptureOnFirstTransition,
 };
+/// The current gear ratio of the robot's wheels
 pub const GEAR_RATIO: f32 = 20.0;
 
 /// The maximum duty cycle
@@ -82,6 +89,7 @@ pub fn duty_cycle_to_fpga(duty_cycle: f32) -> (u8, u8) {
 }
 
 #[inline]
+/// Convert the duty cycles for each motor into their corresponding bytes to send to the FPGA
 pub fn duty_cycles_to_fpga(duty_cycles: [f32; 4], write_buffer: &mut [u8]) {
     for (i, duty_cycle) in duty_cycles.iter().enumerate() {
         (write_buffer[2*i], write_buffer[(2*i)+1]) = duty_cycle_to_fpga(*duty_cycle);
@@ -89,6 +97,8 @@ pub fn duty_cycles_to_fpga(duty_cycles: [f32; 4], write_buffer: &mut [u8]) {
 }
 
 #[inline]
+/// Convert the data buffer coming from the FPGA into a slice of i16's formed from the big-endian
+/// representation of the data buffer.
 pub fn buffer_to_i16s(buffer: &[u8]) -> [i16; 5] {
     let mut encoder_buffer = [0i16; 5];
 
@@ -109,22 +119,31 @@ pub fn buffer_to_i16s(buffer: &[u8]) -> [i16; 5] {
  ///  - The FPGA takes ownership of the SPI hardware instance i.e. cannot share the SPI
  ///  - InputPin is not supported in the default features of embedded-hal 0.2, so we 
  ///    define it using the Input struct and the Pin Number instead -> Input<PinNum>
+ ///  - The PROG_B pin must be set in the OPEN_DRAIN configuration
  /// 
 pub struct FPGA<SPI, CS, INIT, PROG, DONE, DELAY, SPIE, GPIOE> where
     SPI: Write<u8, Error=SPIE> + Transfer<u8, Error=SPIE>,
     PROG: OutputPin<Error=GPIOE>,
     CS: OutputPin<Error=GPIOE>,
-    DELAY: DelayMs<u32> + DelayUs<u32>
+    DELAY: DelayMs<u32> + DelayUs<u32>,
+    SPIE: Debug,
+    GPIOE: Debug,
 {
+    /// the spi line connected to the FPGA
     spi: SPI,
+    /// The chip select for the SPI line
     cs: CS,
+    /// An input pin used to detect when the FPGA is done initializing
     init_b: Input<INIT>,
+    /// A pin used to enable programming of the FPGA
     prog_b: PROG,   // prog_b output pin "MUST" BE on OPEN_DRAIN configuration!!
+    /// An input pin to read when programming is complete
     done: Input<DONE>,
+    /// A delay held by the FPGA
     delay: DELAY,
-    // The status of the FPGA
+    /// The status of the FPGA
     pub status: u8,
-    // When Done is pulled true, this is set true
+    /// When Done is pulled true, this is set true
     initialized: bool,
 }
 
@@ -139,6 +158,8 @@ impl<SPI, CS, INIT, PROG, DONE, DELAY, SPIE, GPIOE> FPGA<SPI, CS, INIT, PROG, DO
         PROG: OutputPin<Error = GPIOE>,
         CS: OutputPin<Error = GPIOE>,
         DELAY: DelayMs<u32> + DelayUs<u32>,
+        SPIE: Debug,
+        GPIOE: Debug,
 {
     /// Create an uninitialized FPGA driver.
     pub fn new(spi: SPI, cs: CS, init_b: Input<INIT>, prog_b: PROG, done: Input<DONE>, delay: DELAY) 
@@ -434,6 +455,7 @@ impl<SPI, CS, INIT, PROG, DONE, DELAY, SPIE, GPIOE> FPGA<SPI, CS, INIT, PROG, DO
         Ok(delta_encoders)
     }
 
+    /// Set the raw duty cycles for each wheel and return the encoder velocities from each wheel
     pub fn set_duty_get_encoders(
         &mut self,
         wheel_duty_cycles: [f32; 4],
@@ -461,6 +483,14 @@ impl<SPI, CS, INIT, PROG, DONE, DELAY, SPIE, GPIOE> FPGA<SPI, CS, INIT, PROG, DO
         Ok((delta_encoders, delta))
     }
 
+    /// Check the DRV values.
+    /// 
+    /// The format returned should be [Status, Nib1, Nib0, 0x00, Nib2]
+    /// Then each nibble should have the form (MSB -> LSB):
+    /// 
+    /// Nib2 = [GVDD_OV, FAULT, GVDD_UV, PVDD_UV, 0, 0, 0, 0]
+    /// Nib1 = [OTSD, OTW, FETHA_OC, FETLA_OC, 0, 0, 0, 0]
+    /// Nib0 = [FETHB_OC, FETLB_OC, FETHC_OC, FETLC_OC, 0, 0, 0, 0]
     pub fn check_drv(&mut self) -> Result<[u8; 3], FpgaError<SPIE, GPIOE>> {
         let mut write_buffer = [0x96, 0x00, 0x00, 0x00, 0x00];
         self.spi_transfer(&mut write_buffer)?;
@@ -555,6 +585,7 @@ impl<SPI, CS, INIT, PROG, DONE, DELAY, SPIE, GPIOE> FPGA<SPI, CS, INIT, PROG, DO
         Ok(self.status)
     }
 
+    /// Toggle the motors enable on and off to reset the motors
     pub fn reset_motors(&mut self) -> Result<u8, FpgaError<SPIE, GPIOE>> {
         // Set Motors High -> Low -> High
         let mut buffer = [0x30 | 1 << 7];
