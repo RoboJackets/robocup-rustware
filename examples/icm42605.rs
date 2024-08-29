@@ -127,24 +127,24 @@ mod app {
             loop {
                 let gyro_z = match imu.gyro_z() {
                     Ok(gyro_z) => gyro_z,
-                    Err(_err) => {
-                        log::info!("Unable to Read Gyro Z");
+                    Err(err) => {
+                        log::info!("Unable to Read Gyro Z: {:?}", err);
                         0.0
                     },
                 };
     
                 let accel_x = match imu.accel_x() {
                     Ok(accel_x) => accel_x,
-                    Err(_err) => {
-                        log::info!("Unable to Read Accel X");
+                    Err(err) => {
+                        log::info!("Unable to Read Accel X: {:?}", err);
                         0.0
                     }
                 };
     
                 let accel_y = match imu.accel_y() {
                     Ok(accel_y) => accel_y,
-                    Err(_err) => {
-                        log::info!("Unable to Read Accel Y");
+                    Err(err) => {
+                        log::info!("Unable to Read Accel Y: {:?}", err);
                         0.0
                     }
                 };

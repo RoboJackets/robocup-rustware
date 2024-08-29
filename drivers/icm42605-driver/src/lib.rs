@@ -120,6 +120,8 @@ impl<I2C: i2c::Write<Error = E> + i2c::Read<Error = E>, E: Debug> IMU<I2C> {
                 | registers::AccelConfig::ACCEL_ODR_1kHz.bits(),
         )?;
 
+        self.initialized = true;
+
         Ok(())
     }
 

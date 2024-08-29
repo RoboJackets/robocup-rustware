@@ -314,7 +314,7 @@ mod app {
         });
 
         if fully_initialized {
-            motion_control_loop::spawn().ok();
+            start_listening::spawn().ok();
         } else {
             error_report::spawn().ok();
         }
@@ -490,18 +490,20 @@ mod app {
         log::info!("Moving at {:?}", wheel_velocities);
 
         let encoder_velocities = ctx.shared.fpga.lock(|fpga| {
-            match fpga.set_velocities(wheel_velocities.into(), dribbler_enabled) {
+            let encoder_velocities = match fpga.set_velocities(wheel_velocities.into(), dribbler_enabled) {
                 Ok(encoder_velocities) => encoder_velocities,
                 Err(_err) => {
                     #[cfg(feature = "debug")]
                     log::info!("Unable to Read Encoder Values");
                     [0.0; 4]
                 }
-            }
-        });
+            };
 
-        #[cfg(feature = "debug")]
-        log::info!("Fpga Status: {:#010b}", ctx.local.fpga.status);
+            #[cfg(feature = "debug")]
+            log::info!("Fpga Status: {:#010b}", fpga.status);
+            
+            encoder_velocities
+        });
 
         *ctx.local.last_encoders = Vector4::new(
             encoder_velocities[0],
