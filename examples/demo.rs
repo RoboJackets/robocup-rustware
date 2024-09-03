@@ -11,8 +11,7 @@
 /// This is a demo example file that turns on and off the onboard led.
 ///
 /// Please follow this example for future examples and sanity tests
-/// 
-
+///
 use embedded_alloc::Heap;
 
 #[global_allocator]
@@ -22,25 +21,20 @@ use teensy4_panic as _;
 
 #[rtic::app(device = teensy4_bsp, peripherals = true, dispatchers = [GPT2])]
 mod app {
-    use teensy4_bsp as bsp;
     use bsp::board;
+    use teensy4_bsp as bsp;
 
     use rtic_monotonics::systick::*;
 
     #[local]
-    struct Local {
-        
-    }
+    struct Local {}
 
     #[shared]
     struct Shared {}
 
     #[init]
     fn init(ctx: init::Context) -> (Shared, Local) {
-        let board::Resources {
-            usb,
-            ..
-        } = board::t41(ctx.device);
+        let board::Resources { usb, .. } = board::t41(ctx.device);
 
         bsp::LoggingFrontend::default_log().register_usb(usb);
 
@@ -49,14 +43,7 @@ mod app {
 
         blink_led::spawn().ok();
 
-        (
-            Shared {
-
-            },
-            Local {
-                
-            },
-        )
+        (Shared {}, Local {})
     }
 
     #[idle]

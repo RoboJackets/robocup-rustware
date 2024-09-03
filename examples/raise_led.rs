@@ -153,7 +153,7 @@ mod app {
 
         let motor_pin = gpio1.output(pins.p1);
 
-        initialize_fpga::spawn().ok();
+        motion_control_loop::spawn().ok();
 
         (
             Shared {
@@ -223,6 +223,10 @@ mod app {
             ctx.local.led_pin.set();
         }
 
+        if *ctx.local.iteration > 100 {
+            ctx.local.motor_pin.set();
+        }
+
         let body_velocities = if *ctx.local.iteration < RAMP_UP_ITERATIONS {
             Vector3::new(0.0, (*ctx.local.iteration as f32) / (RAMP_UP_ITERATIONS as f32), 0.0)
         } else {
@@ -234,39 +238,39 @@ mod app {
         #[cfg(feature = "debug")]
         log::info!("Moving at {:?}", wheel_velocities);
 
-        let encoder_velocities = ctx.shared.fpga.lock(|fpga| {
-            match fpga.set_velocities(wheel_velocities.into(), false) {
-                Ok(encoder_velocities) => encoder_velocities,
-                Err(_err) => {
-                    #[cfg(feature = "debug")]
-                    log::info!("Unable to Read Encoder Values");
-                    [0.0; 4]
-                }
-            }
-        });
+        // let encoder_velocities = ctx.shared.fpga.lock(|fpga| {
+        //     match fpga.set_velocities(wheel_velocities.into(), false) {
+        //         Ok(encoder_velocities) => encoder_velocities,
+        //         Err(_err) => {
+        //             #[cfg(feature = "debug")]
+        //             log::info!("Unable to Read Encoder Values");
+        //             [0.0; 4]
+        //         }
+        //     }
+        // });
 
-        let mut speed = 0.0;
-        for encoder_velocity in encoder_velocities.iter() {
-            if *encoder_velocity < 0.0 {
-                speed -= *encoder_velocity;
-            } else {
-                speed += *encoder_velocity;
-            }
-        }
+        // let mut speed = 0.0;
+        // for encoder_velocity in encoder_velocities.iter() {
+        //     if *encoder_velocity < 0.0 {
+        //         speed -= *encoder_velocity;
+        //     } else {
+        //         speed += *encoder_velocity;
+        //     }
+        // }
 
-        if speed > 0.5 {
-            ctx.local.motor_pin.set();
-        }
+        // if speed > 0.5 {
+        //     ctx.local.motor_pin.set();
+        // }
 
         #[cfg(feature = "debug")]
         log::info!("Fpga Status: {:#010b}", ctx.local.fpga.status);
 
-        *ctx.local.last_encoders = Vector4::new(
-            encoder_velocities[0],
-            encoder_velocities[1],
-            encoder_velocities[2],
-            encoder_velocities[3],
-        );
+        // *ctx.local.last_encoders = Vector4::new(
+        //     encoder_velocities[0],
+        //     encoder_velocities[1],
+        //     encoder_velocities[2],
+        //     encoder_velocities[3],
+        // );
 
         *ctx.local.iteration += 1;
 

@@ -1,0 +1,21 @@
+[language-server.rust-analyzer.config]
+inlayHints.bindingModeHints.enable = false
+inlayHints.closingBraceHints.minLines = 10
+inlayHintsclosureReturnTypeHints.enable = "with_block"
+inlayHints.discriminantHints.enable = "fieldless"
+inlayHints.lifetimeElisionHints.enable = "skip_trivial"
+inlayHints.typeHints.hideClosureInitialization = false
+cargo.target = "thumbv7em-none-eabihf"
+check.allTargets = false
+linkedProjects = [
+  "./Cargo.toml",
+  "./drivers/motion/Cargo.toml",
+  "./drivers/controller/Cargo.toml",
+  "./drivers/fpga/Cargo.toml",
+  "./drivers/icm42605/Cargo.toml",
+]
+check.extraArgs = [
+  "--examples",
+  "--bins",
+  "--lib",
+]
