@@ -1,0 +1,50 @@
+on: [pull_request]
+
+name: Rust-Checks
+
+jobs:
+  cargo_check:
+    name: Cargo Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly
+          default: true
+          target: thumbv7em-none-eabihf
+      - uses: actions-rs/cargo@v1
+        with:
+          command: check
+          args: --examples --bins --lib --target thumbv7em-none-eabihf
+
+  cargo_clippy:
+    name: Clippy Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly
+          default: true
+          target: thumbv7em-none-eabihf
+          components: clippy
+      - uses: actions-rs/cargo@v1
+        with:
+          command: clippy
+          args: --target thumbv7em-none-eabihf
+
+  cargo_build:
+    name: Cargo Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly
+          default: true
+          target: thumbv7em-none-eabihf
+      - uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --examples --bins --lib --target thumbv7em-none-eabihf
