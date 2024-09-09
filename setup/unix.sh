@@ -7,6 +7,9 @@ if ! command -v 'cargo'; then
 	exit 1
 fi
 
+rustup default nightly
+rustup target add thumbv7em-none-eabihf
+
 echo "Installing cargo-binutils for rust-objcopy"
 if cargo --list | grep -q 'binstall'; then
 	echo "Using cargo binstall"
@@ -17,7 +20,6 @@ else
 fi
 
 echo "Adding Teensy Target and llvm-tools-preview"
-rustup target add thumbv7em-none-eabihf
 rustup component add llvm-tools-preview
 
 # Linux Needs libusb-dev
@@ -27,17 +29,5 @@ elif type brew > /dev/null 2>&1; then
 	brew install libusb libusb-compat
 fi
 
-echo "Cloning Teensy Loader CLI GitHub Repository"
-git clone https://github.com/PaulStoffregen/teensy_loader_cli.git "${currentDir}/teensy_loader_cli"
-
-echo "${currentDir}"
-
-echo "Making Teensy Loader CLI"
-make -C "${currentDir}/teensy_loader_cli"
-
-echo "Moving Executable"
-mv "${currentDir}/teensy_loader_cli/teensy_loader_cli" ${currentDir}/loader
-
-echo "Cleaning Up"
-rm -rf "${currentDir}/teensy_loader_cli"
-mv "${currentDir}/loader" "${currentDir}/teensy_loader_cli"
+# unzip the teensy loader
+unzip teensy_loader_cli.zip -d teensy_loader_cli
