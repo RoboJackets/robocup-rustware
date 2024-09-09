@@ -29,3 +29,5 @@ elif type brew > /dev/null 2>&1; then
 	brew install libusb libusb-compat
 fi
 
+# unzip the teensy loader
+unzip teensy_loader_cli.zip -d teensy_loader_cli
