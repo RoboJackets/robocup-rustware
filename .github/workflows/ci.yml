@@ -10,7 +10,7 @@ jobs:
       - uses: actions/checkout@v2
       - uses: actions-rs/toolchain@v1
         with:
-          toolchain: nightly
+          toolchain: nightly-2024-09-04
           default: true
           target: thumbv7em-none-eabihf
       - uses: actions-rs/cargo@v1
@@ -25,7 +25,7 @@ jobs:
       - uses: actions/checkout@v2
       - uses: actions-rs/toolchain@v1
         with:
-          toolchain: nightly
+          toolchain: nightly-2024-09-04
           default: true
           target: thumbv7em-none-eabihf
           components: clippy
@@ -41,7 +41,7 @@ jobs:
       - uses: actions/checkout@v2
       - uses: actions-rs/toolchain@v1
         with:
-          toolchain: nightly
+          toolchain: nightly-2024-09-04
           default: true
           target: thumbv7em-none-eabihf
       - uses: actions-rs/cargo@v1

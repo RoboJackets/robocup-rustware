@@ -9,6 +9,6 @@ edition = "2021"
 libm = "0.2.8"
 
 [dependencies.nalgebra]
-version = "0.32.3"
+version = "0.33.0"
 default-features = false
 features = ["libm", "nalgebra-macros"]
