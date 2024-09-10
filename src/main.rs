@@ -45,7 +45,7 @@ mod app {
 
     use rtic_monotonics::systick::*;
 
-    use packed_struct::prelude::*;
+    use ncomm_utils::packing::Packable;
 
     use robojackets_robocup_rtp::{ControlMessage, CONTROL_MESSAGE_SIZE};
     use robojackets_robocup_rtp::{RobotStatusMessage, RobotStatusMessageBuilder, ROBOT_STATUS_SIZE};
@@ -244,10 +244,14 @@ mod app {
         )
     }
 
-    #[idle]
-    fn idle(_: idle::Context) -> ! {
+    /// The placeholder task is just a placeholder idle task that exists
+    /// for other tasks to call it.  Basically, to enable code-reuse I've decided to 
+    /// have every task spawn this placeholder task so that I can use code generation
+    /// to remove the placeholder in favor of whatever task is actually desired to run.
+    #[task]
+    async fn placeholder_task(_ctx: placeholder_task::Context) {
         loop {
-            cortex_m::asm::wfi();
+
         }
     }
 
@@ -262,7 +266,7 @@ mod app {
             }
         });
 
-        initialize_radio::spawn().ok();
+        placeholder_task::spawn().ok();
     }
 
     #[task(
@@ -283,7 +287,7 @@ mod app {
             }
         });
 
-        initialize_fpga::spawn().ok();
+        placeholder_task::spawn().ok();
     }
 
     #[task(
@@ -291,34 +295,80 @@ mod app {
         priority = 1
     )]
     async fn initialize_fpga(ctx: initialize_fpga::Context) {
-        let fully_initialized = (
+        (
             ctx.shared.fpga,
             ctx.shared.pit_delay,
-            ctx.shared.imu_init_error,
             ctx.shared.fpga_init_error,
-            ctx.shared.fpga_prog_error,
-            ctx.shared.radio_init_error,
-        ).lock(|fpga, pit_delay, imu_init_error, fpga_init_error, fpga_prog_error, radio_init_error| {
+            ctx.shared.fpga_prog_error
+        ).lock(|fpga, pit_delay, fpga_init_error, fpga_prog_error| {
             if let Err(err) = fpga.configure() {
                 *fpga_prog_error = Some(err);
-                return false;
+                return;
             }
+
             pit_delay.delay_ms(10u8);
 
             if let Err(err) = fpga.motors_en(true) {
                 *fpga_init_error = Some(err);
-                return false;
             }
-
-            imu_init_error.is_none() && radio_init_error.is_none()
         });
 
-        if fully_initialized {
-            motion_control_loop::spawn().ok();
-        } else {
+        placeholder_task::spawn().ok();
+    }
+
+    #[task(
+        shared = [imu_init_error, fpga_init_error, fpga_prog_error, radio_init_error],
+        priority = 1
+    )]
+    async fn check_for_errors(ctx: check_for_errors::Context) {
+        if (
+            ctx.shared.imu_init_error,
+            ctx.shared.fpga_init_error,
+            ctx.shared.fpga_prog_error,
+            ctx.shared.radio_init_error,
+        ).lock(|imu_init_error, fpga_init_error, fpga_prog_error, radio_init_error| {
+            imu_init_error.is_some() || fpga_init_error.is_some() || fpga_prog_error.is_some()
+                || radio_init_error.is_some()
+        }) {
             error_report::spawn().ok();
+        } else {
+            placeholder_task::spawn().ok();
         }
     }
+
+    #[task(
+        shared = [imu_init_error, fpga_prog_error, fpga_init_error, radio_init_error],
+        priority = 1
+    )]
+    async fn error_report(ctx: error_report::Context) {
+        let (imu_init_error, fpga_prog_error, fpga_init_error, radio_init_error) =
+        (
+            ctx.shared.imu_init_error,
+            ctx.shared.fpga_prog_error,
+            ctx.shared.fpga_init_error,
+            ctx.shared.radio_init_error,
+        ).lock(|imu_init_error, fpga_prog_error, fpga_init_error, radio_init_error| {
+            (
+                imu_init_error.take(),
+                fpga_prog_error.take(),
+                fpga_init_error.take(),
+                radio_init_error.take(),
+            )
+        });
+
+        for _ in 0..5 {
+            log::error!("IMU-INIT: {:?}", imu_init_error);
+            log::error!("FPGA-PROG: {:?}", fpga_prog_error);
+            log::error!("FPGA-INIT: {:?}", fpga_init_error);
+            log::error!("RADIO-INIT: {:?}", radio_init_error);
+            Systick::delay(1_000u32.millis()).await;
+        }
+
+        log::error!("IMU-INIT: {:?}", imu_init_error);
+        log::error!("FPGA-PROG: {:?}", fpga_prog_error);
+        log::error!("FPGA-INIT: {:?}", fpga_init_error);
+        panic!("RADIO-INIT: {:?}", radio_init_error);
+   }
 
     #[task(
         shared = [radio, shared_spi, delay2, gpio1, rx_int],
@@ -337,7 +387,7 @@ mod app {
             radio.start_listening(spi, delay);
         });
 
-        motion_control_loop::spawn().ok();
+        placeholder_task::spawn().ok();
     }
 
     #[task(binds = GPIO1_COMBINED_16_31, shared = [rx_int, gpio1, elapsed_time], priority = 2)]
@@ -372,14 +422,7 @@ mod app {
             let mut read_buffer = [0u8; CONTROL_MESSAGE_SIZE];
             radio.read(&mut read_buffer, spi, delay);
 
-            let control_message = match ControlMessage::unpack_from_slice(&read_buffer[..]) {
-                Ok(control_message) => control_message,
-                Err(_err) => {
-                    #[cfg(feature = "debug")]
-                    log::info!("Error Unpacking Control Command: {:?}", _err);
-                    return;
-                },
-            };
+            let control_message = ControlMessage::unpack(&read_buffer).unwrap();
 
             *counter = 0;
 
@@ -388,15 +431,8 @@ mod app {
 
             *command = Some(control_message);
 
-            let packed_data = match robot_status.pack() {
-                Ok(bytes) => bytes,
-                Err(_err) => {
-                    #[cfg(feature = "debug")]
-                    log::info!("Error Packing Robot Status: {:?}", _err);
-
-                    return;
-                }
-            };
+            let mut packed_data = [0u8; ROBOT_STATUS_SIZE];
+            robot_status.pack(&mut packed_data).unwrap();
 
             radio.set_payload_size(ROBOT_STATUS_SIZE as u8, spi, delay);
             radio.stop_listening(spi, delay);
@@ -518,33 +554,5 @@ mod app {
         Systick::delay(MOTION_CONTROL_DELAY_US.micros()).await;
 
         motion_control_loop::spawn().ok();
-    }
-
-    #[task(
-        shared = [imu_init_error, fpga_prog_error, fpga_init_error, radio_init_error],
-        priority = 1
-    )]
-    async fn error_report(ctx: error_report::Context) {
-        let (imu_init_error, fpga_prog_error, fpga_init_error, radio_init_error) =
-        (
-            ctx.shared.imu_init_error,
-            ctx.shared.fpga_prog_error,
-            ctx.shared.fpga_init_error,
-            ctx.shared.radio_init_error,
-        ).lock(|imu_init_error, fpga_prog_error, fpga_init_error, radio_init_error| {
-            (
-                imu_init_error.take(),
-                fpga_prog_error.take(),
-                fpga_init_error.take(),
-                radio_init_error.take(),
-            )
-        });
-
-        for _ in 0..5 {
-            log::error!("IMU-INIT: {:?}\nFPGA-PROG: {:?}\nFPGA-INIT: {:?}\nRADIO-INIT: {:?}", imu_init_error, fpga_prog_error, fpga_init_error, radio_init_error);
-            Systick::delay(1_000u32.millis()).await;
-        }
-
-        panic!("IMU-INIT: {:?}\nFPGA-PROG: {:?}\nFPGA-INIT: {:?}\nRADIO-INIT: {:?}", imu_init_error, fpga_prog_error, fpga_init_error, radio_init_error);
     }
 }

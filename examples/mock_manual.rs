@@ -41,7 +41,7 @@ mod app {
 
     use rtic_monotonics::systick::*;
 
-    use packed_struct::prelude::*;
+    use ncomm_utils::packing::Packable;
 
     use robojackets_robocup_rtp::{ControlMessage, CONTROL_MESSAGE_SIZE};
     use robojackets_robocup_rtp::{RobotStatusMessage, RobotStatusMessageBuilder, ROBOT_STATUS_SIZE};
@@ -208,27 +208,16 @@ mod app {
             let mut read_buffer = [0u8; CONTROL_MESSAGE_SIZE];
             ctx.local.radio.read(&mut read_buffer, spi, delay);
 
-            let control_message = match ControlMessage::unpack_from_slice(&read_buffer[..]) {
-                Ok(control_message) => control_message,
-                Err(err) => {
-                    log::info!("Error Unpacking Control Command: {:?}", err);
-                    return;
-                },
-            };
+            let control_message = ControlMessage::unpack(&read_buffer).unwrap();
 
             *command = Some(control_message);
 
             ctx.local.radio.set_payload_size(ROBOT_STATUS_SIZE as u8, spi, delay);
             ctx.local.radio.stop_listening(spi, delay);
 
-            let packed_data = match robot_status.pack() {
-                Ok(bytes) => bytes,
-                Err(err) => {
-                    log::info!("Error Packing Robot Status: {:?}", err);
-                    return;
-                }
-            };
-
+            let mut packed_data = [0u8; ROBOT_STATUS_SIZE];
+            robot_status.pack(&mut packed_data).unwrap();
+            
             for _ in 0..5 {
                 let report = ctx.local.radio.write(&packed_data, spi, delay);
                 if report {

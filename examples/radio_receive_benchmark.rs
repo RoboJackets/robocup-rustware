@@ -40,8 +40,6 @@ mod app {
 
     use rtic_monotonics::systick::*;
 
-    use packed_struct::prelude::*;
-
     use robojackets_robocup_rtp::{ControlMessage, CONTROL_MESSAGE_SIZE};
     use robojackets_robocup_rtp::{RobotStatusMessage, RobotStatusMessageBuilder};
     use robojackets_robocup_rtp::BASE_STATION_ADDRESS;
@@ -201,13 +199,7 @@ mod app {
             let mut read_buffer = [0u8; CONTROL_MESSAGE_SIZE];
             radio.read(&mut read_buffer, spi, delay);
 
-            let control_message = match ControlMessage::unpack_from_slice(&read_buffer[..]) {
-                Ok(control_message) => control_message,
-                Err(_err) => {
-                    log::info!("Error Unpacking Control Command: {:?}", _err);
-                    return;
-                }
-            };
+            let control_message = ControlMessage::unpack(&read_buffer).unwrap();
 
             *ctx.local.total_packets += 1;
 

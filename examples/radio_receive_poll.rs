@@ -40,7 +40,7 @@ mod app {
 
     use rtic_monotonics::systick::*;
 
-    use packed_struct::prelude::*;
+    use ncomm_utils::packing::Packable;
 
     use robojackets_robocup_rtp::{ControlMessage, CONTROL_MESSAGE_SIZE};
     use robojackets_robocup_rtp::{RobotStatusMessage, RobotStatusMessageBuilder};
@@ -177,7 +177,7 @@ mod app {
                 let mut buffer = [0u8; CONTROL_MESSAGE_SIZE];
                 radio.read(&mut buffer, spi, delay);
 
-                match ControlMessage::unpack_from_slice(&buffer[..]) {
+                match ControlMessage::unpack(&buffer[..]) {
                     Ok(data) => log::info!("Received: {:?}", data),
                     Err(err) => log::info!("Unable to Unpack Data: {:?}", err),
                 }

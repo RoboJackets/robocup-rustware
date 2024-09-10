@@ -48,7 +48,7 @@ mod app {
 
     use rtic_monotonics::systick::*;
 
-    use packed_struct::prelude::*;
+    use ncomm_utils::packing::Packable;
 
     use robojackets_robocup_rtp::Team;
     use robojackets_robocup_rtp::{RobotStatusMessage, RobotStatusMessageBuilder, ROBOT_STATUS_SIZE};
@@ -193,12 +193,8 @@ mod app {
 
             log::info!("Sending {:?}", new_robot_status);
 
-            let packed_data = match robot_status.pack() {
-                Ok(bytes) => bytes,
-                Err(_err) => {
-                    panic!("Error Packing Robot Status: {:?}", _err);
-                }
-            };
+            let mut packed_data = [0u8; ROBOT_STATUS_SIZE];
+            robot_status.pack(&mut packed_data).unwrap();
 
             let report = radio.write(&packed_data, spi, delay);
             radio.flush_tx(spi, delay);
@@ -240,16 +236,6 @@ mod app {
         Systick::delay(1_000u32.millis()).await;
 
         log::info!("ERROR");
-
-
-
-        // let error = ctx.local.error.unwrap();
-
-        // for _ in 0..5 {
-        //     log::info!("Error Occurred: {:?}", error);
-
-        //     Systick::delay(500u32.millis()).await;
-        // }
 
         (
             ctx.shared.shared_spi,
