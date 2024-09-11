@@ -38,6 +38,8 @@ mod app {
 
     use rtic_nrf24l01::Radio;
 
+    use ncomm_utils::packing::Packable;
+
     use rtic_monotonics::systick::*;
 
     use robojackets_robocup_rtp::{ControlMessage, CONTROL_MESSAGE_SIZE};

@@ -467,7 +467,7 @@ mod app {
 
         let (mut body_velocities, dribbler_enabled) = ctx.shared.control_message.lock(|control_message| {
             match control_message {
-                Some(control_message) => (control_message.get_velocity(), *control_message.dribbler_speed != 0),
+                Some(control_message) => (control_message.get_velocity(), control_message.dribbler_speed != 0),
                 None => (Vector3::new(0.0, 0.0, 0.0), false),
             }
         });
