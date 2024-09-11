@@ -1,6 +1,6 @@
 //!
 //! Driver for the Spartan 3e FPGA on the current Robojackets Robocup control board.
-//! 
+//!
 
 #![allow(unused_assignments)]
 #![no_std]
@@ -26,22 +26,22 @@ use error::FpgaError;
 use core::fmt::Debug;
 
 // embedded hal traits
-use embedded_hal::digital::v2::OutputPin; 
-use embedded_hal::blocking::spi::{Transfer, Write};
 use embedded_hal::blocking::delay::{DelayMs, DelayUs};
+use embedded_hal::blocking::spi::{Transfer, Write};
+use embedded_hal::digital::v2::OutputPin;
 use embedded_hal::spi::{self, Mode};
 
+use bsp::hal::gpio::Input;
 /// imxrt gpio Input struct definition
 /// This is needed because embedded_hal 0.2 default features do not
 /// support the InputPin trait. This trait is part of the "unproven"
 /// features of embedded_hal 0.2
 use teensy4_bsp as bsp;
-use bsp::hal::gpio::Input;
 
 /// The expected SPI frequency for the spi line connected to the FPGA
 pub const FPGA_SPI_FREQUENCY: u32 = 400_000;
 /// The expected SPI mode for the spi line connected to the FPGA
-pub const FPGA_SPI_MODE: Mode = spi::Mode{
+pub const FPGA_SPI_MODE: Mode = spi::Mode {
     polarity: spi::Polarity::IdleLow,
     phase: spi::Phase::CaptureOnFirstTransition,
 };
@@ -68,7 +68,7 @@ pub const VELOCITY_TO_DUTY_CYCLES: f32 = 1.0 / DUTY_CYCLE_TO_VELOCITY;
 /// Return (low_byte, high_byte)
 pub fn duty_cycle_to_fpga(duty_cycle: f32) -> (u8, u8) {
     let mut duty = (duty_cycle * MAX_DUTY_CYCLE) as i16;
-    
+
     let mut negative = false;
     if duty < 0 {
         negative = true;
@@ -92,7 +92,7 @@ pub fn duty_cycle_to_fpga(duty_cycle: f32) -> (u8, u8) {
 /// Convert the duty cycles for each motor into their corresponding bytes to send to the FPGA
 pub fn duty_cycles_to_fpga(duty_cycles: [f32; 4], write_buffer: &mut [u8]) {
     for (i, duty_cycle) in duty_cycles.iter().enumerate() {
-        (write_buffer[2*i], write_buffer[(2*i)+1]) = duty_cycle_to_fpga(*duty_cycle);
+        (write_buffer[2 * i], write_buffer[(2 * i) + 1]) = duty_cycle_to_fpga(*duty_cycle);
     }
 }
 
@@ -103,28 +103,28 @@ pub fn buffer_to_i16s(buffer: &[u8]) -> [i16; 5] {
     let mut encoder_buffer = [0i16; 5];
 
     for i in 0..5 {
-        encoder_buffer[i] = i16::from_be_bytes([buffer[2*i], buffer[(2*i)+1]]);
+        encoder_buffer[i] = i16::from_be_bytes([buffer[2 * i], buffer[(2 * i) + 1]]);
     }
 
     encoder_buffer
 }
 
-
- /// 
- /// Structure that represents an instance on the FPGA hardware.
- /// 
- /// Holds all of the necessary hardware instances to enable motor control commands.
- /// 
- /// NOTES: 
- ///  - The FPGA takes ownership of the SPI hardware instance i.e. cannot share the SPI
- ///  - InputPin is not supported in the default features of embedded-hal 0.2, so we 
- ///    define it using the Input struct and the Pin Number instead -> Input<PinNum>
- ///  - The PROG_B pin must be set in the OPEN_DRAIN configuration
- /// 
-pub struct FPGA<SPI, CS, INIT, PROG, DONE, DELAY, SPIE, GPIOE> where
-    SPI: Write<u8, Error=SPIE> + Transfer<u8, Error=SPIE>,
-    PROG: OutputPin<Error=GPIOE>,
-    CS: OutputPin<Error=GPIOE>,
+///
+/// Structure that represents an instance on the FPGA hardware.
+///
+/// Holds all of the necessary hardware instances to enable motor control commands.
+///
+/// NOTES:
+///  - The FPGA takes ownership of the SPI hardware instance i.e. cannot share the SPI
+///  - InputPin is not supported in the default features of embedded-hal 0.2, so we
+///    define it using the Input struct and the Pin Number instead -> Input<PinNum>
+///  - The PROG_B pin must be set in the OPEN_DRAIN configuration
+///
+pub struct FPGA<SPI, CS, INIT, PROG, DONE, DELAY, SPIE, GPIOE>
+where
+    SPI: Write<u8, Error = SPIE> + Transfer<u8, Error = SPIE>,
+    PROG: OutputPin<Error = GPIOE>,
+    CS: OutputPin<Error = GPIOE>,
     DELAY: DelayMs<u32> + DelayUs<u32>,
     SPIE: Debug,
     GPIOE: Debug,
@@ -136,7 +136,7 @@ pub struct FPGA<SPI, CS, INIT, PROG, DONE, DELAY, SPIE, GPIOE> where
     /// An input pin used to detect when the FPGA is done initializing
     init_b: Input<INIT>,
     /// A pin used to enable programming of the FPGA
-    prog_b: PROG,   // prog_b output pin "MUST" BE on OPEN_DRAIN configuration!!
+    prog_b: PROG, // prog_b output pin "MUST" BE on OPEN_DRAIN configuration!!
     /// An input pin to read when programming is complete
     done: Input<DONE>,
     /// A delay held by the FPGA
@@ -147,23 +147,30 @@ pub struct FPGA<SPI, CS, INIT, PROG, DONE, DELAY, SPIE, GPIOE> where
     initialized: bool,
 }
 
-/// 
+///
 /// NOTE: Notice the name used in this impl for the Error types. I intentionally
 /// used different names from our custom FpgaError enum defined in the error.rs
 /// to outline how we are using our custom error to wrap embedded trait error types
 ///
-impl<SPI, CS, INIT, PROG, DONE, DELAY, SPIE, GPIOE> FPGA<SPI, CS, INIT, PROG, DONE, DELAY, SPIE, GPIOE>
-    where 
-        SPI: Write<u8, Error = SPIE> + Transfer<u8, Error = SPIE>,
-        PROG: OutputPin<Error = GPIOE>,
-        CS: OutputPin<Error = GPIOE>,
-        DELAY: DelayMs<u32> + DelayUs<u32>,
-        SPIE: Debug,
-        GPIOE: Debug,
+impl<SPI, CS, INIT, PROG, DONE, DELAY, SPIE, GPIOE>
+    FPGA<SPI, CS, INIT, PROG, DONE, DELAY, SPIE, GPIOE>
+where
+    SPI: Write<u8, Error = SPIE> + Transfer<u8, Error = SPIE>,
+    PROG: OutputPin<Error = GPIOE>,
+    CS: OutputPin<Error = GPIOE>,
+    DELAY: DelayMs<u32> + DelayUs<u32>,
+    SPIE: Debug,
+    GPIOE: Debug,
 {
     /// Create an uninitialized FPGA driver.
-    pub fn new(spi: SPI, cs: CS, init_b: Input<INIT>, prog_b: PROG, done: Input<DONE>, delay: DELAY) 
-        -> Result<Self, FpgaError<SPIE, GPIOE>> {
+    pub fn new(
+        spi: SPI,
+        cs: CS,
+        init_b: Input<INIT>,
+        prog_b: PROG,
+        done: Input<DONE>,
+        delay: DELAY,
+    ) -> Result<Self, FpgaError<SPIE, GPIOE>> {
         // create new instance of FPGA and pass in appropriate pins
         let mut fpga = FPGA {
             spi,
@@ -192,7 +199,7 @@ impl<SPI, CS, INIT, PROG, DONE, DELAY, SPIE, GPIOE> FPGA<SPI, CS, INIT, PROG, DO
     ///    3. Sends config
     ///    4. Awaits for the FPGA done pin
     ///    5. Returns Ok if no errors or timeout
-    pub fn configure(&mut self) -> Result<(), FpgaError<SPIE, GPIOE>>  {
+    pub fn configure(&mut self) -> Result<(), FpgaError<SPIE, GPIOE>> {
         // toggle the prog_b pin
         self.prog_b.set_low().map_err(|e| {
             let new_error = FpgaError::<SPIE, GPIOE>::ProgPin(e);
@@ -204,18 +211,17 @@ impl<SPI, CS, INIT, PROG, DONE, DELAY, SPIE, GPIOE> FPGA<SPI, CS, INIT, PROG, DO
         // delay until init_b is ready
         let mut timeout = 100;
         while timeout > 0 {
-
             // wait for 10 ms on each cycle
             self.delay.delay_ms(10);
 
             // if the init_b pin is high => FPGA is ready to be programmed
             if self.init_b.is_set() {
                 break;
-            }            
+            }
 
             // decrement remaining timeout counter
             timeout -= 1;
-            
+
             // check whether timeout has been reached (i.e. 100 wait cycles)
             if timeout == 0 {
                 // return a timeout error with code 0x1
@@ -225,11 +231,10 @@ impl<SPI, CS, INIT, PROG, DONE, DELAY, SPIE, GPIOE> FPGA<SPI, CS, INIT, PROG, DO
 
         // send configuration array after init_b pin is asserted
         self.spi_write(&FPGA_BYTES)?;
-        
+
         timeout = 100;
         // delay until done pin is ready
         while timeout > 0 {
-            
             // wait for 100 ms on each cycle
             self.delay.delay_ms(100);
 
@@ -289,37 +294,37 @@ impl<SPI, CS, INIT, PROG, DONE, DELAY, SPIE, GPIOE> FPGA<SPI, CS, INIT, PROG, DO
     }
 
     // Send 0x00 accordingly to read each motor's encoder values
-    // 
-    // Each ecnoder value is obtained from two transfer transactions 
-    // 
+    //
+    // Each ecnoder value is obtained from two transfer transactions
+    //
     // [opcode | status | enc_1 msByte | enc_1 lsByte | ... | enc_5 msByte | enc_5 lsByte]
-    // 
+    //
     // NOTE: the 5th encoder value encs[4] is the delta time and it has a crazy conversion
     // which is explained below.
-    // 
+    //
     // -----------------------------------------------------------------------
     // -----            DELTA -> DT Explanation                        -------
     // -----------------------------------------------------------------------
     // The time since the last update is derived with the value of
     // WATCHDOG_TIMER_CLK_WIDTH in robocup.v
-    // 
+    //
     // The last encoder reading (5th one) from the FPGA is the watchdog
     // timer's tick since the last SPI transfer.
-    // 
+    //
     // Multiply the received tick count by:
     //     (1/18.432) * 2 * (2^WATCHDOG_TIMER_CLK_WIDTH)
-    // 
+    //
     // This will give you the duration since the last SPI transfer in
     // microseconds (us).
-    // 
+    //
     // For example, if WATCHDOG_TIMER_CLK_WIDTH = 6, here's how you would
     // convert into time assuming the fpga returned a reading of 1265 ticks:
     //     time_in_us = [ 1265 * (1/18.432) * 2 * (2^6) ] = 8784.7us
-    // 
+    //
     // The precision would be in increments of the multiplier. For
     // this example, that is:
     //     time_precision = 6.94us
-    // 
+    //
     // TODO: UPDATE THIS IN RUST FORMAT
     // float dt = static_cast<float>(encDeltas[4]) * (1 / 18.432e6) * 2 * 128;
 
@@ -343,7 +348,7 @@ impl<SPI, CS, INIT, PROG, DONE, DELAY, SPIE, GPIOE> FPGA<SPI, CS, INIT, PROG, DO
         write_buffer[0] = Instruction::R_ENC_W_VEL.opcode();
 
         duty_cycles_to_fpga(duty_cycles, &mut write_buffer[1..9]);
-        
+
         // TODO: Set Dribblers
         // duty_cycle_to_fpga(dribbler_duty_cycle, &mut write_buffer[9..11])
         write_buffer[10] = 0x00;
@@ -355,18 +360,17 @@ impl<SPI, CS, INIT, PROG, DONE, DELAY, SPIE, GPIOE> FPGA<SPI, CS, INIT, PROG, DO
     }
 
     /// Set the duty cycles for the various motors of the FPGA.
-    // pub fn set_duty_cycles(&mut self, duty_cycles: &mut [DutyCycle; 5]) 
-    //     -> Result<u8, FpgaError<SpiE, PinE>> 
+    // pub fn set_duty_cycles(&mut self, duty_cycles: &mut [DutyCycle; 5])
+    //     -> Result<u8, FpgaError<SpiE, PinE>>
     //     {
 
     //     // init write buffer
     //     let mut write_buffer = [0x0u8; 11];
 
-        
     //     //send READ ENC WRITE VEL instruction
     //     //we'll only write vel and not read any enc information for this function
     //     write_buffer[0] = Instruction::R_ENC_W_VEL.opcode();
-        
+
     //     // This loop iterates through each duty_cycle and sets the correspondng bytes of the write buffer
     //     // However, because of the weird behavior of Dribbler we are currently hardcoding a duty_cycle for it
     //     // so we don't manually set dribbler's duty_cycle
@@ -380,22 +384,22 @@ impl<SPI, CS, INIT, PROG, DONE, DELAY, SPIE, GPIOE> FPGA<SPI, CS, INIT, PROG, DO
     //     //
     //     // Dribbler?
     //     // For some unkown reason we need to at least assert the lsb of the higher byte write_buffer[10] = 0x01
-    //     // for any motors to move... No idea why. It might be because of the mechanism where if an invalid duty_cycle is sent         
+    //     // for any motors to move... No idea why. It might be because of the mechanism where if an invalid duty_cycle is sent
     //     // it automatically triggers the watchdog or something like that
-    //     // 
+    //     //
     //     // I'll dive deeper into the FPGA verilog code as I am very suspiscious about the fact that our verilog sucks and
     //     // the weird motion might be due to a shitty FPGA verilog lol
-    //     // 
+    //     //
     //     write_buffer[9] = 0x00;
     //     write_buffer[10] = 0x01;
-            
+
     //     // I have NO IDEA why we need this here. Setting duties doesn't work unless we append a 0x00 at the end :)
     //     // write_buffer[11] = 0x00;
     //     self.spi_transfer(&mut [write_buffer[0]])?;
     //     self.spi_transfer(&mut write_buffer[1..])?;
 
     //     // this is the actual SPI transfer what writes the duty_cycles to the FPGA
-    //     // self.spi_transfer(&mut write_buffer)?;        
+    //     // self.spi_transfer(&mut write_buffer)?;
 
     //     // return status code
     //     Ok( write_buffer[0] )
@@ -403,13 +407,13 @@ impl<SPI, CS, INIT, PROG, DONE, DELAY, SPIE, GPIOE> FPGA<SPI, CS, INIT, PROG, DO
 
     /// Set the velocity of the motors and get the velocities the motors
     /// were spinning at (based on the encoder deltas)
-    /// 
+    ///
     /// Params:
     ///     wheel_velocities: The Velocity to spin each motor at
     ///         ( v1,    v2,    v3,    4)
     ///         ((m/s), (m/s), (m/s), (m/s))
     ///     dribbler_velocity: The velocity to spin the dribbler at (m/s)
-    /// 
+    ///
     /// Return:
     ///     Wheel Velocities: The Velocity (according to the encoders) the motors
     ///         are spinning at:
@@ -441,7 +445,9 @@ impl<SPI, CS, INIT, PROG, DONE, DELAY, SPIE, GPIOE> FPGA<SPI, CS, INIT, PROG, DO
 
         self.spi_transfer(&mut write_buffer[..])?;
 
-        let delta = (i16::from_be_bytes(write_buffer[9..11].try_into().unwrap()) as f32) * (1.0 / 18.432) * 256.0;
+        let delta = (i16::from_be_bytes(write_buffer[9..11].try_into().unwrap()) as f32)
+            * (1.0 / 18.432)
+            * 256.0;
         let mut delta_encoders = [
             (i16::from_be_bytes(write_buffer[1..3].try_into().unwrap()) as f32),
             (i16::from_be_bytes(write_buffer[3..5].try_into().unwrap()) as f32),
@@ -449,7 +455,8 @@ impl<SPI, CS, INIT, PROG, DONE, DELAY, SPIE, GPIOE> FPGA<SPI, CS, INIT, PROG, DO
             (i16::from_be_bytes(write_buffer[7..9].try_into().unwrap()) as f32),
         ];
         for i in 0..4 {
-            delta_encoders[i] *= 1e6 * 2.0 * core::f32::consts::PI * WHEEL_RADIUS / (6144.0 * delta);
+            delta_encoders[i] *=
+                1e6 * 2.0 * core::f32::consts::PI * WHEEL_RADIUS / (6144.0 * delta);
         }
         self.status = write_buffer[0];
         Ok(delta_encoders)
@@ -473,7 +480,9 @@ impl<SPI, CS, INIT, PROG, DONE, DELAY, SPIE, GPIOE> FPGA<SPI, CS, INIT, PROG, DO
 
         self.spi_transfer(&mut write_buffer[..])?;
 
-        let delta = (i16::from_be_bytes(write_buffer[9..11].try_into().unwrap()) as f32) * (1.0 / 18.432) * 256.0;
+        let delta = (i16::from_be_bytes(write_buffer[9..11].try_into().unwrap()) as f32)
+            * (1.0 / 18.432)
+            * 256.0;
         let delta_encoders = [
             (i16::from_be_bytes(write_buffer[1..3].try_into().unwrap()) as f32),
             (i16::from_be_bytes(write_buffer[3..5].try_into().unwrap()) as f32),
@@ -484,10 +493,10 @@ impl<SPI, CS, INIT, PROG, DONE, DELAY, SPIE, GPIOE> FPGA<SPI, CS, INIT, PROG, DO
     }
 
     /// Check the DRV values.
-    /// 
+    ///
     /// The format returned should be [Status, Nib1, Nib0, 0x00, Nib2]
     /// Then each nibble should have the form (MSB -> LSB):
-    /// 
+    ///
     /// Nib2 = [GVDD_OV, FAULT, GVDD_UV, PVDD_UV, 0, 0, 0, 0]
     /// Nib1 = [OTSD, OTW, FETHA_OC, FETLA_OC, 0, 0, 0, 0]
     /// Nib0 = [FETHB_OC, FETLB_OC, FETHC_OC, FETLC_OC, 0, 0, 0, 0]
@@ -530,11 +539,11 @@ impl<SPI, CS, INIT, PROG, DONE, DELAY, SPIE, GPIOE> FPGA<SPI, CS, INIT, PROG, DO
     // }
 
     /// TODO: Fix get git_hash function
-    // pub fn get_git_hash<D>(&mut self, hash: &mut [u8; 20], delay: &mut D) 
-    //     -> Result<bool, FpgaError<SpiE, PinE>> 
-    //     where D: DelayMs<u8> + DelayUs<u8> 
+    // pub fn get_git_hash<D>(&mut self, hash: &mut [u8; 20], delay: &mut D)
+    //     -> Result<bool, FpgaError<SpiE, PinE>>
+    //     where D: DelayMs<u8> + DelayUs<u8>
     //     {
-        
+
     //     // the entire git hash is obtained from two different instruction opcodes
     //     let mut hash_1: [u8;11] = [0;11];
     //     let mut hash_2: [u8;12] = [0;12];
@@ -547,9 +556,9 @@ impl<SPI, CS, INIT, PROG, DONE, DELAY, SPIE, GPIOE> FPGA<SPI, CS, INIT, PROG, DO
     // }
 
     /// TODO: Fix the gate_drivers function
-    // pub fn gate_drivers(&mut self, gate_status: &mut [u32; 5]) 
+    // pub fn gate_drivers(&mut self, gate_status: &mut [u32; 5])
     //     -> Result<u8, FpgaError<SpiE, PinE>> {
-        
+
     //     // send READ DRV instruction
     //     let mut status: [u8; 1] = [Instruction::CHECK_DRV.opcode()];
     //     self.spi.transfer(&mut status).map_err(FpgaError::SPI)?;
@@ -570,7 +579,7 @@ impl<SPI, CS, INIT, PROG, DONE, DELAY, SPIE, GPIOE> FPGA<SPI, CS, INIT, PROG, DO
     //         // combine all 4 bytes to form a single DRV encoded value
     //         gate_status[i] = ((empty[0] << 24) | (nib_2[0] << 16) | (nib_1[0] << 8) | nib_0[0]) as u32;
     //     }
-        
+
     //     Ok(status[0])
 
     // }
@@ -578,9 +587,12 @@ impl<SPI, CS, INIT, PROG, DONE, DELAY, SPIE, GPIOE> FPGA<SPI, CS, INIT, PROG, DO
     /// Enable the motors connected to the FPGA
     pub fn motors_en(&mut self, enable: bool) -> Result<u8, FpgaError<SPIE, GPIOE>> {
         let mut write_buffer: [u8; 1] = [0x00];
-        write_buffer[0] = if enable { Instruction::EN_MOTORS.opcode() }
-                            else { Instruction::DIS_MOTORS.opcode() };
-        
+        write_buffer[0] = if enable {
+            Instruction::EN_MOTORS.opcode()
+        } else {
+            Instruction::DIS_MOTORS.opcode()
+        };
+
         self.spi_transfer(&mut write_buffer)?;
         Ok(self.status)
     }
@@ -610,7 +622,7 @@ impl<SPI, CS, INIT, PROG, DONE, DELAY, SPIE, GPIOE> FPGA<SPI, CS, INIT, PROG, DO
     // Private helper method to abstract the SPI write transaction
     fn spi_write(&mut self, buffer: &[u8]) -> Result<(), FpgaError<SPIE, GPIOE>> {
         // pull cs pin low
-        self.cs.set_low().map_err(FpgaError::CSPin)?;    
+        self.cs.set_low().map_err(FpgaError::CSPin)?;
         // write buffer contents
         self.spi.write(buffer).map_err(FpgaError::SPI)?;
         // pull cs pin back to high (default satate)
@@ -624,7 +636,7 @@ impl<SPI, CS, INIT, PROG, DONE, DELAY, SPIE, GPIOE> FPGA<SPI, CS, INIT, PROG, DO
     // NOTE: SPI transfer function uses a Full-Duplex protocol
     fn spi_transfer(&mut self, buffer: &mut [u8]) -> Result<(), FpgaError<SPIE, GPIOE>> {
         // pull cs pin high
-        self.cs.set_low().map_err(FpgaError::CSPin)?;    
+        self.cs.set_low().map_err(FpgaError::CSPin)?;
         // write buffer contents and read from spi
         self.spi.transfer(buffer).map_err(FpgaError::SPI)?;
         // pull cs pin back to low (default state)
@@ -683,8 +695,8 @@ mod tests {
         duty_cycles_to_fpga(duty_cycles, &mut buffer);
 
         for i in 0..4 {
-            assert_eq!(buffer[2*i], 126);
-            assert_eq!(buffer[(2*i)+1], 0);
+            assert_eq!(buffer[2 * i], 126);
+            assert_eq!(buffer[(2 * i) + 1], 0);
         }
     }
 
@@ -695,8 +707,8 @@ mod tests {
         duty_cycles_to_fpga(duty_cycles, &mut buffer);
 
         for i in 0..4 {
-            assert_eq!(buffer[2*i], 126);
-            assert_eq!(buffer[(2*i)+1], 0b10);
+            assert_eq!(buffer[2 * i], 126);
+            assert_eq!(buffer[(2 * i) + 1], 0b10);
         }
     }
 
@@ -715,15 +727,10 @@ mod tests {
         let expected = [-1526, -1526, -1526, -1526, -1526];
         assert_eq!(i16s, expected);
     }
-    
+
     #[test]
     fn test_create_buffer() {
-        let duty_cycles = [
-            0.012433962,
-            0.010152288,
-            -0.010152288,
-            -0.012433962,
-        ];
+        let duty_cycles = [0.012433962, 0.010152288, -0.010152288, -0.012433962];
         let mut buffer = [0u8; 8];
         duty_cycles_to_fpga(duty_cycles, &mut buffer);
 
@@ -732,12 +739,7 @@ mod tests {
 
     #[test]
     fn test_create_buffer_2() {
-        let duty_cycles = [
-            0.024867924,
-            0.020402576,
-            -0.020402576,
-            -0.024867924,
-        ];
+        let duty_cycles = [0.024867924, 0.020402576, -0.020402576, -0.024867924];
         let mut buffer = [0u8; 8];
         duty_cycles_to_fpga(duty_cycles, &mut buffer);
 

@@ -1,7 +1,7 @@
 //!
 //! Manual Control is an example that should be pretty close to the fully-working program.  However,
 //! it is currently considered a work in progress so it is still considered a test.
-//! 
+//!
 
 #![no_std]
 #![no_main]
@@ -22,23 +22,20 @@ mod app {
 
     use imxrt_iomuxc::prelude::*;
 
-    use embedded_hal::{
-        spi::MODE_0,
-        blocking::delay::DelayMs,
-    };
+    use embedded_hal::{blocking::delay::DelayMs, spi::MODE_0};
 
+    use bsp::board::PERCLK_FREQUENCY;
+    use bsp::board::{self, LPSPI_FREQUENCY};
     use nalgebra::{Vector3, Vector4};
     use teensy4_bsp as bsp;
-    use bsp::board::{self, LPSPI_FREQUENCY};
-    use bsp::board::PERCLK_FREQUENCY;
 
-    use teensy4_bsp::hal as hal;
-    use hal::lpspi::{Lpspi, Pins};
     use hal::gpio::Trigger;
-    use hal::timer::Blocking;
+    use hal::lpspi::{Lpspi, Pins};
     use hal::pit::Chained01;
-    
-    use bsp::ral as ral;
+    use hal::timer::Blocking;
+    use teensy4_bsp::hal;
+
+    use bsp::ral;
     use ral::lpspi::LPSPI3;
 
     use rtic_nrf24l01::Radio;
@@ -47,23 +44,25 @@ mod app {
 
     use ncomm_utils::packing::Packable;
 
-    use robojackets_robocup_rtp::{ControlMessage, CONTROL_MESSAGE_SIZE};
-    use robojackets_robocup_rtp::{RobotStatusMessage, RobotStatusMessageBuilder, ROBOT_STATUS_SIZE};
     use robojackets_robocup_rtp::BASE_STATION_ADDRESS;
+    use robojackets_robocup_rtp::{ControlMessage, CONTROL_MESSAGE_SIZE};
+    use robojackets_robocup_rtp::{
+        RobotStatusMessage, RobotStatusMessageBuilder, ROBOT_STATUS_SIZE,
+    };
 
     use motion::MotionControl;
 
-    use fpga_rs as fpga;
+    use fpga::FPGA;
     use fpga::FPGA_SPI_FREQUENCY;
     use fpga::FPGA_SPI_MODE;
-    use fpga::FPGA;
+    use fpga_rs as fpga;
 
     use icm42605_driver::IMU;
 
     use main::{
-        Delay2, Fpga, Gpio1, Imu, PitDelay, RFRadio, RadioInterrupt, SharedSPI, BASE_AMPLIFICATION_LEVEL,
-        CHANNEL, GPT_CLOCK_SOURCE, GPT_DIVIDER, GPT_FREQUENCY, RADIO_ADDRESS, ROBOT_ID, ImuInitError,
-        FPGAInitError, FPGAProgError, RadioInitError,
+        Delay2, FPGAInitError, FPGAProgError, Fpga, Gpio1, Imu, ImuInitError, PitDelay, RFRadio,
+        RadioInitError, RadioInterrupt, SharedSPI, BASE_AMPLIFICATION_LEVEL, CHANNEL,
+        GPT_CLOCK_SOURCE, GPT_DIVIDER, GPT_FREQUENCY, RADIO_ADDRESS, ROBOT_ID,
     };
 
     const HEAP_SIZE: usize = 1024;
@@ -109,7 +108,9 @@ mod app {
     #[init]
     fn init(ctx: init::Context) -> (Shared, Local) {
         // Initialize the Heap
-        unsafe { HEAP.init(HEAP_MEM.as_ptr() as usize, HEAP_SIZE); }
+        unsafe {
+            HEAP.init(HEAP_MEM.as_ptr() as usize, HEAP_SIZE);
+        }
 
         // Grab the board peripherals
         let board::Resources {
@@ -240,19 +241,17 @@ mod app {
                 motion_controller: MotionControl::new(),
                 last_encoders: Vector4::zeros(),
                 chain_timer: chained_timer,
-            }
+            },
         )
     }
 
     /// The placeholder task is just a placeholder idle task that exists
-    /// for other tasks to call it.  Basically, to enable code-reuse I've decided to 
+    /// for other tasks to call it.  Basically, to enable code-reuse I've decided to
     /// have every task spawn this placeholder task so that I can use code generation
     /// to remove the placeholder in favor of whatever task is actually desired to run.
     #[task]
     async fn placeholder_task(_ctx: placeholder_task::Context) {
-        loop {
-
-        }
+        loop {}
     }
 
     #[task(
@@ -260,11 +259,16 @@ mod app {
         priority = 1
     )]
     async fn initialize_imu(ctx: initialize_imu::Context) {
-        (ctx.shared.imu, ctx.shared.pit_delay, ctx.shared.imu_init_error).lock(|imu, pit_delay, imu_init_error| {
-            if let Err(err) = imu.init(pit_delay) {
-                *imu_init_error = Some(err);
-            }
-        });
+        (
+            ctx.shared.imu,
+            ctx.shared.pit_delay,
+            ctx.shared.imu_init_error,
+        )
+            .lock(|imu, pit_delay, imu_init_error| {
+                if let Err(err) = imu.init(pit_delay) {
+                    *imu_init_error = Some(err);
+                }
+            });
 
         placeholder_task::spawn().ok();
     }
@@ -274,18 +278,24 @@ mod app {
         priority = 1
     )]
     async fn initialize_radio(ctx: initialize_radio::Context) {
-        (ctx.shared.radio, ctx.shared.shared_spi, ctx.shared.delay2, ctx.shared.radio_init_error).lock(|radio, spi, delay, radio_init_error| {
-            match radio.begin(spi, delay) {
-                Ok(_) => {
-                    radio.set_pa_level(BASE_AMPLIFICATION_LEVEL, spi, delay);
-                    radio.set_channel(CHANNEL, spi, delay);
-                    radio.set_payload_size(CONTROL_MESSAGE_SIZE as u8, spi, delay);
-                    radio.open_writing_pipe(BASE_STATION_ADDRESS, spi, delay);
-                    radio.open_reading_pipe(1, RADIO_ADDRESS, spi, delay);
+        (
+            ctx.shared.radio,
+            ctx.shared.shared_spi,
+            ctx.shared.delay2,
+            ctx.shared.radio_init_error,
+        )
+            .lock(
+                |radio, spi, delay, radio_init_error| match radio.begin(spi, delay) {
+                    Ok(_) => {
+                        radio.set_pa_level(BASE_AMPLIFICATION_LEVEL, spi, delay);
+                        radio.set_channel(CHANNEL, spi, delay);
+                        radio.set_payload_size(CONTROL_MESSAGE_SIZE as u8, spi, delay);
+                        radio.open_writing_pipe(BASE_STATION_ADDRESS, spi, delay);
+                        radio.open_reading_pipe(1, RADIO_ADDRESS, spi, delay);
+                    }
+                    Err(err) => *radio_init_error = Some(err),
                 },
-                Err(err) => *radio_init_error = Some(err),
-            }
-        });
+            );
 
         placeholder_task::spawn().ok();
     }
@@ -299,19 +309,20 @@ mod app {
             ctx.shared.fpga,
             ctx.shared.pit_delay,
             ctx.shared.fpga_init_error,
-            ctx.shared.fpga_prog_error
-        ).lock(|fpga, pit_delay, fpga_init_error, fpga_prog_error| {
-            if let Err(err) = fpga.configure() {
-                *fpga_prog_error = Some(err);
-                return;
-            }
+            ctx.shared.fpga_prog_error,
+        )
+            .lock(|fpga, pit_delay, fpga_init_error, fpga_prog_error| {
+                if let Err(err) = fpga.configure() {
+                    *fpga_prog_error = Some(err);
+                    return;
+                }
 
-            pit_delay.delay_ms(10u8);
+                pit_delay.delay_ms(10u8);
 
-            if let Err(err) = fpga.motors_en(true) {
-                *fpga_init_error = Some(err);
-            }
-        });
+                if let Err(err) = fpga.motors_en(true) {
+                    *fpga_init_error = Some(err);
+                }
+            });
 
         placeholder_task::spawn().ok();
     }
@@ -326,10 +337,16 @@ mod app {
             ctx.shared.fpga_init_error,
             ctx.shared.fpga_prog_error,
             ctx.shared.radio_init_error,
-        ).lock(|imu_init_error, fpga_init_error, fpga_prog_error, radio_init_error| {
-            imu_init_error.is_some() || fpga_init_error.is_some() || fpga_prog_error.is_some()
-                || radio_init_error.is_some()
-        }) {
+        )
+            .lock(
+                |imu_init_error, fpga_init_error, fpga_prog_error, radio_init_error| {
+                    imu_init_error.is_some()
+                        || fpga_init_error.is_some()
+                        || fpga_prog_error.is_some()
+                        || radio_init_error.is_some()
+                },
+            )
+        {
             error_report::spawn().ok();
         } else {
             placeholder_task::spawn().ok();
@@ -341,20 +358,22 @@ mod app {
         priority = 1
     )]
     async fn error_report(ctx: error_report::Context) {
-        let (imu_init_error, fpga_prog_error, fpga_init_error, radio_init_error) =
-        (
+        let (imu_init_error, fpga_prog_error, fpga_init_error, radio_init_error) = (
             ctx.shared.imu_init_error,
             ctx.shared.fpga_prog_error,
             ctx.shared.fpga_init_error,
             ctx.shared.radio_init_error,
-        ).lock(|imu_init_error, fpga_prog_error, fpga_init_error, radio_init_error| {
-            (
-                imu_init_error.take(),
-                fpga_prog_error.take(),
-                fpga_init_error.take(),
-                radio_init_error.take(),
-            )
-        });
+        )
+            .lock(
+                |imu_init_error, fpga_prog_error, fpga_init_error, radio_init_error| {
+                    (
+                        imu_init_error.take(),
+                        fpga_prog_error.take(),
+                        fpga_init_error.take(),
+                        radio_init_error.take(),
+                    )
+                },
+            );
 
         for _ in 0..5 {
             log::error!("IMU-INIT: {:?}", imu_init_error);
@@ -368,7 +387,7 @@ mod app {
         log::error!("FPGA-PROG: {:?}", fpga_prog_error);
         log::error!("FPGA-INIT: {:?}", fpga_init_error);
         panic!("RADIO-INIT: {:?}", radio_init_error);
-   }
+    }
 
     #[task(
         shared = [radio, shared_spi, delay2, gpio1, rx_int],
@@ -381,27 +400,30 @@ mod app {
             ctx.shared.delay2,
             ctx.shared.gpio1,
             ctx.shared.rx_int,
-        ).lock(|radio, spi, delay, gpio1, rx_int| {
-            rx_int.clear_triggered();
-            gpio1.set_interrupt(rx_int, Some(Trigger::FallingEdge));
-            radio.start_listening(spi, delay);
-        });
+        )
+            .lock(|radio, spi, delay, gpio1, rx_int| {
+                rx_int.clear_triggered();
+                gpio1.set_interrupt(rx_int, Some(Trigger::FallingEdge));
+                radio.start_listening(spi, delay);
+            });
 
         placeholder_task::spawn().ok();
     }
 
     #[task(binds = GPIO1_COMBINED_16_31, shared = [rx_int, gpio1, elapsed_time], priority = 2)]
     fn radio_interrupt(ctx: radio_interrupt::Context) {
-        if (ctx.shared.rx_int, ctx.shared.gpio1, ctx.shared.elapsed_time).lock(|rx_int, gpio1, elapsed_time| {
-            // ctx.local.led_pin.toggle();
-            if rx_int.is_triggered() {
-                *elapsed_time = 0;
-                rx_int.clear_triggered();
-                gpio1.set_interrupt(&rx_int, None);
-                return true;
-            }
-            false
-        }) {
+        if (ctx.shared.rx_int, ctx.shared.gpio1, ctx.shared.elapsed_time).lock(
+            |rx_int, gpio1, elapsed_time| {
+                // ctx.local.led_pin.toggle();
+                if rx_int.is_triggered() {
+                    *elapsed_time = 0;
+                    rx_int.clear_triggered();
+                    gpio1.set_interrupt(&rx_int, None);
+                    return true;
+                }
+                false
+            },
+        ) {
             receive_command::spawn().ok();
         }
     }
@@ -418,35 +440,36 @@ mod app {
             ctx.shared.robot_status,
             ctx.shared.counter,
             ctx.shared.radio,
-        ).lock(|spi, delay, command, robot_status, counter, radio| {
-            let mut read_buffer = [0u8; CONTROL_MESSAGE_SIZE];
-            radio.read(&mut read_buffer, spi, delay);
+        )
+            .lock(|spi, delay, command, robot_status, counter, radio| {
+                let mut read_buffer = [0u8; CONTROL_MESSAGE_SIZE];
+                radio.read(&mut read_buffer, spi, delay);
 
-            let control_message = ControlMessage::unpack(&read_buffer).unwrap();
+                let control_message = ControlMessage::unpack(&read_buffer).unwrap();
 
-            *counter = 0;
+                *counter = 0;
 
-            #[cfg(feature = "debug")]
-            log::info!("Control Command Received: {:?}", control_message);
+                #[cfg(feature = "debug")]
+                log::info!("Control Command Received: {:?}", control_message);
 
-            *command = Some(control_message);
+                *command = Some(control_message);
 
-            let mut packed_data = [0u8; ROBOT_STATUS_SIZE];
-            robot_status.pack(&mut packed_data).unwrap();
+                let mut packed_data = [0u8; ROBOT_STATUS_SIZE];
+                robot_status.pack(&mut packed_data).unwrap();
 
-            radio.set_payload_size(ROBOT_STATUS_SIZE as u8, spi, delay);
-            radio.stop_listening(spi, delay);
+                radio.set_payload_size(ROBOT_STATUS_SIZE as u8, spi, delay);
+                radio.stop_listening(spi, delay);
 
-            for _ in 0..5 {
-                let report = radio.write(&packed_data, spi, delay);
-                if report {
-                    break;
+                for _ in 0..5 {
+                    let report = radio.write(&packed_data, spi, delay);
+                    if report {
+                        break;
+                    }
                 }
-            }
 
-            radio.set_payload_size(CONTROL_MESSAGE_SIZE as u8, spi, delay);
-            radio.start_listening(spi, delay);
-        });
+                radio.set_payload_size(CONTROL_MESSAGE_SIZE as u8, spi, delay);
+                radio.start_listening(spi, delay);
+            });
 
         (ctx.shared.rx_int, ctx.shared.gpio1).lock(|rx_int, gpio1| {
             rx_int.clear_triggered();
@@ -465,12 +488,16 @@ mod app {
             *ctx.local.last_time = ctx.local.chain_timer.current_timer_value();
         }
 
-        let (mut body_velocities, dribbler_enabled) = ctx.shared.control_message.lock(|control_message| {
-            match control_message {
-                Some(control_message) => (control_message.get_velocity(), control_message.dribbler_speed != 0),
-                None => (Vector3::new(0.0, 0.0, 0.0), false),
-            }
-        });
+        let (mut body_velocities, dribbler_enabled) =
+            ctx.shared
+                .control_message
+                .lock(|control_message| match control_message {
+                    Some(control_message) => (
+                        control_message.get_velocity(),
+                        control_message.dribbler_speed != 0,
+                    ),
+                    None => (Vector3::new(0.0, 0.0, 0.0), false),
+                });
 
         let (gyro, accel_x, accel_y) = ctx.shared.imu.lock(|imu| {
             let gyro = match imu.gyro_z() {
@@ -481,7 +508,7 @@ mod app {
                     0.0
                 }
             };
-    
+
             let accel_x = match imu.accel_x() {
                 Ok(accel_x) => accel_x,
                 Err(_err) => {
@@ -490,7 +517,7 @@ mod app {
                     0.0
                 }
             };
-    
+
             let accel_y = match imu.accel_y() {
                 Ok(accel_y) => accel_y,
                 Err(_err) => {

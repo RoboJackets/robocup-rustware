@@ -59,7 +59,7 @@ pub struct IMU<I2C> {
 
 impl<I2C: i2c::Write<Error = E> + i2c::Read<Error = E>, E: Debug> IMU<I2C> {
     /// Acquire the necessary peripherals for the IMU driver.
-    /// 
+    ///
     /// Note: This does not initialize the IMU and `init` must be called before
     /// using the IMU
     pub fn new(i2c: I2C) -> Self {
@@ -127,7 +127,9 @@ impl<I2C: i2c::Write<Error = E> + i2c::Read<Error = E>, E: Debug> IMU<I2C> {
 
     /// Read the gyro velocity in the z direction
     pub fn gyro_z(&mut self) -> Result<f32, ImuError<E>> {
-        if !self.initialized { return Err(ImuError::Uninitialized); }
+        if !self.initialized {
+            return Err(ImuError::Uninitialized);
+        }
 
         let hi = self.read(Bank::Bank0, registers::GYRO_DATA_Z1)?;
         let lo = self.read(Bank::Bank0, registers::GYRO_DATA_Z0)?;
@@ -137,8 +139,10 @@ impl<I2C: i2c::Write<Error = E> + i2c::Read<Error = E>, E: Debug> IMU<I2C> {
 
     /// Read the acceleration in the x direction
     pub fn accel_x(&mut self) -> Result<f32, ImuError<E>> {
-        if !self.initialized { return Err(ImuError::Uninitialized); }
-       
+        if !self.initialized {
+            return Err(ImuError::Uninitialized);
+        }
+
         let hi = self.read(Bank::Bank0, registers::ACCEL_DATA_X1)?;
         let lo = self.read(Bank::Bank0, registers::ACCEL_DATA_X0)?;
 
@@ -147,7 +151,9 @@ impl<I2C: i2c::Write<Error = E> + i2c::Read<Error = E>, E: Debug> IMU<I2C> {
 
     /// Read the acceleration in the y direction
     pub fn accel_y(&mut self) -> Result<f32, ImuError<E>> {
-        if !self.initialized { return Err(ImuError::Uninitialized); }
+        if !self.initialized {
+            return Err(ImuError::Uninitialized);
+        }
 
         let hi = self.read(Bank::Bank0, registers::ACCEL_DATA_Y1)?;
         let lo = self.read(Bank::Bank0, registers::ACCEL_DATA_Y0)?;
@@ -157,22 +163,26 @@ impl<I2C: i2c::Write<Error = E> + i2c::Read<Error = E>, E: Debug> IMU<I2C> {
 
     /// Write the raw register address and data over the i2c line
     fn raw_write(&mut self, register_addr: u8, data: u8) -> Result<(), ImuError<E>> {
-        self.i2c.write(ICM_ADDR, &[register_addr, data]).map_err(ImuError::I2c)
+        self.i2c
+            .write(ICM_ADDR, &[register_addr, data])
+            .map_err(ImuError::I2c)
     }
-    
+
     /// Change the IMU register bank that is current targeted
     fn switch_bank(&mut self, new_bank: Bank) -> Result<(), ImuError<E>> {
         self.raw_write(BankSelect::ADDR, new_bank.value())?;
         self.current_bank = new_bank;
         Ok(())
     }
-    
+
     /// Read the data contained in a specific address of a given bank in the IMU
     fn read(&mut self, bank: Bank, address: u8) -> Result<u8, ImuError<E>> {
         if bank != self.current_bank {
             self.switch_bank(bank)?;
         }
-        self.i2c.write(ICM_ADDR, &[address]).map_err(ImuError::I2c)?;
+        self.i2c
+            .write(ICM_ADDR, &[address])
+            .map_err(ImuError::I2c)?;
 
         let mut buf = [0];
         self.i2c.read(ICM_ADDR, &mut buf).map_err(ImuError::I2c)?;

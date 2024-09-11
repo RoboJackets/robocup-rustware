@@ -1,7 +1,7 @@
 //!
 //! Collection Collects Data from Basic Movement by the Robot and stores the data
 //! in flash memory that can be read via report.rs
-//! 
+//!
 
 #![no_std]
 #![no_main]
@@ -21,16 +21,16 @@ mod app {
 
     use core::mem::MaybeUninit;
 
-    use teensy4_bsp as bsp;
     use bsp::board;
+    use teensy4_bsp as bsp;
 
-    use teensy4_bsp::hal as hal;
-    use hal::timer::Blocking;
     use hal::pit::Chained01;
+    use hal::timer::Blocking;
+    use teensy4_bsp::hal;
 
     use rtic_monotonics::systick::*;
 
-    use main::{Delay2, GPT_FREQUENCY, GPT_CLOCK_SOURCE, GPT_DIVIDER};
+    use main::{Delay2, GPT_CLOCK_SOURCE, GPT_DIVIDER, GPT_FREQUENCY};
 
     const HEAP_SIZE: usize = 8192;
     static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
@@ -42,13 +42,13 @@ mod app {
     }
 
     #[shared]
-    struct Shared {
-
-    }
+    struct Shared {}
 
     #[init]
     fn init(ctx: init::Context) -> (Shared, Local) {
-        unsafe { HEAP.init(HEAP_MEM.as_ptr() as usize, HEAP_SIZE); }
+        unsafe {
+            HEAP.init(HEAP_MEM.as_ptr() as usize, HEAP_SIZE);
+        }
 
         // Grab the board peripherals
         let board::Resources {
@@ -76,13 +76,11 @@ mod app {
         motion_control_update::spawn().ok();
 
         (
-            Shared {
-
-            },
+            Shared {},
             Local {
                 pit: chained,
                 delay: delay2,
-            }
+            },
         )
     }
 

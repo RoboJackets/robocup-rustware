@@ -1,14 +1,14 @@
 //!
-//! 
+//!
 //!
 
 use core::fmt::Debug;
 
-use libm::{sinf, cosf};
+use libm::{cosf, sinf};
 
 use nalgebra::base::*;
 
-use crate::{WHEEL_DIST, FRONT_ANGLE, BACK_ANGLE};
+use crate::{BACK_ANGLE, FRONT_ANGLE, WHEEL_DIST};
 
 /// Wheel Radius (m)
 pub const WHEEL_RADIUS: f32 = 0.02786;
@@ -56,15 +56,24 @@ impl MotionControl {
         ];
 
         let bot_to_wheel = Matrix4x3::new(
-            sinf(wheel_angles[0]), -cosf(wheel_angles[0]), -WHEEL_DIST,
-            sinf(wheel_angles[1]), -cosf(wheel_angles[1]), -WHEEL_DIST,
-            sinf(wheel_angles[2]), -cosf(wheel_angles[2]), -WHEEL_DIST,
-            sinf(wheel_angles[3]), -cosf(wheel_angles[3]), -WHEEL_DIST,
+            sinf(wheel_angles[0]),
+            -cosf(wheel_angles[0]),
+            -WHEEL_DIST,
+            sinf(wheel_angles[1]),
+            -cosf(wheel_angles[1]),
+            -WHEEL_DIST,
+            sinf(wheel_angles[2]),
+            -cosf(wheel_angles[2]),
+            -WHEEL_DIST,
+            sinf(wheel_angles[3]),
+            -cosf(wheel_angles[3]),
+            -WHEEL_DIST,
         );
 
         let bot_to_wheel_t = bot_to_wheel.transpose();
 
-        let wheel_to_bot = (&bot_to_wheel_t * &bot_to_wheel).try_inverse().unwrap() * &bot_to_wheel_t;
+        let wheel_to_bot =
+            (&bot_to_wheel_t * &bot_to_wheel).try_inverse().unwrap() * &bot_to_wheel_t;
 
         Self {
             bot_to_wheel,
@@ -76,25 +85,25 @@ impl MotionControl {
             timesteps: STABLIZE_TIME,
         }
     }
-    
+
     /// Convert a body velocity into duty cycles for the robot
     pub fn body_to_wheels(&self, body_velocity: Vector3<f32>) -> Vector4<f32> {
         self.bot_to_wheel * body_velocity
     }
-    
+
     /// Converts a wheel's duty cycles into velocity for the robot
     pub fn wheels_to_body(&self, wheel_velocity: Vector4<f32>) -> Vector3<f32> {
         self.wheel_to_bot * wheel_velocity
     }
 
     /// Control Update
-    /// 
+    ///
     /// Parameters:
     ///     imu_measurements: (accel_x (m/s^2), accel_y (m/s^2), w (rad/s))
     ///     encoder_velocities: (motor_1, motor_2, motor_3, motor_4) (m/s)
     ///     target_velocity: (x (m/s), y (m/s), w (rad/s))
     ///     delta: elapsed time (us)
-    /// 
+    ///
     /// Returns:
     ///     (motor_1, motor_2, motor_3, motor_4)
     pub fn control_update(
@@ -121,14 +130,18 @@ impl MotionControl {
         // Weight State Estimates
         let state_estimate: Vector3<f32>;
         // let state_estimate: Vector3<f32> = imu_estimate.map(|v| v * ALPHA) + encoder_estimate.map(|v| v * (1.0 - ALPHA));
-        if imu_measurements[0] * imu_measurements[0] + imu_measurements[1] * imu_measurements[1] > HIGH_ACCELERATION_CUTOFF {
-            state_estimate = imu_estimate.map(|v| v * ALPHA) + encoder_estimate.map(|v| v * (1.0 - ALPHA));
+        if imu_measurements[0] * imu_measurements[0] + imu_measurements[1] * imu_measurements[1]
+            > HIGH_ACCELERATION_CUTOFF
+        {
+            state_estimate =
+                imu_estimate.map(|v| v * ALPHA) + encoder_estimate.map(|v| v * (1.0 - ALPHA));
         } else {
-            state_estimate = imu_estimate.map(|v| v * HIGH_ALPHA) + encoder_estimate.map(|v| v * (1.0 - HIGH_ALPHA));
+            state_estimate = imu_estimate.map(|v| v * HIGH_ALPHA)
+                + encoder_estimate.map(|v| v * (1.0 - HIGH_ALPHA));
         }
-        
+
         let difference = (target_velocity - state_estimate).map(|v| v * CORRECT_FACTOR);
-        
+
         // Find the Update Velocity
         let update_velocity = self.bot_to_wheel * difference;
 
@@ -145,12 +158,12 @@ impl MotionControl {
     }
 
     /// Calculate the Current State Estimate Based on IMU Measurements
-    /// 
+    ///
     /// Params:
     ///     imu_measurements: <a_xt,    a_yt,    w_t>
     ///                      ((m/s^2), (m/s^2), (rad/s))
     ///     delta: elapsed_time (us)
-    /// 
+    ///
     /// Returns:
     ///     Velocity Estimate (v_xt,  y_xt,  w_t)
     ///                      ((m/s), (m/s), (rad/s))
@@ -164,11 +177,11 @@ impl MotionControl {
     }
 
     /// Calculate the Current State Estimate Based on Encoder Velocities
-    /// 
+    ///
     /// Params:
     ///     encoder_velocities: < v1_t,  v2_t,  v3_t,  v4_t>
     ///                         ((m/s), (m/s), (m/s), (m/s))
-    /// 
+    ///
     /// Returns Velocity Estimate (v_xt,  v_yt,  w_t)
     ///                          ((m/s), (m/s), (rad/s))
     fn encoder_estimate(&mut self, encoder_velocities: Vector4<f32>) -> Vector3<f32> {
@@ -197,10 +210,18 @@ mod tests {
         let motion_control = MotionControl::new();
 
         let expected_matrix = Matrix4x3::new(
-            0.50000006, 0.8660254, -0.0779815,
-            -0.7071067, 0.7071068, -0.0779815,
-            -0.7071069, -0.70710665, -0.0779815,
-            0.5, -0.8660254, -0.0779815,
+            0.50000006,
+            0.8660254,
+            -0.0779815,
+            -0.7071067,
+            0.7071068,
+            -0.0779815,
+            -0.7071069,
+            -0.70710665,
+            -0.0779815,
+            0.5,
+            -0.8660254,
+            -0.0779815,
         );
 
         assert_eq!(motion_control.bot_to_wheel, expected_matrix);
@@ -211,9 +232,18 @@ mod tests {
         let motion_control = MotionControl::new();
 
         let expected_wheel_to_bot = Matrix3x4::new(
-            0.41421354, -0.41421348, -0.4142136, 0.41421357,
-            0.3464102, 0.2828428, -0.2828427, -0.3464102,
-            -3.755932, -2.6558452, -2.6558454, -3.7559323
+            0.41421354,
+            -0.41421348,
+            -0.4142136,
+            0.41421357,
+            0.3464102,
+            0.2828428,
+            -0.2828427,
+            -0.3464102,
+            -3.755932,
+            -2.6558452,
+            -2.6558454,
+            -3.7559323,
         );
 
         assert_eq!(motion_control.wheel_to_bot, expected_wheel_to_bot);
@@ -224,7 +254,7 @@ mod tests {
         let motion_control = MotionControl::new();
 
         let up = Vector3::new(0.0, 1.0, 0.0);
-        
+
         let wheel_velocities = motion_control.body_to_wheels(up);
 
         assert!(within_tolerance(wheel_velocities[0], -wheel_velocities[3]));
@@ -353,7 +383,10 @@ mod tests {
 
         let wheel_velocity = motion_control.body_to_wheels(motion);
 
-        assert_eq!(wheel_velocity, Vector4::new(0.08660254, 0.07071068, -0.07071067, -0.08660254));
+        assert_eq!(
+            wheel_velocity,
+            Vector4::new(0.08660254, 0.07071068, -0.07071067, -0.08660254)
+        );
     }
 
     #[test]
@@ -364,7 +397,10 @@ mod tests {
 
         let wheel_velocity = motion_control.body_to_wheels(motion);
 
-        assert_eq!(wheel_velocity, Vector4::new(0.04330127, 0.03535534, -0.035355333, -0.04330127));
+        assert_eq!(
+            wheel_velocity,
+            Vector4::new(0.04330127, 0.03535534, -0.035355333, -0.04330127)
+        );
     }
 
     #[test]
@@ -380,16 +416,26 @@ mod tests {
         // Check Encoder Estimate
         let encoder_velocities = Vector4::new(0.01, 0.01, -0.01, -0.0);
         let encoder_estimate = motion_control.encoder_estimate(encoder_velocities);
-        assert_eq!(encoder_estimate, Vector3::new(0.0041421363, 0.009120957, -0.037559323));
+        assert_eq!(
+            encoder_estimate,
+            Vector3::new(0.0041421363, 0.009120957, -0.037559323)
+        );
 
         // Check Combined State Estimate
-        let state_estimate = imu_estimate.map(|v| v * ALPHA) + encoder_estimate.map(|v| v * (1.0 - ALPHA));
-        assert_eq!(state_estimate, Vector3::new(0.0035217158, 0.0077519137, -0.031775426));
+        let state_estimate =
+            imu_estimate.map(|v| v * ALPHA) + encoder_estimate.map(|v| v * (1.0 - ALPHA));
+        assert_eq!(
+            state_estimate,
+            Vector3::new(0.0035217158, 0.0077519137, -0.031775426)
+        );
 
         // Check Update Velocity
         let target_velocity = Vector3::new(1.0, 0.0, 0.0);
         let difference = target_velocity - state_estimate;
-        assert_eq!(difference, Vector3::new(0.99647826, -0.0077519137, 0.031775426));
+        assert_eq!(
+            difference,
+            Vector3::new(0.99647826, -0.0077519137, 0.031775426)
+        );
         let correct_distance = difference.map(|v| v * CORRECT_FACTOR);
         assert_eq!(
             correct_distance,
@@ -400,14 +446,13 @@ mod tests {
             )
         );
 
-        let wheel_velocities = motion_control.control_update(
-            imu,
-            encoder_velocities,
-            target_velocity,
-            delta
-        );
+        let wheel_velocities =
+            motion_control.control_update(imu, encoder_velocities, target_velocity, delta);
 
-        assert_eq!(wheel_velocities, Vector4::new(0.50000006, -0.7071067, -0.7071069, 0.5));
+        assert_eq!(
+            wheel_velocities,
+            Vector4::new(0.50000006, -0.7071067, -0.7071069, 0.5)
+        );
     }
 
     #[test]
@@ -429,8 +474,12 @@ mod tests {
         assert_eq!(encoder_estimate, Vector3::new(0.44999996, 0.54, 0.13000023));
 
         // Check Combined State Estimate
-        let state_estimate = imu_estimate.map(|v| v * ALPHA) + encoder_estimate.map(|v| v * (1.0 - ALPHA));
-        assert_eq!(state_estimate, Vector3::new(0.45749098, 0.53400904, 0.12850021));
+        let state_estimate =
+            imu_estimate.map(|v| v * ALPHA) + encoder_estimate.map(|v| v * (1.0 - ALPHA));
+        assert_eq!(
+            state_estimate,
+            Vector3::new(0.45749098, 0.53400904, 0.12850021)
+        );
 
         // Check Update Velocity
         let target_velocity = Vector3::new(0.0, 0.0, 0.0);
@@ -438,12 +487,8 @@ mod tests {
         assert_eq!(difference, state_estimate.map(|v| v * -1.0));
         let correct_distance = difference.map(|v| v * CORRECT_FACTOR);
 
-        let wheel_velocities = motion_control.control_update(
-            imu, 
-            encoder_velocities, 
-            target_velocity, 
-            delta
-        );
+        let wheel_velocities =
+            motion_control.control_update(imu, encoder_velocities, target_velocity, delta);
 
         assert_eq!(wheel_velocities, Vector4::zeros());
     }
@@ -464,26 +509,27 @@ mod tests {
 
         let encoder_velocities = Vector4::new(0.45, -0.1, -0.65, -0.15);
         let encoder_estimate = motion_control.encoder_estimate(encoder_velocities);
-        assert_eq!(encoder_estimate, Vector3::new(0.43492424, 0.36340958, 0.86510444));
+        assert_eq!(
+            encoder_estimate,
+            Vector3::new(0.43492424, 0.36340958, 0.86510444)
+        );
 
         // Check Combined State Estimate
-        let state_estimate = imu_estimate.map(|v| v * ALPHA) + encoder_estimate.map(|v| v * (1.0 - ALPHA));
-        assert_eq!(state_estimate, Vector3::new(0.42973062, 0.36889815, 0.7803388));
+        let state_estimate =
+            imu_estimate.map(|v| v * ALPHA) + encoder_estimate.map(|v| v * (1.0 - ALPHA));
+        assert_eq!(
+            state_estimate,
+            Vector3::new(0.42973062, 0.36889815, 0.7803388)
+        );
 
         let target_velocity = Vector3::new(0.45, 0.35, 0.4);
-        let wheel_velocities = motion_control.control_update(
-            imu, 
-            encoder_velocities, 
-            target_velocity, 
-            delta
-        );
+        let wheel_velocities =
+            motion_control.control_update(imu, encoder_velocities, target_velocity, delta);
 
         assert_eq!(motion_control.wheel_correction, Vector4::zeros());
         assert_eq!(wheel_velocities, Vector4::zeros());
     }
 
     #[test]
-    fn test_control_update_new_target() {
-
-    }
+    fn test_control_update_new_target() {}
 }

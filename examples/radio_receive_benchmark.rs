@@ -1,6 +1,6 @@
 //!
 //! Benchmark the Radio by continually receiving packets.
-//! 
+//!
 
 #![no_std]
 #![no_main]
@@ -25,15 +25,15 @@ mod app {
 
     use embedded_hal::spi::MODE_0;
 
-    use teensy4_bsp as bsp;
     use bsp::board::{self, LPSPI_FREQUENCY};
+    use teensy4_bsp as bsp;
 
-    use teensy4_bsp::hal as hal;
-    use hal::lpspi::{Lpspi, Pins};
     use hal::gpio::Trigger;
+    use hal::lpspi::{Lpspi, Pins};
     use hal::timer::Blocking;
+    use teensy4_bsp::hal;
 
-    use bsp::ral as ral;
+    use bsp::ral;
     use ral::lpspi::LPSPI3;
 
     use rtic_nrf24l01::Radio;
@@ -42,21 +42,13 @@ mod app {
 
     use rtic_monotonics::systick::*;
 
+    use robojackets_robocup_rtp::BASE_STATION_ADDRESS;
     use robojackets_robocup_rtp::{ControlMessage, CONTROL_MESSAGE_SIZE};
     use robojackets_robocup_rtp::{RobotStatusMessage, RobotStatusMessageBuilder};
-    use robojackets_robocup_rtp::BASE_STATION_ADDRESS;
 
     use main::{
-        SharedSPI,
-        RFRadio,
-        RadioInterrupt,
-        Delay2,
-        Gpio1,
-        CHANNEL,
-        RADIO_ADDRESS,
-        GPT_FREQUENCY,
-        GPT_CLOCK_SOURCE,
-        GPT_DIVIDER,
+        Delay2, Gpio1, RFRadio, RadioInterrupt, SharedSPI, CHANNEL, GPT_CLOCK_SOURCE, GPT_DIVIDER,
+        GPT_FREQUENCY, RADIO_ADDRESS,
     };
 
     const HEAP_SIZE: usize = 1024;
@@ -80,7 +72,9 @@ mod app {
 
     #[init]
     fn init(ctx: init::Context) -> (Shared, Local) {
-        unsafe { HEAP.init(HEAP_MEM.as_ptr() as usize, HEAP_SIZE); }
+        unsafe {
+            HEAP.init(HEAP_MEM.as_ptr() as usize, HEAP_SIZE);
+        }
 
         let board::Resources {
             pins,
@@ -146,9 +140,7 @@ mod app {
                 gpio1,
                 radio,
             },
-            Local {
-                total_packets: 0,
-            }
+            Local { total_packets: 0 },
         )
     }
 
@@ -197,18 +189,19 @@ mod app {
             ctx.shared.control_message,
             ctx.shared.robot_status,
             ctx.shared.radio,
-        ).lock(|spi, delay, _control_message, _robot_status, radio| {
-            let mut read_buffer = [0u8; CONTROL_MESSAGE_SIZE];
-            radio.read(&mut read_buffer, spi, delay);
+        )
+            .lock(|spi, delay, _control_message, _robot_status, radio| {
+                let mut read_buffer = [0u8; CONTROL_MESSAGE_SIZE];
+                radio.read(&mut read_buffer, spi, delay);
 
-            let control_message = ControlMessage::unpack(&read_buffer).unwrap();
+                let control_message = ControlMessage::unpack(&read_buffer).unwrap();
 
-            *ctx.local.total_packets += 1;
+                *ctx.local.total_packets += 1;
 
-            log::info!("Control Command Received: {:?}", control_message);
+                log::info!("Control Command Received: {:?}", control_message);
 
-            radio.flush_rx(spi, delay);
-        });
+                radio.flush_rx(spi, delay);
+            });
 
         (ctx.shared.rx_int, ctx.shared.gpio1).lock(|rx_int, gpio1| {
             rx_int.clear_triggered();

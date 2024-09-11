@@ -1,7 +1,7 @@
 //!
 //! Manual Control is an example that should be pretty close to the fully-working program.  However,
 //! it is currently considered a work in progress so it is still considered a test.
-//! 
+//!
 
 #![no_std]
 #![no_main]
@@ -27,16 +27,16 @@ mod app {
     use imxrt_hal::lpspi::LpspiError;
     use imxrt_iomuxc::prelude::*;
 
-    use nalgebra::{Vector3, Vector4};
-    use teensy4_bsp as bsp;
     use bsp::board;
     use bsp::board::PERCLK_FREQUENCY;
+    use nalgebra::{Vector3, Vector4};
+    use teensy4_bsp as bsp;
 
-    use teensy4_bsp::hal as hal;
-    use hal::lpi2c::ControllerStatus;
     use hal::gpio::Trigger;
-    use hal::timer::Blocking;
+    use hal::lpi2c::ControllerStatus;
     use hal::pit::Chained01;
+    use hal::timer::Blocking;
+    use teensy4_bsp::hal;
 
     use rtic_monotonics::systick::*;
 
@@ -44,16 +44,14 @@ mod app {
 
     use motion::MotionControl;
 
-    use fpga_rs as fpga;
+    use fpga::FPGA;
     use fpga::FPGA_SPI_FREQUENCY;
     use fpga::FPGA_SPI_MODE;
-    use fpga::FPGA;
+    use fpga_rs as fpga;
 
-    use icm42605_driver::{IMU, ImuError};
+    use icm42605_driver::{ImuError, IMU};
 
-    use main::{
-        Fpga, Imu, PitDelay, GPT_CLOCK_SOURCE, GPT_DIVIDER, GPT_FREQUENCY
-    };
+    use main::{Fpga, Imu, PitDelay, GPT_CLOCK_SOURCE, GPT_DIVIDER, GPT_FREQUENCY};
 
     const HEAP_SIZE: usize = 1024;
     static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
@@ -84,7 +82,9 @@ mod app {
     #[init]
     fn init(ctx: init::Context) -> (Shared, Local) {
         // Initialize the Heap
-        unsafe { HEAP.init(HEAP_MEM.as_ptr() as usize, HEAP_SIZE); }
+        unsafe {
+            HEAP.init(HEAP_MEM.as_ptr() as usize, HEAP_SIZE);
+        }
 
         // Grab the board peripherals
         let board::Resources {
@@ -149,7 +149,8 @@ mod app {
         let done = gpio3.input(pins.p30);
 
         // Initialize the FPGA
-        let fpga = FPGA::new(spi, cs, init_b, prog_b, done, delay1).expect("Unable to modify peripheral pins for FPGA");
+        let fpga = FPGA::new(spi, cs, init_b, prog_b, done, delay1)
+            .expect("Unable to modify peripheral pins for FPGA");
 
         rx_int.clear_triggered();
 
@@ -171,7 +172,7 @@ mod app {
                 motion_controller: MotionControl::new(),
                 last_encoders: Vector4::zeros(),
                 chain_timer: chained_timer,
-            }
+            },
         )
     }
 
@@ -187,11 +188,16 @@ mod app {
         priority = 1
     )]
     async fn initialize_imu(ctx: initialize_imu::Context) {
-        (ctx.shared.imu, ctx.shared.pit_delay, ctx.shared.imu_initialization_error).lock(|imu, pit_delay, imu_initialization_error| {
-            if let Err(err) = imu.init(pit_delay) {
-                *imu_initialization_error = Some(err);
-            }
-        });
+        (
+            ctx.shared.imu,
+            ctx.shared.pit_delay,
+            ctx.shared.imu_initialization_error,
+        )
+            .lock(|imu, pit_delay, imu_initialization_error| {
+                if let Err(err) = imu.init(pit_delay) {
+                    *imu_initialization_error = Some(err);
+                }
+            });
 
         initialize_fpga::spawn().ok();
     }
@@ -207,23 +213,30 @@ mod app {
             ctx.shared.imu_initialization_error,
             ctx.shared.fpga_programming_error,
             ctx.shared.fpga_initialization_error,
-        ).lock(|fpga, pit_delay, imu_initialization_error, fpga_programming_error, fpga_initialization_error| {
-            if let Err(err) = fpga.configure() {
-                *fpga_programming_error = Some(err);
-                return false;
-            }
-            pit_delay.delay_ms(10u8);
-            if let Err(err) = fpga.motors_en(true) {
-                *fpga_initialization_error = Some(err);
-                return false;
-            }
+        )
+            .lock(
+                |fpga,
+                 pit_delay,
+                 imu_initialization_error,
+                 fpga_programming_error,
+                 fpga_initialization_error| {
+                    if let Err(err) = fpga.configure() {
+                        *fpga_programming_error = Some(err);
+                        return false;
+                    }
+                    pit_delay.delay_ms(10u8);
+                    if let Err(err) = fpga.motors_en(true) {
+                        *fpga_initialization_error = Some(err);
+                        return false;
+                    }
 
-            if imu_initialization_error.is_some() {
-                return false;
-            }
+                    if imu_initialization_error.is_some() {
+                        return false;
+                    }
 
-            true
-        });
+                    true
+                },
+            );
 
         if fully_initialized {
             motion_control_loop::spawn().ok();
@@ -254,7 +267,7 @@ mod app {
                     0.0
                 }
             };
-    
+
             let accel_x = match imu.accel_x() {
                 Ok(accel_x) => accel_x,
                 Err(_err) => {
@@ -263,7 +276,7 @@ mod app {
                     0.0
                 }
             };
-    
+
             let accel_y = match imu.accel_y() {
                 Ok(accel_y) => accel_y,
                 Err(_err) => {
@@ -326,24 +339,32 @@ mod app {
         priority = 1
     )]
     async fn error_report(ctx: error_report::Context) {
-        let (imu_initialization_error, fpga_programming_error, fpga_initialization_error) =
-        (
+        let (imu_initialization_error, fpga_programming_error, fpga_initialization_error) = (
             ctx.shared.imu_initialization_error,
             ctx.shared.fpga_programming_error,
-            ctx.shared.fpga_initialization_error
-        ).lock(|imu_init_error, fpga_prog_error, fpga_init_error| {
-            (
-                imu_init_error.take(),
-                fpga_prog_error.take(),
-                fpga_init_error.take(),
-            )
-        });
+            ctx.shared.fpga_initialization_error,
+        )
+            .lock(|imu_init_error, fpga_prog_error, fpga_init_error| {
+                (
+                    imu_init_error.take(),
+                    fpga_prog_error.take(),
+                    fpga_init_error.take(),
+                )
+            });
 
         for _ in 0..5 {
-            log::error!("IMU-INIT: {:?}\nFPGA-PROG: {:?}\nFPGA-INIT: {:?}", imu_initialization_error, fpga_programming_error, fpga_initialization_error);
+            log::error!(
+                "IMU-INIT: {:?}\nFPGA-PROG: {:?}\nFPGA-INIT: {:?}",
+                imu_initialization_error,
+                fpga_programming_error,
+                fpga_initialization_error
+            );
             Systick::delay(1_000u32.millis()).await;
         }
 
-        panic!("IMU-INIT: {:?}\nFPGA-PROG: {:?}\nFPGA-INIT: {:?}", imu_initialization_error, fpga_programming_error, fpga_initialization_error);
+        panic!(
+            "IMU-INIT: {:?}\nFPGA-PROG: {:?}\nFPGA-INIT: {:?}",
+            imu_initialization_error, fpga_programming_error, fpga_initialization_error
+        );
     }
 }

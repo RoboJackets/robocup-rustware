@@ -2,10 +2,7 @@
 //! Clock Constants and Configuration
 //!
 
-use teensy4_bsp::{
-    hal::gpt::ClockSource,
-    board::PERCLK_FREQUENCY
-};
+use teensy4_bsp::{board::PERCLK_FREQUENCY, hal::gpt::ClockSource};
 
 /// Frequency of the GPT Clocks
 pub const GPT_FREQUENCY: u32 = 1_000;

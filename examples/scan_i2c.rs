@@ -21,11 +21,11 @@ mod app {
 
     use super::*;
 
-    use teensy4_bsp as bsp;
     use bsp::board;
+    use teensy4_bsp as bsp;
 
-    use rtic_monotonics::systick::*;
     use board::Lpi2c1;
+    use rtic_monotonics::systick::*;
 
     const HEAP_SIZE: usize = 1024;
     static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
@@ -33,9 +33,7 @@ mod app {
     const TASK_START_DELAY_MS: u32 = 5_000;
 
     #[shared]
-    struct Shared {
-
-    }
+    struct Shared {}
 
     #[local]
     struct Local {
@@ -45,14 +43,13 @@ mod app {
     #[init]
     fn init(ctx: init::Context) -> (Shared, Local) {
         // Initialize the Heap
-        unsafe { HEAP.init(HEAP_MEM.as_ptr() as usize, HEAP_SIZE); }
+        unsafe {
+            HEAP.init(HEAP_MEM.as_ptr() as usize, HEAP_SIZE);
+        }
 
         // Get Peripherals
         let board::Resources {
-            pins,
-            usb,
-            lpi2c1,
-            ..
+            pins, usb, lpi2c1, ..
         } = board::t41(ctx.device);
 
         bsp::LoggingFrontend::default_log().register_usb(usb);
@@ -64,14 +61,7 @@ mod app {
 
         scan_i2c_devices::spawn().ok();
 
-        (
-            Shared {
-
-            },
-            Local {
-                i2c,
-            }
-        )
+        (Shared {}, Local { i2c })
     }
 
     #[idle]
