@@ -19,19 +19,17 @@ libm = "0.2.8"
 fixed-queue = "0.5.1"
 
 [dependencies.nalgebra]
-version = "0.32.3"
+version = "0.33.0"
 default-features = false
 features = ["libm", "nalgebra-macros", "alloc"]
 
-[dependencies.packed_struct]
-version = "0.10.1"
-default-features = false
-features = ["alloc"]
-
-[dependencies.robojackets-robocup-rtp]
-version = "0.4.1"
+[dependencies.ncomm-utils]
+version = "1.0.0"
 default-features = false
 features = ["nostd"]
+
+[dependencies.robojackets-robocup-rtp]
+version = "0.5.1"
 
 [dependencies.embedded-hal]
 version = "~0.2"
@@ -74,9 +72,6 @@ path = "drivers/motion"
 
 [dependencies.controller]
 path = "drivers/controller"
-
-[dependencies.w25q128]
-git = "https://github.com/N8BWert/w25q128.git"
 
 # the root package is also a workspace that holds all of the neccesary "supporting" packages
 # such as driver files, utility files (e.g. tools), etc.

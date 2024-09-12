@@ -1,8 +1,8 @@
 //!
 //! Mock Manual is an example that has everything except for the FPGA moving.
-//! 
+//!
 //! Any motion controls will be logged to the console
-//! 
+//!
 
 #![no_std]
 #![no_main]
@@ -25,40 +25,35 @@ mod app {
 
     use embedded_hal::spi::MODE_0;
 
+    use bsp::board::{self, LPSPI_FREQUENCY};
     use nalgebra::Vector3;
     use teensy4_bsp as bsp;
-    use bsp::board::{self, LPSPI_FREQUENCY};
 
-    use teensy4_bsp::hal as hal;
-    use hal::lpspi::{Lpspi, Pins};
     use hal::gpio::Trigger;
+    use hal::lpspi::{Lpspi, Pins};
     use hal::timer::Blocking;
-    
-    use bsp::ral as ral;
+    use teensy4_bsp::hal;
+
+    use bsp::ral;
     use ral::lpspi::LPSPI3;
 
-    use rtic_nrf24l01::{Radio, config::*};
+    use rtic_nrf24l01::{config::*, Radio};
 
     use rtic_monotonics::systick::*;
 
-    use packed_struct::prelude::*;
+    use ncomm_utils::packing::Packable;
 
     use robojackets_robocup_rtp::{ControlMessage, CONTROL_MESSAGE_SIZE};
-    use robojackets_robocup_rtp::{RobotStatusMessage, RobotStatusMessageBuilder, ROBOT_STATUS_SIZE};
+    use robojackets_robocup_rtp::{
+        RobotStatusMessage, RobotStatusMessageBuilder, ROBOT_STATUS_SIZE,
+    };
     use robojackets_robocup_rtp::{BASE_STATION_ADDRESS, ROBOT_RADIO_ADDRESSES};
 
     use motion::MotionControl;
 
     use main::{
-        SharedSPI,
-        RFRadio,
-        RadioInterrupt,
-        Delay1,
-        Delay2,
-        Gpio1,
+        Delay1, Delay2, Gpio1, RFRadio, RadioInterrupt, SharedSPI, GPT_CLOCK_SOURCE, GPT_DIVIDER,
         GPT_FREQUENCY,
-        GPT_CLOCK_SOURCE,
-        GPT_DIVIDER,
     };
 
     const HEAP_SIZE: usize = 1024;
@@ -86,7 +81,9 @@ mod app {
     #[init]
     fn init(ctx: init::Context) -> (Shared, Local) {
         // Initialize the Heap
-        unsafe { HEAP.init(HEAP_MEM.as_ptr() as usize, HEAP_SIZE); }
+        unsafe {
+            HEAP.init(HEAP_MEM.as_ptr() as usize, HEAP_SIZE);
+        }
 
         // Grab the board peripherals
         let board::Resources {
@@ -146,10 +143,19 @@ mod app {
             panic!("Unable to Initialize the Radio");
         }
 
-        radio.set_pa_level(power_amplifier::PowerAmplifier::PALow, &mut shared_spi, &mut delay2);
+        radio.set_pa_level(
+            power_amplifier::PowerAmplifier::PALow,
+            &mut shared_spi,
+            &mut delay2,
+        );
         radio.set_payload_size(CONTROL_MESSAGE_SIZE as u8, &mut shared_spi, &mut delay2);
         radio.open_writing_pipe(BASE_STATION_ADDRESS, &mut shared_spi, &mut delay2);
-        radio.open_reading_pipe(1, ROBOT_RADIO_ADDRESSES[ROBOT_ID as usize], &mut shared_spi, &mut delay2);
+        radio.open_reading_pipe(
+            1,
+            ROBOT_RADIO_ADDRESSES[ROBOT_ID as usize],
+            &mut shared_spi,
+            &mut delay2,
+        );
         radio.start_listening(&mut shared_spi, &mut delay2);
 
         // Set an initial robot status
@@ -172,7 +178,7 @@ mod app {
             Local {
                 radio,
                 motion_controller: MotionControl::new(),
-            }
+            },
         )
     }
 
@@ -204,41 +210,35 @@ mod app {
             ctx.shared.delay2,
             ctx.shared.control_message,
             ctx.shared.robot_status,
-        ).lock(|spi, delay, command, robot_status| {
-            let mut read_buffer = [0u8; CONTROL_MESSAGE_SIZE];
-            ctx.local.radio.read(&mut read_buffer, spi, delay);
+        )
+            .lock(|spi, delay, command, robot_status| {
+                let mut read_buffer = [0u8; CONTROL_MESSAGE_SIZE];
+                ctx.local.radio.read(&mut read_buffer, spi, delay);
 
-            let control_message = match ControlMessage::unpack_from_slice(&read_buffer[..]) {
-                Ok(control_message) => control_message,
-                Err(err) => {
-                    log::info!("Error Unpacking Control Command: {:?}", err);
-                    return;
-                },
-            };
+                let control_message = ControlMessage::unpack(&read_buffer).unwrap();
 
-            *command = Some(control_message);
+                *command = Some(control_message);
 
-            ctx.local.radio.set_payload_size(ROBOT_STATUS_SIZE as u8, spi, delay);
-            ctx.local.radio.stop_listening(spi, delay);
+                ctx.local
+                    .radio
+                    .set_payload_size(ROBOT_STATUS_SIZE as u8, spi, delay);
+                ctx.local.radio.stop_listening(spi, delay);
 
-            let packed_data = match robot_status.pack() {
-                Ok(bytes) => bytes,
-                Err(err) => {
-                    log::info!("Error Packing Robot Status: {:?}", err);
-                    return;
+                let mut packed_data = [0u8; ROBOT_STATUS_SIZE];
+                robot_status.pack(&mut packed_data).unwrap();
+
+                for _ in 0..5 {
+                    let report = ctx.local.radio.write(&packed_data, spi, delay);
+                    if report {
+                        break;
+                    }
                 }
-            };
 
-            for _ in 0..5 {
-                let report = ctx.local.radio.write(&packed_data, spi, delay);
-                if report {
-                    break;
-                }
-            }
-
-            ctx.local.radio.set_payload_size(CONTROL_MESSAGE_SIZE as u8, spi, delay);
-            ctx.local.radio.start_listening(spi, delay);
-        });
+                ctx.local
+                    .radio
+                    .set_payload_size(CONTROL_MESSAGE_SIZE as u8, spi, delay);
+                ctx.local.radio.start_listening(spi, delay);
+            });
 
         (ctx.shared.rx_int, ctx.shared.gpio1).lock(|rx_int, gpio1| {
             rx_int.clear_triggered();
@@ -248,12 +248,13 @@ mod app {
 
     #[task(shared = [delay1, control_message], local = [motion_controller], priority = 1)]
     async fn motion_control_loop(mut ctx: motion_control_loop::Context) {
-        let body_velocities = ctx.shared.control_message.lock(|control_message| {
-            match control_message {
-                Some(control_message) => control_message.get_velocity(),
-                None => Vector3::new(0.0, 0.0, 0.0),
-            }
-        });
+        let body_velocities =
+            ctx.shared
+                .control_message
+                .lock(|control_message| match control_message {
+                    Some(control_message) => control_message.get_velocity(),
+                    None => Vector3::new(0.0, 0.0, 0.0),
+                });
 
         let wheel_velocities = ctx.local.motion_controller.body_to_wheels(body_velocities);
 

@@ -1,6 +1,6 @@
 //!
 //! Register definitions for the various registers of the ICM42605 IMU.
-//! 
+//!
 
 /// The register number of the register containing the high byte of the
 /// x direction acceleration
@@ -39,32 +39,32 @@ pub mod flags {
             const BANK_3 = 3;
             const BANK_4 = 4;
         }
-    
+
         #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
         /// A bitfag containing the device configuration options for the IMU.
         pub struct DeviceConfig: u8 {
             const SPI_MODE_0_AND_3 = 0b0 << 4;
             const SPI_MODE_1_AND_2 = 0b1 << 4;
-    
+
             const SOFT_RESET_CONFIG = 0b1;
         }
-    
+
         #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
         /// A bitflag containing the power management options for the IMU
         pub struct PowerManagement: u8 {
             const TEMP_DISABLE = 0b1 << 5;
-    
+
             const IDLE = 0b1 << 4;
-    
+
             const GYRO_OFF = 0b00 << 2;
             const GYRO_STANDBY = 0b01 << 2;
             const GYRO_LOW_NOISE = 0b11 << 2;
-    
+
             const ACCEL_OFF = 0b00;
             const ACCEL_LOW_POWER = 0b10;
             const ACCEL_LOW_NOISE = 0b11;
         }
-    
+
         #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
         /// A bitflag containing the gyrometer accuracy options for the IMU
         pub struct GyroConfig: u8 {
@@ -76,7 +76,7 @@ pub mod flags {
             const GYRO_FS_62_5 = 0b101 << 5;
             const GYRO_FS_31_25 = 0b110 << 5;
             const GYRO_FS_15_625 = 0b111 << 5;
-    
+
             const GYRO_ODR_8kHz = 0b0011;
             const GYRO_ODR_4kHz = 0b0100;
             const GYRO_ODR_2kHz = 0b0101;
@@ -88,7 +88,7 @@ pub mod flags {
             const GYRO_ODR_12_5Hz = 0b1011;
             const GYRO_ODR_500Hz = 0b1111;
         }
-    
+
         #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
         /// A bitflag containig the accelerometer accuracy options for the IMU
         pub struct AccelConfig: u8 {
@@ -96,7 +96,7 @@ pub mod flags {
             const ACCEL_FS_8 = 0b001 << 5;
             const ACCEL_FS_4 = 0b010 << 5;
             const ACCEL_FS_2 = 0b011 << 5;
-    
+
             const ACCEL_ODR_8kHz = 0b0011;
             const ACCEL_ODR_4kHz = 0b0100;
             const ACCEL_ODR_2kHz = 0b0101;
@@ -116,13 +116,12 @@ pub mod flags {
 
 pub use flags::*;
 
-
 #[allow(dead_code)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 /// The various register banks in the IMU
 pub enum Bank {
     /// The first bank (i.e. the default bank)
-	#[default]
+    #[default]
     Bank0,
     /// The second register bank
     Bank1,
@@ -165,7 +164,7 @@ impl DeviceConfig {
 impl PowerManagement {
     /// The register address of the power management configuration
     pub const ADDR: u8 = 0x4E;
-    /// The bank the power management register is in 
+    /// The bank the power management register is in
     pub const BANK: Bank = Bank::Bank0;
 }
 
@@ -173,12 +172,12 @@ impl GyroConfig {
     /// The register address of the gyro configuration
     pub const ADDR: u8 = 0x4F;
     /// The bank the gyro configuration is in
-	pub const BANK: Bank = Bank::Bank0;
+    pub const BANK: Bank = Bank::Bank0;
 }
 
 impl AccelConfig {
     /// The register address of the accelerometer configuration
     pub const ADDR: u8 = 0x50;
     /// The bank the accelerometer configuration is in
-	pub const BANK: Bank = Bank::Bank0;
+    pub const BANK: Bank = Bank::Bank0;
 }

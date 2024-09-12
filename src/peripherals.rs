@@ -2,7 +2,7 @@
 //! Peripheral Type and Wiring Definitions to ensure
 //! all examples are correctly wired at compile
 //! time.
-//! 
+//!
 
 use core::convert::Infallible;
 
@@ -10,11 +10,11 @@ use teensy4_pins::t41::*;
 
 use teensy4_bsp::board::{self, Lpi2c1, PERCLK_FREQUENCY};
 use teensy4_bsp::hal::{
-    lpspi::{LpspiError, Lpspi},
-    gpio::{Output, Input, Port},
+    gpio::{Input, Output, Port},
     gpt::{Gpt1, Gpt2},
-    timer::Blocking,
+    lpspi::{Lpspi, LpspiError},
     pit::Pit2,
+    timer::Blocking,
 };
 
 use fpga_rs::FPGA;
@@ -35,7 +35,8 @@ pub type RadioCSN = Output<P14>;
 /// The Interrupt for the Radio
 pub type RadioInterrupt = Input<P15>;
 /// The Radio
-pub type RFRadio = rtic_nrf24l01::Radio<RadioCE, RadioCSN, SharedSPI, Delay2, Infallible, LpspiError>;
+pub type RFRadio =
+    rtic_nrf24l01::Radio<RadioCE, RadioCSN, SharedSPI, Delay2, Infallible, LpspiError>;
 /// The Delay used by the FPGA
 pub type Delay1 = Blocking<Gpt1, GPT_FREQUENCY>;
 /// The general-purpose delay shared by different peripherals

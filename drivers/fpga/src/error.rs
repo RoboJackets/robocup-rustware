@@ -1,6 +1,6 @@
 //!
 //! Errors that can occur from operating the FPGA
-//! 
+//!
 
 use core::fmt::Debug;
 
@@ -15,15 +15,15 @@ pub enum FpgaError<SpiError: Debug, PinError: Debug> {
 
     /// INIT pin error
     InitPin(PinError),
-    
+
     /// PROG pin error
     ProgPin(PinError),
-    
+
     /// DONE pin error
     DonePin(PinError),
 
     /// FPGA Timeouts can occur during configuration
-    /// 
+    ///
     /// Use the following table to refer to which operation caused the timeout:
     /// ======================
     /// |  Code  | Operation |

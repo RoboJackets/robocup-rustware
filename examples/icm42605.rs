@@ -28,20 +28,18 @@ mod app {
     use super::*;
 
     use embedded_hal::blocking::delay::DelayMs;
-    use icm42605_driver::{IMU, ImuError};
+    use icm42605_driver::{ImuError, IMU};
 
     use bsp::board;
     use teensy4_bsp::{self as bsp, board::PERCLK_FREQUENCY};
 
     use bsp::hal;
-    use hal::timer::Blocking;
     use hal::lpi2c::ControllerStatus;
+    use hal::timer::Blocking;
 
     use rtic_monotonics::systick::*;
 
-    use main::{
-        Imu, PitDelay,
-    };
+    use main::{Imu, PitDelay};
 
     #[local]
     struct Local {}
@@ -58,7 +56,9 @@ mod app {
     #[init]
     fn init(ctx: init::Context) -> (Shared, Local) {
         // Initialize the Heap
-        unsafe { HEAP.init(HEAP_MEM.as_ptr() as usize, HEAP_SIZE); }
+        unsafe {
+            HEAP.init(HEAP_MEM.as_ptr() as usize, HEAP_SIZE);
+        }
 
         let board::Resources {
             pins,
@@ -102,14 +102,19 @@ mod app {
         priority = 1
     )]
     async fn initialize_imu(ctx: initialize_imu::Context) {
-        let fully_initialized = (ctx.shared.imu, ctx.shared.pit_delay, ctx.shared.imu_init_error).lock(|imu, pit_delay, imu_init_error| {
-            if let Err(err) = imu.init(pit_delay) {
-                *imu_init_error = Some(err);
-                return false;
-            }
+        let fully_initialized = (
+            ctx.shared.imu,
+            ctx.shared.pit_delay,
+            ctx.shared.imu_init_error,
+        )
+            .lock(|imu, pit_delay, imu_init_error| {
+                if let Err(err) = imu.init(pit_delay) {
+                    *imu_init_error = Some(err);
+                    return false;
+                }
 
-            true
-        });
+                true
+            });
 
         if fully_initialized {
             imu_test::spawn().ok();
@@ -123,36 +128,34 @@ mod app {
         priority = 1,
     )]
     async fn imu_test(ctx: imu_test::Context) {
-        (ctx.shared.imu, ctx.shared.pit_delay).lock(|imu, pit_delay| {
-            loop {
-                let gyro_z = match imu.gyro_z() {
-                    Ok(gyro_z) => gyro_z,
-                    Err(err) => {
-                        log::info!("Unable to Read Gyro Z: {:?}", err);
-                        0.0
-                    },
-                };
-    
-                let accel_x = match imu.accel_x() {
-                    Ok(accel_x) => accel_x,
-                    Err(err) => {
-                        log::info!("Unable to Read Accel X: {:?}", err);
-                        0.0
-                    }
-                };
-    
-                let accel_y = match imu.accel_y() {
-                    Ok(accel_y) => accel_y,
-                    Err(err) => {
-                        log::info!("Unable to Read Accel Y: {:?}", err);
-                        0.0
-                    }
-                };
-    
-                log::info!("X: {}, Y: {}, Z: {}", accel_x, accel_y, gyro_z);
+        (ctx.shared.imu, ctx.shared.pit_delay).lock(|imu, pit_delay| loop {
+            let gyro_z = match imu.gyro_z() {
+                Ok(gyro_z) => gyro_z,
+                Err(err) => {
+                    log::info!("Unable to Read Gyro Z: {:?}", err);
+                    0.0
+                }
+            };
 
-                pit_delay.delay_ms(100u32);    
-            }
+            let accel_x = match imu.accel_x() {
+                Ok(accel_x) => accel_x,
+                Err(err) => {
+                    log::info!("Unable to Read Accel X: {:?}", err);
+                    0.0
+                }
+            };
+
+            let accel_y = match imu.accel_y() {
+                Ok(accel_y) => accel_y,
+                Err(err) => {
+                    log::info!("Unable to Read Accel Y: {:?}", err);
+                    0.0
+                }
+            };
+
+            log::info!("X: {}, Y: {}, Z: {}", accel_x, accel_y, gyro_z);
+
+            pit_delay.delay_ms(100u32);
         })
     }
 
@@ -161,9 +164,10 @@ mod app {
         priority = 1
     )]
     async fn error_report(mut ctx: error_report::Context) {
-        let imu_initialization_error = ctx.shared.imu_init_error.lock(|imu_init_error| {
-            imu_init_error.take()
-        });
+        let imu_initialization_error = ctx
+            .shared
+            .imu_init_error
+            .lock(|imu_init_error| imu_init_error.take());
 
         for _ in 0..5 {
             log::error!("IMU-INIT: {:?}", imu_initialization_error);

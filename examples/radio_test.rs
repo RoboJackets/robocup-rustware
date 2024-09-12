@@ -2,52 +2,59 @@
 #![no_main]
 #![feature(type_alias_impl_trait)]
 
+use embedded_alloc::Heap;
+#[global_allocator]
+static HEAP: Heap = Heap::empty();
+
 use teensy4_panic as _;
 
 #[rtic::app(device = teensy4_bsp, peripherals = true, dispatchers = [GPT2])]
 mod app {
+    use super::*;
+
+    use core::mem::MaybeUninit;
+
     use embedded_hal::spi::MODE_0;
 
-    use rtic_nrf24l01::{Radio, config::*};
+    use rtic_nrf24l01::{config::*, Radio};
 
-    use teensy4_bsp::hal::lpspi::{Lpspi, Pins};
     use teensy4_bsp::board::LPSPI_FREQUENCY;
+    use teensy4_bsp::hal::lpspi::{Lpspi, Pins};
 
-    use teensy4_bsp as bsp;
     use bsp::board;
+    use teensy4_bsp as bsp;
 
     use teensy4_bsp::ral::lpspi::LPSPI3;
 
-    use bsp::hal as hal;
+    use bsp::hal;
     use hal::timer::Blocking;
 
     use rtic_monotonics::systick::*;
 
     use main::{
-        SharedSPI,
-        Delay2,
-        RadioCE,
-        RadioCSN,
-        GPT_FREQUENCY,
-        GPT_CLOCK_SOURCE,
-        GPT_DIVIDER,
+        Delay2, RadioCE, RadioCSN, SharedSPI, GPT_CLOCK_SOURCE, GPT_DIVIDER, GPT_FREQUENCY,
     };
+
+    const HEAP_SIZE: usize = 1024;
+    static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
 
     #[local]
     struct Local {
         spi: SharedSPI,
         delay: Delay2,
         ce: Option<RadioCE>,
-        csn: Option<RadioCSN>
+        csn: Option<RadioCSN>,
     }
 
     #[shared]
-    struct Shared {
-
-    }
+    struct Shared {}
 
     #[init]
     fn init(ctx: init::Context) -> (Shared, Local) {
+        unsafe {
+            HEAP.init(HEAP_MEM.as_ptr() as usize, HEAP_SIZE);
+        }
+
         let board::Resources {
             pins,
             mut gpio1,
@@ -93,9 +100,7 @@ mod app {
         init_radio::spawn().unwrap();
 
         (
-            Shared {
-
-            },
+            Shared {},
             Local {
                 delay,
                 spi: shared_spi,
@@ -125,13 +130,26 @@ mod app {
             log::info!("Radio Error: {:?}", err);
         }
 
-        radio.set_pa_level(power_amplifier::PowerAmplifier::PALow, ctx.local.spi, ctx.local.delay);
+        radio.set_pa_level(
+            power_amplifier::PowerAmplifier::PALow,
+            ctx.local.spi,
+            ctx.local.delay,
+        );
 
         radio.set_payload_size(4, ctx.local.spi, ctx.local.delay);
 
-        radio.open_writing_pipe([0xE7, 0xE7, 0xE7, 0xE7, 0xE7], ctx.local.spi, ctx.local.delay);
+        radio.open_writing_pipe(
+            [0xE7, 0xE7, 0xE7, 0xE7, 0xE7],
+            ctx.local.spi,
+            ctx.local.delay,
+        );
 
-        radio.open_reading_pipe(1, [0xC3, 0xC3, 0xC3, 0xC3, 0xC3], ctx.local.spi, ctx.local.delay);
+        radio.open_reading_pipe(
+            1,
+            [0xC3, 0xC3, 0xC3, 0xC3, 0xC3],
+            ctx.local.spi,
+            ctx.local.delay,
+        );
 
         radio.start_listening(ctx.local.spi, ctx.local.delay);
 
@@ -139,7 +157,10 @@ mod app {
 
         radio.stop_listening(ctx.local.spi, ctx.local.delay);
 
-        log::info!("Configuration: {:?}", radio.get_registers(ctx.local.spi, ctx.local.delay));
+        log::info!(
+            "Configuration: {:?}",
+            radio.get_registers(ctx.local.spi, ctx.local.delay)
+        );
 
         let mut payload = 0u32;
         loop {
@@ -157,7 +178,10 @@ mod app {
 
             Systick::delay(1_000u32.millis()).await;
 
-            log::info!("Configuration: {:?}", radio.get_registers(ctx.local.spi, ctx.local.delay));
+            log::info!(
+                "Configuration: {:?}",
+                radio.get_registers(ctx.local.spi, ctx.local.delay)
+            );
         }
     }
 }

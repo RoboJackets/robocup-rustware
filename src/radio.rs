@@ -1,6 +1,6 @@
 //!
 //! Radio Constants and Configuration Information
-//! 
+//!
 
 use rtic_nrf24l01::config::power_amplifier::PowerAmplifier;
 

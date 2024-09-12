@@ -6,7 +6,7 @@
 use bsp::board;
 use teensy4_bsp as bsp;
 use teensy4_panic as _; // allows program to panic and print panic messages
-//////////////////////////
+                        //////////////////////////
 /// Package used to configure pin configuration
 use imxrt_iomuxc::prelude::*;
 
@@ -20,10 +20,10 @@ use rtic_monotonics::systick::*;
 ////////////////////
 
 // use fpga driver
-use fpga_rs as fpga;
+use fpga::FPGA;
 use fpga::FPGA_SPI_FREQUENCY;
 use fpga::FPGA_SPI_MODE;
-use fpga::FPGA;
+use fpga_rs as fpga;
 
 use embedded_alloc::Heap;
 
@@ -35,14 +35,14 @@ static HEAP: Heap = Heap::empty();
 //// perihperals: refers to a specific boards hardware e.g. gpio, spi, etc
 //// dispatchers: interrupt handlers for SOFTWARE defined tasks
 #[app(
-    device = bsp, 
-    peripherals = true, 
+    device = bsp,
+    peripherals = true,
     dispatchers = [GPT2]
 )]
 mod app {
     use fpga::error::FpgaError;
 
-    use main::{Fpga, GPT_FREQUENCY, GPT_CLOCK_SOURCE, GPT_DIVIDER};
+    use main::{Fpga, GPT_CLOCK_SOURCE, GPT_DIVIDER, GPT_FREQUENCY};
 
     // this allows us to define our packages outside the app module
     // we're essetially "bringing them all in"
@@ -54,9 +54,9 @@ mod app {
     const SYST_MONO_FACTOR: u32 = 10;
 
     // delay in miliseconds
-    const TEN_MS_DELAY: u32 = SYST_MONO_FACTOR * 10;            // 10 ms
-    const HUNDRED_MS_DELAY: u32 = SYST_MONO_FACTOR * 100;       // 100 ms ms
-    const SECOND_DELAY: u32 = SYST_MONO_FACTOR * 1000;    // 1 s delay
+    const TEN_MS_DELAY: u32 = SYST_MONO_FACTOR * 10; // 10 ms
+    const HUNDRED_MS_DELAY: u32 = SYST_MONO_FACTOR * 100; // 100 ms ms
+    const SECOND_DELAY: u32 = SYST_MONO_FACTOR * 1000; // 1 s delay
 
     // MOTION SPEED in DUTY CYCLE
     const SPEED: f32 = 1.0;
@@ -71,9 +71,7 @@ mod app {
 
     // struct that holds shared resources which can be accessed via the context
     #[shared]
-    struct Shared {
-
-    }
+    struct Shared {}
 
     // entry point of the "program"
     #[init]
@@ -111,15 +109,17 @@ mod app {
 
         // initalize spi
         // use pin 9 as chop select manially :) maybe it'll fix the issue???
-        let mut spi = board::lpspi(lpspi4, 
+        let mut spi = board::lpspi(
+            lpspi4,
             board::LpspiPins {
                 pcs0: pins.p10,
                 sck: pins.p13,
                 sdo: pins.p11,
                 sdi: pins.p12,
-            }, 
-            FPGA_SPI_FREQUENCY);
-        
+            },
+            FPGA_SPI_FREQUENCY,
+        );
+
         // custom CS pin to test. Maybe self asserted pcs = pin.10 is not working as intended
         let cs = gpio2.output(pins.p9);
 
@@ -133,7 +133,7 @@ mod app {
         let config = Config::zero().set_open_drain(OpenDrain::Enabled);
         configure(&mut pins.p28, config);
         let prog_b = gpio3.output(pins.p28);
-        
+
         let done = gpio3.input(pins.p30);
 
         let fpga = match FPGA::new(spi, cs, init_b, prog_b, done, delay) {
@@ -145,19 +145,12 @@ mod app {
         init_fpga::spawn().unwrap();
 
         // return the local, and shared resources to be used from the context
-        (
-            Shared {
-
-            },
-            Local {
-                fpga
-            }
-        )
+        (Shared {}, Local { fpga })
     }
 
     // (optional) lowest priority tasks that runs only while no other task is running
     #[idle]
-    fn idle(_: idle::Context) -> !{
+    fn idle(_: idle::Context) -> ! {
         loop {
             // wfi: wait-for-interrupt
             cortex_m::asm::wfi();
@@ -169,33 +162,28 @@ mod app {
     async fn init_fpga(cx: init_fpga::Context) {
         // acquire fpga instance from local resources
         let fpga = cx.local.fpga;
-        
+
         // start the test :)
         log::info!("[INIT] FPGA ENCODER DEMO");
-        Systick::delay(3*SECOND_DELAY.millis()).await;
-        
+        Systick::delay(3 * SECOND_DELAY.millis()).await;
+
         // attempt to configure the fpga :)
         match fpga.configure() {
             Ok(_) => log::info!("Configuration worked???"),
             Err(e) => match e {
                 FpgaError::SPI(spi_e) => panic!("SPI error with info: {:?}", spi_e),
-                FpgaError::CSPin(cs_e) => panic!("CS pin error: {:?}", cs_e), 
-                FpgaError::InitPin(init_e) => panic!("Init pin error: {:?}", init_e),
-                FpgaError::ProgPin(prog_e) => panic!("Prog pin error: {:?}", prog_e),
-                FpgaError::DonePin(done_e) => panic!("Done pin error: {:?}", done_e),
                 FpgaError::FPGATimeout(code) => panic!("Fpga timed out?? code: {:x}", code),
             },
         };
         Systick::delay(TEN_MS_DELAY.millis()).await;
 
         // enable motors
-        match fpga.motors_en(true){
+        match fpga.motors_en(true) {
             Ok(status) => log::info!(" enabled motors fpga status: {:b}", status),
             Err(e) => panic!("error enabling motors... {:?}", e),
         };
         Systick::delay(TEN_MS_DELAY.millis()).await;
 
-        
         // drive forward at different speeds -> should be measuring different encoder values
         loop {
             // move forward at SPEED
@@ -203,13 +191,13 @@ mod app {
             Systick::delay(TEN_MS_DELAY.millis()).await;
             for _ in 0..500 {
                 // forward direction duty cycles
-                let duty_cycles = [SPEED, SPEED, SPEED, SPEED];                          // dribbler
-                // write duty cycle
+                let duty_cycles = [SPEED, SPEED, SPEED, SPEED]; // dribbler
+                                                                // write duty cycle
                 match fpga.set_duty_get_encoders(duty_cycles, 0.0) {
                     Ok(encoders) => {
                         log::info!("Encoder Values: {:?}", encoders);
                         log::info!("Status: {:#010b}", fpga.status());
-                    },
+                    }
                     Err(e) => panic!("error writing duty cycles... {:?}", e),
                 };
                 Systick::delay(HUNDRED_MS_DELAY.millis()).await;
@@ -219,13 +207,13 @@ mod app {
             log::info!("moving backwards!");
             Systick::delay(TEN_MS_DELAY.millis()).await;
             for _ in 0..500 {
-                let duty_cycles = [SLOW_SPEED, SLOW_SPEED, SLOW_SPEED, SLOW_SPEED];                     // dribbler
-                // write duty cycle
+                let duty_cycles = [SLOW_SPEED, SLOW_SPEED, SLOW_SPEED, SLOW_SPEED]; // dribbler
+                                                                                    // write duty cycle
                 match fpga.set_duty_get_encoders(duty_cycles, 0.0) {
                     Ok(encoders) => {
                         log::info!("Encoder Values: {:?}", encoders);
                         log::info!("Status: {:#010b}", fpga.status());
-                    },
+                    }
                     Err(e) => panic!("error writing duty cycles... {:?}", e),
                 };
                 Systick::delay(HUNDRED_MS_DELAY.millis()).await;
@@ -241,7 +229,7 @@ mod app {
                     Ok(encoders) => {
                         log::info!("Encoder Values: {:?}", encoders);
                         log::info!("Status: {:#010b}", fpga.status());
-                    },
+                    }
                     Err(e) => panic!("error writing duty cycles... {:?}", e),
                 };
                 Systick::delay(HUNDRED_MS_DELAY.millis()).await;
@@ -257,13 +245,11 @@ mod app {
                     Ok(encoders) => {
                         log::info!("Encoder Values: {:?}", encoders);
                         log::info!("Status: {:#010b}", fpga.status());
-                    },
+                    }
                     Err(e) => panic!("error writing duty cycles... {:?}", e),
                 };
                 Systick::delay(HUNDRED_MS_DELAY.millis()).await;
             }
         }
     }
-
 }
-

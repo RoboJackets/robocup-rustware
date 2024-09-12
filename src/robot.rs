@@ -1,6 +1,6 @@
 //!
 //! Robot Constants and Configuration Information
-//! 
+//!
 
 #[cfg(any(
     not(any(
@@ -20,12 +20,8 @@ pub mod robot_config {
     pub const ROBOT_ID: u8 = 0;
     /// The Error Correction Equation (form y = mx + b) for each
     /// wheel of this robot
-    pub const CORRECTION_FACTORS: [(f32, f32); 4] = [
-        (0.0, 0.0),
-        (0.0, 0.0),
-        (0.0, 0.0),
-        (0.0, 0.0),
-    ];
+    pub const CORRECTION_FACTORS: [(f32, f32); 4] =
+        [(0.0, 0.0), (0.0, 0.0), (0.0, 0.0), (0.0, 0.0)];
     /// The Radio address of this robot
     pub const RADIO_ADDRESS: [u8; 5] = ROBOT_RADIO_ADDRESSES[ROBOT_ID as usize];
 }
@@ -38,12 +34,8 @@ pub mod robot_config {
     pub const ROBOT_ID: u8 = 1;
     /// The Error Correction Equation (form y = mx + b) for each
     /// wheel of this robot
-    pub const CORRECTION_FACTORS: [(f32, f32); 4] = [
-        (0.0, 0.0),
-        (0.0, 0.0),
-        (0.0, 0.0),
-        (0.0, 0.0),
-    ];
+    pub const CORRECTION_FACTORS: [(f32, f32); 4] =
+        [(0.0, 0.0), (0.0, 0.0), (0.0, 0.0), (0.0, 0.0)];
     /// The Radio address of this robot
     pub const RADIO_ADDRESS: [u8; 5] = ROBOT_RADIO_ADDRESSES[ROBOT_ID as usize];
 }
@@ -56,12 +48,8 @@ pub mod robot_config {
     pub const ROBOT_ID: u8 = 2;
     /// The Error Correction Equation (form y = mx + b) for each
     /// wheel of this robot
-    pub const CORRECTION_FACTORS: [(f32, f32); 4] = [
-        (0.0, 0.0),
-        (0.0, 0.0),
-        (0.0, 0.0),
-        (0.0, 0.0),
-    ];
+    pub const CORRECTION_FACTORS: [(f32, f32); 4] =
+        [(0.0, 0.0), (0.0, 0.0), (0.0, 0.0), (0.0, 0.0)];
     /// The Radio address of this robot
     pub const RADIO_ADDRESS: [u8; 5] = ROBOT_RADIO_ADDRESSES[ROBOT_ID as usize];
 }
@@ -74,12 +62,8 @@ pub mod robot_config {
     pub const ROBOT_ID: u8 = 3;
     /// The Error Correction Equation (form y = mx + b) for each
     /// wheel of this robot
-    pub const CORRECTION_FACTORS: [(f32, f32); 4] = [
-        (0.0, 0.0),
-        (0.0, 0.0),
-        (0.0, 0.0),
-        (0.0, 0.0),
-    ];
+    pub const CORRECTION_FACTORS: [(f32, f32); 4] =
+        [(0.0, 0.0), (0.0, 0.0), (0.0, 0.0), (0.0, 0.0)];
     /// The Radio address of this robot
     pub const RADIO_ADDRESS: [u8; 5] = ROBOT_RADIO_ADDRESSES[ROBOT_ID as usize];
 }
@@ -92,12 +76,8 @@ pub mod robot_config {
     pub const ROBOT_ID: u8 = 4;
     /// The Error Correction Equation (form y = mx + b) for each
     /// wheel of this robot
-    pub const CORRECTION_FACTORS: [(f32, f32); 4] = [
-        (0.0, 0.0),
-        (0.0, 0.0),
-        (0.0, 0.0),
-        (0.0, 0.0),
-    ];
+    pub const CORRECTION_FACTORS: [(f32, f32); 4] =
+        [(0.0, 0.0), (0.0, 0.0), (0.0, 0.0), (0.0, 0.0)];
     /// The Radio address of this robot
     pub const RADIO_ADDRESS: [u8; 5] = ROBOT_RADIO_ADDRESSES[ROBOT_ID as usize];
 }
@@ -105,17 +85,13 @@ pub mod robot_config {
 #[cfg(feature = "robot-5")]
 pub mod robot_config {
     use robojackets_robocup_rtp::ROBOT_RADIO_ADDRESSES;
-    
+
     /// The Robot ID for Robot 5
     pub const ROBOT_ID: u8 = 5;
     /// The Error Correction Equation (form y = mx + b) for each
     /// wheel of this robot
-    pub const CORRECTION_FACTORS: [(f32, f32); 4] = [
-        (0.0, 0.0),
-        (0.0, 0.0),
-        (0.0, 0.0),
-        (0.0, 0.0),
-    ];
+    pub const CORRECTION_FACTORS: [(f32, f32); 4] =
+        [(0.0, 0.0), (0.0, 0.0), (0.0, 0.0), (0.0, 0.0)];
     /// The Radio address of this robot
     pub const RADIO_ADDRESS: [u8; 5] = ROBOT_RADIO_ADDRESSES[ROBOT_ID as usize];
 }

@@ -14,13 +14,13 @@ mod app {
     use embedded_hal::spi::MODE_0;
     use rtic_nrf24l01::Radio;
 
-    use teensy4_bsp as bsp;
     use bsp::board::{self, LPSPI_FREQUENCY};
+    use teensy4_bsp as bsp;
 
-    use bsp::hal as hal;
+    use bsp::hal;
     use hal::timer::Blocking;
 
-    use bsp::ral as ral;
+    use bsp::ral;
     use ral::lpspi::LPSPI3;
 
     use rtic_monotonics::systick::*;
@@ -28,15 +28,8 @@ mod app {
     use robojackets_robocup_rtp::BASE_STATION_ADDRESS;
 
     use main::{
-        RFRadio,
-        SharedSPI,
-        Delay2,
-        BASE_AMPLIFICATION_LEVEL,
-        CHANNEL,
-        RADIO_ADDRESS,
-        GPT_FREQUENCY,
-        GPT_CLOCK_SOURCE,
-        GPT_DIVIDER,
+        Delay2, RFRadio, SharedSPI, BASE_AMPLIFICATION_LEVEL, CHANNEL, GPT_CLOCK_SOURCE,
+        GPT_DIVIDER, GPT_FREQUENCY, RADIO_ADDRESS,
     };
 
     #[local]
@@ -104,15 +97,7 @@ mod app {
 
         ping_pong::spawn().unwrap();
 
-        (
-            Shared {
-                shared_spi,
-                delay,
-            },
-            Local {
-                radio,
-            },
-        )
+        (Shared { shared_spi, delay }, Local { radio })
     }
 
     #[idle]
@@ -175,6 +160,8 @@ fn to_bytes(value: &u32) -> [u8; 4] {
 }
 
 fn from_bytes(value: &[u8]) -> u32 {
-    (value[0] as u32) | ((value[1] as u32) << 8) |
-        ((value[2] as u32) << 16) | ((value[3] as u32) << 24)
+    (value[0] as u32)
+        | ((value[1] as u32) << 8)
+        | ((value[2] as u32) << 16)
+        | ((value[3] as u32) << 24)
 }

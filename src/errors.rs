@@ -1,14 +1,11 @@
 //!
 //! Definitions of the common errors present in Robocup-Rustware to
 //! make error handling more smooth.
-//! 
+//!
 
 use core::convert::Infallible;
 
-use teensy4_bsp::hal::{
-    lpi2c::ControllerStatus,
-    lpspi::LpspiError,
-};
+use teensy4_bsp::hal::{lpi2c::ControllerStatus, lpspi::LpspiError};
 
 use icm42605_driver::ImuError;
 

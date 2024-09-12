@@ -1,0 +1,68 @@
+on: [pull_request]
+
+name: Rust-Checks
+
+jobs:
+  cargo_check:
+    name: Cargo Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly-2024-09-04
+          default: true
+          target: thumbv7em-none-eabihf
+      - uses: actions-rs/cargo@v1
+        with:
+          command: check
+          args: --examples --bins --lib --target thumbv7em-none-eabihf
+
+  cargo_clippy:
+    name: Clippy Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly-2024-09-04
+          default: true
+          target: thumbv7em-none-eabihf
+          components: clippy
+      - uses: actions-rs/cargo@v1
+        with:
+          command: clippy
+          args: --target thumbv7em-none-eabihf
+
+  cargo_build:
+    name: Cargo Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly-2024-09-04
+          default: true
+          target: thumbv7em-none-eabihf
+      - uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --release --examples --bins --lib --target thumbv7em-none-eabihf
+
+  cargo_rustfmt:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Repository
+        uses: actions/checkout@v4
+      - name: Setup Toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly-2024-09-04
+          default: true
+          target: thumbv7em-none-eabihf
+          components: rustfmt
+      - name: Check Formatting
+        uses: actions-rs/cargo@v1
+        with:
+          command: fmt
+          args: --check
