@@ -82,6 +82,7 @@ members = [
     "drivers/controller",
     "drivers/icm42605-driver",
     "tools",
+    "drivers/kicker-programmer",
 ]
 
 # overrides the release build optimization level

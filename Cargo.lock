@@ -349,6 +349,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "kicker-programmer"
+version = "0.1.0"
+dependencies = [
+ "embedded-hal 0.2.7",
+]
+
+[[package]]
 name = "libm"
 version = "0.2.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"

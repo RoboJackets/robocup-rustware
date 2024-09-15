@@ -4,7 +4,8 @@
     "rust-analyzer.linkedProjects": [
         "./Cargo.toml",
         "./drivers/motion/Cargo.toml",
-        "./drivers/controller/Cargo.toml"
+        "./drivers/controller/Cargo.toml",
+        "./drivers/kicker-programmer/Cargo.toml",
     ],
     "rust-analyzer.check.extraArgs": [
         "--examples",

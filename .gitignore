@@ -4,3 +4,6 @@
 teensy_loader_cli
 teensy_loader_cli/**
 setup/teensy_loader_cli/**
+
+# Helix Configuration
+.helix/*
