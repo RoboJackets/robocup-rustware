@@ -13,12 +13,12 @@ wheel_angles = [
 ]
 
 bot_to_wheel = np.array([
-    [-math.sin(wheel_angles[0]), math.cos(wheel_angles[0]), wheel_dist],
-    [-math.sin(wheel_angles[1]), math.cos(wheel_angles[1]), wheel_dist],
-    [-math.sin(wheel_angles[2]), math.cos(wheel_angles[2]), wheel_dist],
-    [-math.sin(wheel_angles[3]), math.cos(wheel_angles[3]), wheel_dist],
+    [math.sin(wheel_angles[0]), -math.cos(wheel_angles[0]), -wheel_dist],
+    [math.sin(wheel_angles[1]), -math.cos(wheel_angles[1]), -wheel_dist],
+    [math.sin(wheel_angles[2]), -math.cos(wheel_angles[2]), -wheel_dist],
+    [math.sin(wheel_angles[3]), -math.cos(wheel_angles[3]), -wheel_dist],
 ])
 
-target_velocity = np.array([0.0, 0.5, 0.0])
+target_velocity = np.array([3.5, 0.0, 0.0])
 
-print(bot_to_wheel @ target_velocity)
+print((bot_to_wheel @ target_velocity))

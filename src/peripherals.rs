@@ -19,6 +19,7 @@ use teensy4_bsp::hal::{
 
 use fpga_rs::FPGA;
 use icm42605_driver::IMU;
+use kicker_programmer::KickerProgrammer;
 
 use super::GPT_FREQUENCY;
 
@@ -53,3 +54,9 @@ pub type Gpio3 = Port<3>;
 pub type Gpio4 = Port<4>;
 /// The IMU
 pub type Imu = IMU<Lpi2c1>;
+/// The Kicker RESET pin
+pub type KickerReset = Output<P6>;
+/// The Kicker Chip Select
+pub type KickerCSn = Output<P5>;
+/// The Kicker Programmer
+pub type KickerProg = KickerProgrammer<KickerCSn, KickerReset>;

@@ -31,7 +31,7 @@ impl Configuration {
         //     .unwrap_or_else(|_| "./teensy_loader_cli/teensy_loader_cli_windows.exe".into());
 
         // Linux
-        let lodaer = env::var("TEENSY4RS_LOADER")
+        let loader = env::var("TEENSY4RS_LOADER")
             .unwrap_or_else(|_| "./teensy_loader_cli/teensy_loader_cli_linux".into());
         Self { objcopy, loader }
     }

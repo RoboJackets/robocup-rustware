@@ -353,6 +353,7 @@ name = "kicker-programmer"
 version = "0.1.0"
 dependencies = [
  "embedded-hal 0.2.7",
+ "log",
 ]
 
 [[package]]
@@ -387,6 +388,7 @@ dependencies = [
  "icm42605-driver",
  "imxrt-hal",
  "imxrt-iomuxc",
+ "kicker-programmer",
  "libm",
  "log",
  "motion",

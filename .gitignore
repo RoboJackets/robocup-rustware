@@ -7,3 +7,6 @@ setup/teensy_loader_cli/**
 
 # Helix Configuration
 .helix/*
+
+# Kicker Binary
+drivers/kicker-programmer/bin/*

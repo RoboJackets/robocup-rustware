@@ -22,3 +22,5 @@ pub use peripherals::*;
 
 pub mod errors;
 pub use errors::*;
+
+pub mod spi;
