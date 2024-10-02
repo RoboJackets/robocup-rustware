@@ -14,12 +14,18 @@ use embedded_hal::{
     blocking::delay::{DelayMs, DelayUs},
 };
 
+
+mod kicker_bin;
+use kicker_bin::KICKER_BYTES;
+mod kicker_bin_kick_on_bb;
+use kicker_bin_kick_on_bb::KICKER_BYTES_ON_BB;
+
 /// The expected vendor code for the kicker board chip.
 const EXPECTED_VENDOR_CODE: u8 = 0x1E;
 /// The expected combined part family and memory size for the kicker board chip.
-const EXPECTED_PART_FAILY_AND_MEMORY_SIZE: u8 = 0xF0;
+const EXPECTED_PART_FAILY_AND_MEMORY_SIZE: u8 = 0x95;
 /// The expected part number for the kicker board chip.
-const EXPECTED_PART_NUMBER: u8 = 0xFF;
+const EXPECTED_PART_NUMBER: u8 = 0x02;
 /// The page size of the kicker board chip in words (1 word = 2 bytes)
 const ATMEGA_PAGESIZE: usize = 64;
 /// The number of pages in the kicker board chip's memory
@@ -33,9 +39,9 @@ const LOW_BYTE: u8 = 0b0100_0000;
 /// Write the flash memory page
 const WRITE_PAGE: u8 = 0b0100_1100;
 /// Read the high portion of a word
-const READ_HIGH_BYTE: u8 = 0b0010_1000;
+const READ_HIGH_BYTE: u8 = 0x28;
 /// Read the low portion of a word
-const READ_LOW_BYTE: u8 = 0b0010_0000;
+const READ_LOW_BYTE: u8 = 0x20;
 
 /// Error from Programming the Kicker
 #[derive(Debug)]
@@ -48,7 +54,7 @@ pub enum KickerProgrammerError<GPIOE: Debug, SPIE: Debug> {
     FailedToEraseChip,
     /// The kicker board chip identified incorrectly (there was likely a
     /// problem with enabling programming or erasing the chip)
-    InvalidIdentity,
+    InvalidIdentity { register: u8, expected: u8, found: u8 },
     /// The binary that is attempting to be programmed is larger than the
     /// maximum flash size of the kicker chip
     InvalidBinarySize,
@@ -96,7 +102,7 @@ impl<CS, RESET, GPIOE> KickerProgrammer<CS, RESET> where
         log::info!("Attempting to Enable Programming");
         let mut try_count = 0;
         let mut enabled = self.enable_programming(spi, delay);
-        while !enabled.is_err() && try_count < 20 {
+        while enabled.is_err() && try_count < 20 {
             self.reset.set_high().map_err(KickerProgrammerError::Gpio)?;
             delay.delay_ms(100);
             self.reset.set_low().map_err(KickerProgrammerError::Gpio)?;
@@ -124,18 +130,18 @@ impl<CS, RESET, GPIOE> KickerProgrammer<CS, RESET> where
 
         // Load the file buffer
         log::info!("Programming the Kicker");
-        let kicker_program = include_bytes!("../bin/kicker.elf");
+        let kicker_program = &KICKER_BYTES_ON_BB;
+        // let kicker_program = include_bytes!("../bin/kicker.nib");
         // The total number of pages is twice the binary length divided by the number of pages
         // because the total number of pages is in words (which are two bytes in length)
-        let num_pages = if kicker_program.len() * 2 % ATMEGA_NUM_PAGES == 0 {
-            (kicker_program.len() * 2) / ATMEGA_NUM_PAGES
-        } else {
-            ((kicker_program.len() * 2) / ATMEGA_NUM_PAGES) + 1
-        };
+        let mut num_pages = kicker_program.len() * 2 / ATMEGA_NUM_PAGES;
+        if num_pages * ATMEGA_NUM_PAGES < kicker_program.len() * 2 {
+            num_pages += 1;
+        }
         for page in 0..num_pages {
             log::info!("Programming Page {}", page);
             self.load_memory_page(
-                &kicker_program[(page * ATMEGA_PAGESIZE)..min((page+1) * ATMEGA_PAGESIZE, kicker_program.len())],
+                &kicker_program[(page * 2 * ATMEGA_PAGESIZE)..min((page+1) * 2 * ATMEGA_PAGESIZE, kicker_program.len())],
                 page,
                 spi,
                 delay,
@@ -144,12 +150,14 @@ impl<CS, RESET, GPIOE> KickerProgrammer<CS, RESET> where
 
         log::info!("Programming Complete!");
 
+        delay.delay_ms(2_000);
+
         // Check that all bytes were programmed correctly
         log::info!("Validating the Kicker Program");
         for page in 0..num_pages {
             log::info!("Checking Page {}", page);
             self.check_memory_page(
-                &kicker_program[(page * ATMEGA_PAGESIZE)..min((page + 1) * ATMEGA_PAGESIZE, kicker_program.len())],
+                &kicker_program[(page * 2 * ATMEGA_PAGESIZE)..min((page + 1) * 2 * ATMEGA_PAGESIZE, kicker_program.len())],
                 page,
                 spi,
                 delay,
@@ -157,10 +165,9 @@ impl<CS, RESET, GPIOE> KickerProgrammer<CS, RESET> where
         }
 
         log::info!("The Kicker has been programmed");
-        
 
         delay.delay_ms(100);
-        self.reset.set_high().map_err(KickerProgrammerError::Gpio)?;
+        self.exit_programming(spi, delay)?;
 
         Ok(())
     }
@@ -195,6 +202,8 @@ impl<CS, RESET, GPIOE> KickerProgrammer<CS, RESET> where
         let mut buffer = [0xAC, 0x80, 0x00, 0x00];
         self.write(&mut buffer, spi, delay)?;
 
+        delay.delay_ms(120);
+
         if buffer[2] != 0x80 {
             Err(KickerProgrammerError::FailedToEraseChip)
         } else {
@@ -212,22 +221,25 @@ impl<CS, RESET, GPIOE> KickerProgrammer<CS, RESET> where
         let mut buffer = [0x30, 0x00, 0x00, 0x00];
         self.write(&mut buffer, spi, delay)?;
 
+        log::info!("Buffer: {:?}", buffer);
         if buffer[3] != EXPECTED_VENDOR_CODE {
-            return Err(KickerProgrammerError::InvalidIdentity);
+            return Err(KickerProgrammerError::InvalidIdentity { register: 0x00, expected: EXPECTED_VENDOR_CODE, found: buffer[3]});
         }
 
         buffer = [0x30, 0x00, 0x01, 0x00];
         self.write(&mut buffer, spi, delay)?;
 
+        log::info!("Buffer: {:?}", buffer);
         if buffer[3] != EXPECTED_PART_FAILY_AND_MEMORY_SIZE {
-            return Err(KickerProgrammerError::InvalidIdentity);
+            return Err(KickerProgrammerError::InvalidIdentity { register: 0x01, expected: EXPECTED_PART_FAILY_AND_MEMORY_SIZE, found: buffer[3] });
         }
 
         buffer = [0x30, 0x00, 0x02, 0x00];
         self.write(&mut buffer, spi, delay)?;
 
+        log::info!("Buffer: {:?}", buffer);
         if buffer[3] != EXPECTED_PART_NUMBER {
-            return Err(KickerProgrammerError::InvalidIdentity);
+            return Err(KickerProgrammerError::InvalidIdentity { register: 0x02, expected: EXPECTED_PART_NUMBER, found: buffer[3]});
         }
 
         Ok(())
@@ -241,13 +253,19 @@ impl<CS, RESET, GPIOE> KickerProgrammer<CS, RESET> where
         spi: &mut (impl Transfer<u8, Error=SPIE> + Write<u8, Error=SPIE>),
         delay: &mut (impl DelayMs<u32> + DelayUs<u32>),
     ) -> Result<(), KickerProgrammerError<GPIOE, SPIE>> {
+        log::info!("Data Length: {}\n Pagesize: {}", data.len(), ATMEGA_PAGESIZE);
+        log::info!("{}", min(ATMEGA_PAGESIZE, data.len() / 2));
         // Load the page data to memory
-        for address in 0..core::cmp::min(ATMEGA_PAGESIZE, data.len() / 2) {
+        for address in 0..min(ATMEGA_PAGESIZE, data.len() / 2) {
             let mut low_byte_buffer = [LOW_BYTE, 0x00, (address & 0x3F) as u8, data[2*address]];
             self.write(&mut low_byte_buffer, spi, delay)?;
 
+            delay.delay_ms(20);
+
             let mut high_byte_buffer = [HIGH_BYTE, 0x00, (address & 0x3F) as u8, data[2*address+1]];
             self.write(&mut high_byte_buffer, spi, delay)?;
+
+            delay.delay_ms(20);
         }
 
         // Write the page into memory
@@ -255,7 +273,7 @@ impl<CS, RESET, GPIOE> KickerProgrammer<CS, RESET> where
         self.write(&mut buffer, spi, delay)?;
 
         // The maximum programming time for the atmega32a is 4.5ms
-        delay.delay_ms(5);
+        delay.delay_ms(20);
 
         Ok(())
     }
@@ -300,6 +318,14 @@ impl<CS, RESET, GPIOE> KickerProgrammer<CS, RESET> where
         }
 
         Ok(())
+    }
+
+    fn exit_programming<SPIE: Debug>(
+        &mut self,
+        _spi: &mut (impl Transfer<u8, Error=SPIE> + Write<u8, Error=SPIE>),
+        delay: &mut (impl DelayMs<u32> + DelayUs<u32>),
+    ) -> Result<(), KickerProgrammerError<GPIOE, SPIE>> {
+        self.reset.set_high().map_err(KickerProgrammerError::Gpio)
     }
 
     /// Write data over the SPI
