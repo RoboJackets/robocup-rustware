@@ -56,4 +56,4 @@ jobs:
           target: thumbv7em-none-eabihf
           components: rustfmt
       - name: Run rustfmt
-        run: cd control && cargo fm --check
+        run: cd control && cargo fmt --check

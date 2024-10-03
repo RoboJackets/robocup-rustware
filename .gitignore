@@ -8,6 +8,3 @@
 
 # Helix Configuration
 **/.helix/*
-
-# Kicker Binary
-**/drivers/kicker-programmer/bin/*
