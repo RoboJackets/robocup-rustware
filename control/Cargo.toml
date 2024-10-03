@@ -76,16 +76,20 @@ path = "drivers/controller"
 [dependencies.kicker-programmer]
 path = "drivers/kicker-programmer"
 
+[dependencies.kicker-controller]
+path = "drivers/kicker-controller"
+
 # the root package is also a workspace that holds all of the neccesary "supporting" packages
 # such as driver files, utility files (e.g. tools), etc.
 [workspace]
 members = [
+    "tools",
     "drivers/fpga",
     "drivers/motion",
     "drivers/controller",
     "drivers/icm42605-driver",
-    "tools",
     "drivers/kicker-programmer",
+    "drivers/kicker-controller",
 ]
 
 # overrides the release build optimization level

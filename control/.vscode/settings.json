@@ -6,6 +6,7 @@
         "./drivers/motion/Cargo.toml",
         "./drivers/controller/Cargo.toml",
         "./drivers/kicker-programmer/Cargo.toml",
+        "./drivers/kicker-controller/Cargo.toml"
     ],
     "rust-analyzer.check.extraArgs": [
         "--examples",
