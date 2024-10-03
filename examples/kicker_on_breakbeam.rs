@@ -1,6 +1,6 @@
 //!
-//! This program programs the kicker board with the most recently
-//! built kicker binary.
+//! This program programs the kicker board with a program that automatically
+//! kicks when the breakbeam is triggered.
 //! 
 
 #![no_std]
@@ -113,7 +113,7 @@ mod app {
             ctx.shared.delay2,
             ctx.shared.kicker_programmer,
         ).lock(|spi, delay, kicker_programmer| {
-            kicker_programmer.program_kicker(spi, delay)
+            kicker_programmer.program_kick_on_breakbeam(spi, delay)
         });
 
         match result {

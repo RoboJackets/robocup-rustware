@@ -93,9 +93,30 @@ impl<CS, RESET, GPIOE> KickerProgrammer<CS, RESET> where
         (self.cs, self.reset)
     }
 
-    /// Program the kicker
-    pub fn program<SPIE: Debug>(
+    /// Program the kicker with a kick-on-breakbeam program so the kicker will
+    /// activate whenever the breakbeam is interrupted.
+    pub fn program_kick_on_breakbeam<SPIE: Debug>(
         &mut self,
+        spi: &mut (impl Transfer<u8, Error=SPIE> + Write<u8, Error=SPIE>),
+        delay: &mut (impl DelayMs<u32> + DelayUs<u32>),
+    ) -> Result<(), KickerProgrammerError<GPIOE, SPIE>> {
+        self.program(&KICKER_BYTES, spi, delay)
+    }
+
+    /// Program the kicker with full functionality to control kicking via
+    /// spi commands
+    pub fn program_kicker<SPIE: Debug>(
+        &mut self,
+        spi: &mut (impl Transfer<u8, Error=SPIE> + Write<u8, Error=SPIE>),
+        delay: &mut (impl DelayMs<u32> + DelayUs<u32>),
+    ) -> Result<(), KickerProgrammerError<GPIOE, SPIE>> {
+        self.program(&KICKER_BYTES_ON_BB, spi, delay)
+    }
+
+    /// Program the kicker
+    fn program<SPIE: Debug>(
+        &mut self,
+        kicker_program: &[u8],
         spi: &mut (impl Transfer<u8, Error=SPIE> + Write<u8, Error=SPIE>),
         delay: &mut (impl DelayMs<u32> + DelayUs<u32>),
     ) -> Result<(), KickerProgrammerError<GPIOE, SPIE>> {
@@ -130,7 +151,6 @@ impl<CS, RESET, GPIOE> KickerProgrammer<CS, RESET> where
 
         // Load the file buffer
         log::info!("Programming the Kicker");
-        let kicker_program = &KICKER_BYTES_ON_BB;
         // let kicker_program = include_bytes!("../bin/kicker.nib");
         // The total number of pages is twice the binary length divided by the number of pages
         // because the total number of pages is in words (which are two bytes in length)
@@ -323,7 +343,7 @@ impl<CS, RESET, GPIOE> KickerProgrammer<CS, RESET> where
     fn exit_programming<SPIE: Debug>(
         &mut self,
         _spi: &mut (impl Transfer<u8, Error=SPIE> + Write<u8, Error=SPIE>),
-        delay: &mut (impl DelayMs<u32> + DelayUs<u32>),
+        _delay: &mut (impl DelayMs<u32> + DelayUs<u32>),
     ) -> Result<(), KickerProgrammerError<GPIOE, SPIE>> {
         self.reset.set_high().map_err(KickerProgrammerError::Gpio)
     }
