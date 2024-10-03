@@ -1,5 +1,6 @@
 //!
-//!
+//! Motion Control Module for controlling the commands sent to move the motors on the
+//! robot.
 //!
 
 use core::fmt::Debug;
@@ -45,6 +46,12 @@ pub struct MotionControl {
     timesteps: u32,
 }
 
+impl Default for MotionControl {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl MotionControl {
     /// Initialize a new motion control module
     pub fn new() -> Self {
@@ -72,8 +79,7 @@ impl MotionControl {
 
         let bot_to_wheel_t = bot_to_wheel.transpose();
 
-        let wheel_to_bot =
-            (&bot_to_wheel_t * &bot_to_wheel).try_inverse().unwrap() * &bot_to_wheel_t;
+        let wheel_to_bot = (bot_to_wheel_t * bot_to_wheel).try_inverse().unwrap() * bot_to_wheel_t;
 
         Self {
             bot_to_wheel,
@@ -127,18 +133,15 @@ impl MotionControl {
         let imu_estimate = self.imu_estimate(imu_measurements, delta);
         let encoder_estimate = self.encoder_estimate(encoder_velocities);
 
-        // Weight State Estimates
-        let state_estimate: Vector3<f32>;
         // let state_estimate: Vector3<f32> = imu_estimate.map(|v| v * ALPHA) + encoder_estimate.map(|v| v * (1.0 - ALPHA));
-        if imu_measurements[0] * imu_measurements[0] + imu_measurements[1] * imu_measurements[1]
+        let state_estimate = if imu_measurements[0] * imu_measurements[0]
+            + imu_measurements[1] * imu_measurements[1]
             > HIGH_ACCELERATION_CUTOFF
         {
-            state_estimate =
-                imu_estimate.map(|v| v * ALPHA) + encoder_estimate.map(|v| v * (1.0 - ALPHA));
+            imu_estimate.map(|v| v * ALPHA) + encoder_estimate.map(|v| v * (1.0 - ALPHA))
         } else {
-            state_estimate = imu_estimate.map(|v| v * HIGH_ALPHA)
-                + encoder_estimate.map(|v| v * (1.0 - HIGH_ALPHA));
-        }
+            imu_estimate.map(|v| v * HIGH_ALPHA) + encoder_estimate.map(|v| v * (1.0 - HIGH_ALPHA))
+        };
 
         let difference = (target_velocity - state_estimate).map(|v| v * CORRECT_FACTOR);
 
@@ -485,7 +488,7 @@ mod tests {
         let target_velocity = Vector3::new(0.0, 0.0, 0.0);
         let difference = target_velocity - state_estimate;
         assert_eq!(difference, state_estimate.map(|v| v * -1.0));
-        let correct_distance = difference.map(|v| v * CORRECT_FACTOR);
+        let _correct_distance = difference.map(|v| v * CORRECT_FACTOR);
 
         let wheel_velocities =
             motion_control.control_update(imu, encoder_velocities, target_velocity, delta);

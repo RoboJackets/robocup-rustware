@@ -49,7 +49,7 @@ impl DutyCycle {
 impl From<i16> for DutyCycle {
     fn from(value: i16) -> Self {
         // check that value is not outside of the allowed range
-        if (value > 511) || (value < -511) {
+        if !(-511..=511).contains(&value) {
             return DutyCycle(0);
         }
 
@@ -68,7 +68,7 @@ impl From<DutyCycle> for i16 {
     fn from(dc: DutyCycle) -> Self {
         let mut result: i16 = 0;
         if (dc.0 >> 9) & 1 == 1 {
-            result = ((dc.0 & 0x1FF) as i16) * -1;
+            result = -((dc.0 & 0x1FF) as i16);
         } else {
             result = dc.0 as i16;
         }

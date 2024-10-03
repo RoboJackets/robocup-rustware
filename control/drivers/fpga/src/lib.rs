@@ -201,10 +201,9 @@ where
     ///    5. Returns Ok if no errors or timeout
     pub fn configure(&mut self) -> Result<(), FpgaError<SPIE, GPIOE>> {
         // toggle the prog_b pin
-        self.prog_b.set_low().map_err(|e| {
-            let new_error = FpgaError::<SPIE, GPIOE>::ProgPin(e);
-            new_error
-        })?;
+        self.prog_b
+            .set_low()
+            .map_err(FpgaError::<SPIE, GPIOE>::ProgPin)?;
         self.delay.delay_ms(1); // allow for hardware to latch properly
         self.prog_b.set_high().map_err(FpgaError::ProgPin)?;
 
@@ -427,8 +426,8 @@ where
         let mut write_buffer = [0u8; 12];
         write_buffer[0] = Instruction::R_ENC_W_VEL.opcode();
 
-        for i in 0..wheel_velocities.len() {
-            wheel_velocities[i] *= VELOCITY_TO_DUTY_CYCLES;
+        for wheel_velocity in &mut wheel_velocities {
+            *wheel_velocity *= VELOCITY_TO_DUTY_CYCLES;
         }
 
         duty_cycles_to_fpga(wheel_velocities, &mut write_buffer[1..9]);
@@ -454,8 +453,8 @@ where
             (i16::from_be_bytes(write_buffer[5..7].try_into().unwrap()) as f32),
             (i16::from_be_bytes(write_buffer[7..9].try_into().unwrap()) as f32),
         ];
-        for i in 0..4 {
-            delta_encoders[i] *=
+        for encoder_velocity in &mut delta_encoders {
+            *encoder_velocity *=
                 1e6 * 2.0 * core::f32::consts::PI * WHEEL_RADIUS / (6144.0 * delta);
         }
         self.status = write_buffer[0];

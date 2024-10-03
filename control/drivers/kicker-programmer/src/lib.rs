@@ -3,18 +3,16 @@
 //!
 
 #![no_std]
+#![deny(missing_docs)]
 
 use core::{cmp::min, fmt::Debug};
 
-#[deny(missing_docs)]
 use embedded_hal::{
     blocking::delay::{DelayMs, DelayUs},
     blocking::spi::{Transfer, Write},
     digital::v2::OutputPin,
 };
 
-mod kicker_bin;
-use kicker_bin::KICKER_BYTES;
 mod kicker_bin_kick_on_bb;
 use kicker_bin_kick_on_bb::KICKER_BYTES_ON_BB;
 
@@ -46,15 +44,21 @@ const READ_LOW_BYTE: u8 = 0x20;
 pub enum KickerProgrammerError<GPIOE: Debug, SPIE: Debug> {
     /// The command to enable Programming failed to return the
     /// expected value
-    FailedToEnableProgramming { bytes: [u8; 4] },
+    FailedToEnableProgramming {
+        /// The bytes received when enabling programming fails
+        bytes: [u8; 4],
+    },
     /// The command to erase the chip failed to return the expected
     /// value
     FailedToEraseChip,
     /// The kicker board chip identified incorrectly (there was likely a
     /// problem with enabling programming or erasing the chip)
     InvalidIdentity {
+        /// The register that returned an invalid identity
         register: u8,
+        /// The expected identity at the register
         expected: u8,
+        /// The value found in the register
         found: u8,
     },
     /// The binary that is attempting to be programmed is larger than the
@@ -63,8 +67,11 @@ pub enum KickerProgrammerError<GPIOE: Debug, SPIE: Debug> {
     /// The binary differs from the programmed value on page `page_num` offset
     /// `offset`
     BinaryDiffers {
+        /// The page number where a byte appears different from expected
         page_number: usize,
+        /// The offset within the page where a byte appears different from expected
         offset: u8,
+        /// Was it the low byte that appeared different from expected
         low_byte: bool,
     },
     /// Error with the GPIO Peripheral
@@ -104,7 +111,7 @@ where
         spi: &mut (impl Transfer<u8, Error = SPIE> + Write<u8, Error = SPIE>),
         delay: &mut (impl DelayMs<u32> + DelayUs<u32>),
     ) -> Result<(), KickerProgrammerError<GPIOE, SPIE>> {
-        self.program(include_bytes!("./bin/kicker.nib"), spi, delay)
+        self.program(include_bytes!("../bin/kicker.nib"), spi, delay)
     }
 
     /// Program the kicker with full functionality to control kicking via

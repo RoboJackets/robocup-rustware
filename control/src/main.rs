@@ -250,9 +250,7 @@ mod app {
     /// have every task spawn this placeholder task so that I can use code generation
     /// to remove the placeholder in favor of whatever task is actually desired to run.
     #[task]
-    async fn placeholder_task(_ctx: placeholder_task::Context) {
-        loop {}
-    }
+    async fn placeholder_task(_ctx: placeholder_task::Context) {}
 
     #[task(
         shared = [imu, pit_delay, imu_init_error],
@@ -418,7 +416,7 @@ mod app {
                 if rx_int.is_triggered() {
                     *elapsed_time = 0;
                     rx_int.clear_triggered();
-                    gpio1.set_interrupt(&rx_int, None);
+                    gpio1.set_interrupt(rx_int, None);
                     return true;
                 }
                 false
@@ -473,7 +471,7 @@ mod app {
 
         (ctx.shared.rx_int, ctx.shared.gpio1).lock(|rx_int, gpio1| {
             rx_int.clear_triggered();
-            gpio1.set_interrupt(&rx_int, Some(Trigger::FallingEdge));
+            gpio1.set_interrupt(rx_int, Some(Trigger::FallingEdge));
         });
     }
 
