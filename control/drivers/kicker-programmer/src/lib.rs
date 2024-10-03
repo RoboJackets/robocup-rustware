@@ -100,7 +100,7 @@ impl<CS, RESET, GPIOE> KickerProgrammer<CS, RESET> where
         spi: &mut (impl Transfer<u8, Error=SPIE> + Write<u8, Error=SPIE>),
         delay: &mut (impl DelayMs<u32> + DelayUs<u32>),
     ) -> Result<(), KickerProgrammerError<GPIOE, SPIE>> {
-        self.program(&KICKER_BYTES, spi, delay)
+        self.program(include_bytes!("./bin/kicker.nib"), spi, delay)
     }
 
     /// Program the kicker with full functionality to control kicking via

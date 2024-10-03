@@ -13,6 +13,8 @@ jobs:
           toolchain: nightly-2024-09-04
           default: true
           target: thumbv7em-none-eabihf
+      - name: cd control
+        run: cd control
       - uses: actions-rs/cargo@v1
         with:
           command: check
@@ -29,6 +31,8 @@ jobs:
           default: true
           target: thumbv7em-none-eabihf
           components: clippy
+      - name: cd control
+        run: cd control
       - uses: actions-rs/cargo@v1
         with:
           command: clippy
@@ -44,6 +48,8 @@ jobs:
           toolchain: nightly-2024-09-04
           default: true
           target: thumbv7em-none-eabihf
+      - name: cd control
+        run: cd control
       - uses: actions-rs/cargo@v1
         with:
           command: build
@@ -61,6 +67,8 @@ jobs:
           default: true
           target: thumbv7em-none-eabihf
           components: rustfmt
+      - name: cd control
+        run: cd control
       - name: Check Formatting
         uses: actions-rs/cargo@v1
         with:

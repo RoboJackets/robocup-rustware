@@ -15,7 +15,7 @@ If you are running linux or macos, run:
 
 If running windows, follow the steps in [setup/WindowsSetup.md](setup/WindowsSetup.md). 
 
-To ensure the correct version of Teensy loader is used by your system ensure the line under your operating system (i.e. "MacOS", "Windows", and "Linux") is uncommented in [tools/runner.rs](tools/runner.rs)
+To ensure the correct version of Teensy loader is used by your system ensure the line under your operating system (i.e. "MacOS", "Windows", and "Linux") is uncommented in [control/tools/runner.rs](control/tools/runner.rs)
 
 ## Common Commands
 

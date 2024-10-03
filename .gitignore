@@ -1,12 +1,13 @@
-/target
+**/target
+**/build
 
 # Teensy Loader CLI
-teensy_loader_cli
-teensy_loader_cli/**
-setup/teensy_loader_cli/**
+**/teensy_loader_cli
+**/teensy_loader_cli/**
+**/setup/teensy_loader_cli/**
 
 # Helix Configuration
-.helix/*
+**/.helix/*
 
 # Kicker Binary
-drivers/kicker-programmer/bin/*
+**/drivers/kicker-programmer/bin/*
