@@ -3,13 +3,13 @@
 //! speeds than the hardware SPI.  Please only use this for
 //! the kicker because the onboard spi should work so much
 //! better.
-//! 
+//!
 //! The entire reason I (Nate) created this Fake SPI is that the
 //! minimum SPI frequency is about 500 KHz.  This is, unfortunately
 //! too fast to program the current Atmega32a chip on the kicker so
 //! I'm going to attempt to use digital outputs to simulate an SPI
 //! peripheral.
-//! 
+//!
 
 use core::convert::Infallible;
 
@@ -17,18 +17,18 @@ use teensy4_pins::t41::*;
 
 use teensy4_bsp::board::PERCLK_FREQUENCY;
 use teensy4_bsp::hal::{
-    gpio::{Output, Input},
+    gpio::{Input, Output},
     pit::Pit3,
     timer::Blocking,
 };
 
-use embedded_hal::blocking::spi::{Write, Transfer};
+use embedded_hal::blocking::spi::{Transfer, Write};
 
 /// A Fake SPI implemented using a number of digital output pins.
-/// 
-/// Please do not use this for anything but the kicker.  It has no 
+///
+/// Please do not use this for anything but the kicker.  It has no
 /// hardware acceleration so it is super slow.
-/// 
+///
 /// Note: The frequency for this fake SPI is 100 KHz.
 pub struct FakeSpi {
     pub clk: Output<P2>,
@@ -57,13 +57,15 @@ impl FakeSpi {
     }
 
     /// Free the peripherals for the fake SPI driver
-    pub fn free(self) -> (Output<P2>, Output<P3>, Input<P4>, Blocking<Pit3, PERCLK_FREQUENCY>) {
-        (
-            self.clk,
-            self.mosi,
-            self.miso,
-            self.delay,
-        )
+    pub fn free(
+        self,
+    ) -> (
+        Output<P2>,
+        Output<P3>,
+        Input<P4>,
+        Blocking<Pit3, PERCLK_FREQUENCY>,
+    ) {
+        (self.clk, self.mosi, self.miso, self.delay)
     }
 }
 

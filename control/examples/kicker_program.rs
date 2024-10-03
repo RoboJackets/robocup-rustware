@@ -1,7 +1,7 @@
 //!
 //! This program programs the kicker board with the most recently
 //! built kicker binary.
-//! 
+//!
 
 #![no_std]
 #![no_main]
@@ -29,18 +29,13 @@ mod app {
 
     use kicker_programmer::KickerProgrammer;
 
-    use main::{
-        Delay2, KickerProg,
-        GPT_CLOCK_SOURCE, GPT_DIVIDER, GPT_FREQUENCY, spi::FakeSpi,
-    };
+    use main::{spi::FakeSpi, Delay2, KickerProg, GPT_CLOCK_SOURCE, GPT_DIVIDER, GPT_FREQUENCY};
 
     const HEAP_SIZE: usize = 1024;
     static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
 
     #[local]
-    struct Local {
-
-    }
+    struct Local {}
 
     #[shared]
     struct Shared {
@@ -97,9 +92,7 @@ mod app {
                 delay2,
                 kicker_programmer,
             },
-            Local {
-
-            }
+            Local {},
         )
     }
 
@@ -112,9 +105,8 @@ mod app {
             ctx.shared.fake_spi,
             ctx.shared.delay2,
             ctx.shared.kicker_programmer,
-        ).lock(|spi, delay, kicker_programmer| {
-            kicker_programmer.program_kicker(spi, delay)
-        });
+        )
+            .lock(|spi, delay, kicker_programmer| kicker_programmer.program_kicker(spi, delay));
 
         match result {
             Ok(_) => log::info!("Kicker Programming Successful!!!"),
@@ -122,7 +114,7 @@ mod app {
                 log::error!("Kicker Programming Failed: {:?}", err);
 
                 Systick::delay(1_000u32.millis()).await;
-            }
+            },
         }
     }
 }

@@ -2,7 +2,7 @@
 //! The Teensy SPI is too fast to interface with the
 //! kicker so I'm going to try to write an LPSPI implementation
 //! using gpio pins to interface with the kicker
-//! 
+//!
 
 #![no_std]
 #![no_main]
@@ -25,11 +25,11 @@ mod app {
 
     use super::*;
 
+    use bsp::board::{self, PERCLK_FREQUENCY};
     use imxrt_iomuxc::{configure, Config, PullKeeper};
     use main::spi::FakeSpi;
     use main::KickerCSn;
     use teensy4_bsp as bsp;
-    use bsp::board::{self, PERCLK_FREQUENCY};
 
     use bsp::hal::timer::Blocking;
 
@@ -41,9 +41,7 @@ mod app {
     static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
 
     #[local]
-    struct Local {
-
-    }
+    struct Local {}
 
     #[shared]
     struct Shared {
@@ -89,9 +87,7 @@ mod app {
                 fake_spi,
                 kicker_csn: fake_csn,
             },
-            Local {
-
-            }
+            Local {},
         )
     }
 
@@ -117,14 +113,18 @@ mod app {
             buffer
         });
 
-        log::info!("Result: [{:#02x}, {:#02x}, {:#02x}, {:#02x}]", result[0], result[1], result[2], result[3]);
+        log::info!(
+            "Result: [{:#02x}, {:#02x}, {:#02x}, {:#02x}]",
+            result[0],
+            result[1],
+            result[2],
+            result[3]
+        );
 
         delay::spawn().ok();
     }
 
-    #[task(
-        priority = 1,
-    )]
+    #[task(priority = 1)]
     async fn delay(_ctx: delay::Context) {
         Systick::delay(50u32.millis()).await;
 

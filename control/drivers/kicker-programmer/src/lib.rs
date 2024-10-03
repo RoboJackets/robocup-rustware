@@ -1,19 +1,17 @@
 //!
 //! Driver for in-system programming of the kicker board
-//! 
+//!
 
 #![no_std]
 
 use core::{cmp::min, fmt::Debug};
 
 #[deny(missing_docs)]
-
 use embedded_hal::{
-    digital::v2::OutputPin,
-    blocking::spi::{Transfer, Write},
     blocking::delay::{DelayMs, DelayUs},
+    blocking::spi::{Transfer, Write},
+    digital::v2::OutputPin,
 };
-
 
 mod kicker_bin;
 use kicker_bin::KICKER_BYTES;
@@ -48,19 +46,27 @@ const READ_LOW_BYTE: u8 = 0x20;
 pub enum KickerProgrammerError<GPIOE: Debug, SPIE: Debug> {
     /// The command to enable Programming failed to return the
     /// expected value
-    FailedToEnableProgramming{ bytes: [u8; 4] },
+    FailedToEnableProgramming { bytes: [u8; 4] },
     /// The command to erase the chip failed to return the expected
     /// value
     FailedToEraseChip,
     /// The kicker board chip identified incorrectly (there was likely a
     /// problem with enabling programming or erasing the chip)
-    InvalidIdentity { register: u8, expected: u8, found: u8 },
+    InvalidIdentity {
+        register: u8,
+        expected: u8,
+        found: u8,
+    },
     /// The binary that is attempting to be programmed is larger than the
     /// maximum flash size of the kicker chip
     InvalidBinarySize,
     /// The binary differs from the programmed value on page `page_num` offset
     /// `offset`
-    BinaryDiffers { page_number: usize, offset: u8, low_byte: bool, },
+    BinaryDiffers {
+        page_number: usize,
+        offset: u8,
+        low_byte: bool,
+    },
     /// Error with the GPIO Peripheral
     Gpio(GPIOE),
     /// Error with the SPI Peripheral
@@ -75,17 +81,15 @@ pub struct KickerProgrammer<CS, RESET> {
     reset: RESET,
 }
 
-impl<CS, RESET, GPIOE> KickerProgrammer<CS, RESET> where 
-    CS: OutputPin<Error=GPIOE>,
-    RESET: OutputPin<Error=GPIOE>,
+impl<CS, RESET, GPIOE> KickerProgrammer<CS, RESET>
+where
+    CS: OutputPin<Error = GPIOE>,
+    RESET: OutputPin<Error = GPIOE>,
     GPIOE: Debug,
 {
     /// Instantiate a new Kicker Driver
     pub fn new(cs: CS, reset: RESET) -> Self {
-        Self {
-            cs,
-            reset,
-        }
+        Self { cs, reset }
     }
 
     /// Recover the Peripherals from the Kicker Programmer Driver
@@ -97,7 +101,7 @@ impl<CS, RESET, GPIOE> KickerProgrammer<CS, RESET> where
     /// activate whenever the breakbeam is interrupted.
     pub fn program_kick_on_breakbeam<SPIE: Debug>(
         &mut self,
-        spi: &mut (impl Transfer<u8, Error=SPIE> + Write<u8, Error=SPIE>),
+        spi: &mut (impl Transfer<u8, Error = SPIE> + Write<u8, Error = SPIE>),
         delay: &mut (impl DelayMs<u32> + DelayUs<u32>),
     ) -> Result<(), KickerProgrammerError<GPIOE, SPIE>> {
         self.program(include_bytes!("./bin/kicker.nib"), spi, delay)
@@ -107,7 +111,7 @@ impl<CS, RESET, GPIOE> KickerProgrammer<CS, RESET> where
     /// spi commands
     pub fn program_kicker<SPIE: Debug>(
         &mut self,
-        spi: &mut (impl Transfer<u8, Error=SPIE> + Write<u8, Error=SPIE>),
+        spi: &mut (impl Transfer<u8, Error = SPIE> + Write<u8, Error = SPIE>),
         delay: &mut (impl DelayMs<u32> + DelayUs<u32>),
     ) -> Result<(), KickerProgrammerError<GPIOE, SPIE>> {
         self.program(&KICKER_BYTES_ON_BB, spi, delay)
@@ -117,7 +121,7 @@ impl<CS, RESET, GPIOE> KickerProgrammer<CS, RESET> where
     fn program<SPIE: Debug>(
         &mut self,
         kicker_program: &[u8],
-        spi: &mut (impl Transfer<u8, Error=SPIE> + Write<u8, Error=SPIE>),
+        spi: &mut (impl Transfer<u8, Error = SPIE> + Write<u8, Error = SPIE>),
         delay: &mut (impl DelayMs<u32> + DelayUs<u32>),
     ) -> Result<(), KickerProgrammerError<GPIOE, SPIE>> {
         log::info!("Attempting to Enable Programming");
@@ -161,7 +165,8 @@ impl<CS, RESET, GPIOE> KickerProgrammer<CS, RESET> where
         for page in 0..num_pages {
             log::info!("Programming Page {}", page);
             self.load_memory_page(
-                &kicker_program[(page * 2 * ATMEGA_PAGESIZE)..min((page+1) * 2 * ATMEGA_PAGESIZE, kicker_program.len())],
+                &kicker_program[(page * 2 * ATMEGA_PAGESIZE)
+                    ..min((page + 1) * 2 * ATMEGA_PAGESIZE, kicker_program.len())],
                 page,
                 spi,
                 delay,
@@ -177,7 +182,8 @@ impl<CS, RESET, GPIOE> KickerProgrammer<CS, RESET> where
         for page in 0..num_pages {
             log::info!("Checking Page {}", page);
             self.check_memory_page(
-                &kicker_program[(page * 2 * ATMEGA_PAGESIZE)..min((page + 1) * 2 * ATMEGA_PAGESIZE, kicker_program.len())],
+                &kicker_program[(page * 2 * ATMEGA_PAGESIZE)
+                    ..min((page + 1) * 2 * ATMEGA_PAGESIZE, kicker_program.len())],
                 page,
                 spi,
                 delay,
@@ -195,7 +201,7 @@ impl<CS, RESET, GPIOE> KickerProgrammer<CS, RESET> where
     /// Enable programming of the Kicker
     fn enable_programming<SPIE: Debug>(
         &mut self,
-        spi: &mut (impl Transfer<u8, Error=SPIE> + Write<u8, Error=SPIE>),
+        spi: &mut (impl Transfer<u8, Error = SPIE> + Write<u8, Error = SPIE>),
         delay: &mut (impl DelayMs<u32> + DelayUs<u32>),
     ) -> Result<(), KickerProgrammerError<GPIOE, SPIE>> {
         self.reset.set_high().map_err(KickerProgrammerError::Gpio)?;
@@ -216,7 +222,7 @@ impl<CS, RESET, GPIOE> KickerProgrammer<CS, RESET> where
     /// Erase the contents of the kicker
     fn erase_chip<SPIE: Debug>(
         &mut self,
-        spi: &mut (impl Transfer<u8, Error=SPIE> + Write<u8, Error=SPIE>),
+        spi: &mut (impl Transfer<u8, Error = SPIE> + Write<u8, Error = SPIE>),
         delay: &mut (impl DelayMs<u32> + DelayUs<u32>),
     ) -> Result<(), KickerProgrammerError<GPIOE, SPIE>> {
         let mut buffer = [0xAC, 0x80, 0x00, 0x00];
@@ -235,7 +241,7 @@ impl<CS, RESET, GPIOE> KickerProgrammer<CS, RESET> where
     /// of the kicker chip.
     fn check_device<SPIE: Debug>(
         &mut self,
-        spi: &mut (impl Transfer<u8, Error=SPIE> + Write<u8, Error=SPIE>),
+        spi: &mut (impl Transfer<u8, Error = SPIE> + Write<u8, Error = SPIE>),
         delay: &mut (impl DelayMs<u32> + DelayUs<u32>),
     ) -> Result<(), KickerProgrammerError<GPIOE, SPIE>> {
         let mut buffer = [0x30, 0x00, 0x00, 0x00];
@@ -243,7 +249,11 @@ impl<CS, RESET, GPIOE> KickerProgrammer<CS, RESET> where
 
         log::info!("Buffer: {:?}", buffer);
         if buffer[3] != EXPECTED_VENDOR_CODE {
-            return Err(KickerProgrammerError::InvalidIdentity { register: 0x00, expected: EXPECTED_VENDOR_CODE, found: buffer[3]});
+            return Err(KickerProgrammerError::InvalidIdentity {
+                register: 0x00,
+                expected: EXPECTED_VENDOR_CODE,
+                found: buffer[3],
+            });
         }
 
         buffer = [0x30, 0x00, 0x01, 0x00];
@@ -251,7 +261,11 @@ impl<CS, RESET, GPIOE> KickerProgrammer<CS, RESET> where
 
         log::info!("Buffer: {:?}", buffer);
         if buffer[3] != EXPECTED_PART_FAILY_AND_MEMORY_SIZE {
-            return Err(KickerProgrammerError::InvalidIdentity { register: 0x01, expected: EXPECTED_PART_FAILY_AND_MEMORY_SIZE, found: buffer[3] });
+            return Err(KickerProgrammerError::InvalidIdentity {
+                register: 0x01,
+                expected: EXPECTED_PART_FAILY_AND_MEMORY_SIZE,
+                found: buffer[3],
+            });
         }
 
         buffer = [0x30, 0x00, 0x02, 0x00];
@@ -259,7 +273,11 @@ impl<CS, RESET, GPIOE> KickerProgrammer<CS, RESET> where
 
         log::info!("Buffer: {:?}", buffer);
         if buffer[3] != EXPECTED_PART_NUMBER {
-            return Err(KickerProgrammerError::InvalidIdentity { register: 0x02, expected: EXPECTED_PART_NUMBER, found: buffer[3]});
+            return Err(KickerProgrammerError::InvalidIdentity {
+                register: 0x02,
+                expected: EXPECTED_PART_NUMBER,
+                found: buffer[3],
+            });
         }
 
         Ok(())
@@ -270,26 +288,40 @@ impl<CS, RESET, GPIOE> KickerProgrammer<CS, RESET> where
         &mut self,
         data: &[u8],
         page_number: usize,
-        spi: &mut (impl Transfer<u8, Error=SPIE> + Write<u8, Error=SPIE>),
+        spi: &mut (impl Transfer<u8, Error = SPIE> + Write<u8, Error = SPIE>),
         delay: &mut (impl DelayMs<u32> + DelayUs<u32>),
     ) -> Result<(), KickerProgrammerError<GPIOE, SPIE>> {
-        log::info!("Data Length: {}\n Pagesize: {}", data.len(), ATMEGA_PAGESIZE);
+        log::info!(
+            "Data Length: {}\n Pagesize: {}",
+            data.len(),
+            ATMEGA_PAGESIZE
+        );
         log::info!("{}", min(ATMEGA_PAGESIZE, data.len() / 2));
         // Load the page data to memory
         for address in 0..min(ATMEGA_PAGESIZE, data.len() / 2) {
-            let mut low_byte_buffer = [LOW_BYTE, 0x00, (address & 0x3F) as u8, data[2*address]];
+            let mut low_byte_buffer = [LOW_BYTE, 0x00, (address & 0x3F) as u8, data[2 * address]];
             self.write(&mut low_byte_buffer, spi, delay)?;
 
             delay.delay_ms(20);
 
-            let mut high_byte_buffer = [HIGH_BYTE, 0x00, (address & 0x3F) as u8, data[2*address+1]];
+            let mut high_byte_buffer = [
+                HIGH_BYTE,
+                0x00,
+                (address & 0x3F) as u8,
+                data[2 * address + 1],
+            ];
             self.write(&mut high_byte_buffer, spi, delay)?;
 
             delay.delay_ms(20);
         }
 
         // Write the page into memory
-        let mut buffer = [WRITE_PAGE, (page_number >> 2) as u8, (page_number << 6) as u8, 0x00];
+        let mut buffer = [
+            WRITE_PAGE,
+            (page_number >> 2) as u8,
+            (page_number << 6) as u8,
+            0x00,
+        ];
         self.write(&mut buffer, spi, delay)?;
 
         // The maximum programming time for the atmega32a is 4.5ms
@@ -302,8 +334,8 @@ impl<CS, RESET, GPIOE> KickerProgrammer<CS, RESET> where
         &mut self,
         data: &[u8],
         page_number: usize,
-        spi: &mut (impl Transfer<u8, Error=SPIE> + Write<u8, Error=SPIE>),
-        delay: &mut (impl DelayMs<u32> + DelayUs<u32>)
+        spi: &mut (impl Transfer<u8, Error = SPIE> + Write<u8, Error = SPIE>),
+        delay: &mut (impl DelayMs<u32> + DelayUs<u32>),
     ) -> Result<(), KickerProgrammerError<GPIOE, SPIE>> {
         for address in 0..core::cmp::min(ATMEGA_PAGESIZE, data.len() / 2) {
             let mut low_byte_buffer = [
@@ -313,7 +345,7 @@ impl<CS, RESET, GPIOE> KickerProgrammer<CS, RESET> where
                 0x00,
             ];
             self.write(&mut low_byte_buffer, spi, delay)?;
-            if data[2*address] != low_byte_buffer[3] {
+            if data[2 * address] != low_byte_buffer[3] {
                 return Err(KickerProgrammerError::BinaryDiffers {
                     page_number,
                     offset: address as u8,
@@ -328,7 +360,7 @@ impl<CS, RESET, GPIOE> KickerProgrammer<CS, RESET> where
                 0x00,
             ];
             self.write(&mut high_byte_buffer, spi, delay)?;
-            if data[2*address+1] != high_byte_buffer[3] {
+            if data[2 * address + 1] != high_byte_buffer[3] {
                 return Err(KickerProgrammerError::BinaryDiffers {
                     page_number,
                     offset: address as u8,
@@ -342,7 +374,7 @@ impl<CS, RESET, GPIOE> KickerProgrammer<CS, RESET> where
 
     fn exit_programming<SPIE: Debug>(
         &mut self,
-        _spi: &mut (impl Transfer<u8, Error=SPIE> + Write<u8, Error=SPIE>),
+        _spi: &mut (impl Transfer<u8, Error = SPIE> + Write<u8, Error = SPIE>),
         _delay: &mut (impl DelayMs<u32> + DelayUs<u32>),
     ) -> Result<(), KickerProgrammerError<GPIOE, SPIE>> {
         self.reset.set_high().map_err(KickerProgrammerError::Gpio)
@@ -352,7 +384,7 @@ impl<CS, RESET, GPIOE> KickerProgrammer<CS, RESET> where
     fn write<SPIE: Debug>(
         &mut self,
         buffer: &mut [u8],
-        spi: &mut (impl Transfer<u8, Error=SPIE> + Write<u8, Error=SPIE>),
+        spi: &mut (impl Transfer<u8, Error = SPIE> + Write<u8, Error = SPIE>),
         delay: &mut (impl DelayMs<u32> + DelayUs<u32>),
     ) -> Result<(), KickerProgrammerError<GPIOE, SPIE>> {
         delay.delay_us(10);

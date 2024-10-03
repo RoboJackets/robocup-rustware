@@ -25,7 +25,7 @@ impl Configuration {
         // MacOS
         // let loader = env::var("TEENSY4RS_LOADER")
         //     .unwrap_or_else(|_| "./teensy_loader_cli/teensy_loader_cli_macos".into());
-        
+
         // Windows
         // let loader = env::var("TEENSY4RS_LOADER")
         //     .unwrap_or_else(|_| "./teensy_loader_cli/teensy_loader_cli_windows.exe".into());
