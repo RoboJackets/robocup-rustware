@@ -29,11 +29,11 @@ mod app {
 
     use kicker_controller::{KickTrigger, KickType, Kicker, KickerCommand};
 
-    use main::{spi::FakeSpi, KickerCSn};
+    use main::{spi::FakeSpi, KickerCSn, KickerReset};
 
     #[local]
     struct Local {
-        kicker_controller: Kicker<KickerCSn>,
+        kicker_controller: Kicker<KickerCSn, KickerReset>,
         fake_spi: FakeSpi,
     }
 
@@ -45,6 +45,7 @@ mod app {
         let board::Resources {
             pins,
             usb,
+            mut gpio2,
             mut gpio4,
             pit: (_pit0, _pit1, _pit2, pit3),
             ..
@@ -54,7 +55,10 @@ mod app {
 
         let systick_token = rtic_monotonics::create_systick_token!();
         Systick::start(ctx.core.SYST, 600_000_000, systick_token);
-        let kicker = Kicker::new(gpio4.output(pins.p5));
+        let kicker = Kicker::new(
+            gpio4.output(pins.p5),
+            gpio2.output(pins.p6)
+        );
 
         let pit_delay = Blocking::<_, PERCLK_FREQUENCY>::from_pit(pit3);
         let fake_spi = FakeSpi::new(
@@ -129,11 +133,11 @@ mod app {
             kick_strength: 0.0,
             charge_allowed: false,
         };
-        let kicker_status = ctx
-            .local
-            .kicker_controller
-            .service(kicker_command, ctx.local.fake_spi)
-            .unwrap();
-        log::info!("Status: {:?}", kicker_status);
+
+        for _ in 0..20 {
+            let kicker_status = ctx.local.kicker_controller.service(kicker_command, ctx.local.fake_spi).unwrap();
+            log::info!("Status: {:?}", kicker_status);
+            Systick::delay(100u32.millis()).await;
+        }
     }
 }

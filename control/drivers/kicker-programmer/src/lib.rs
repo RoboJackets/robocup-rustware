@@ -111,7 +111,7 @@ where
         spi: &mut (impl Transfer<u8, Error = SPIE> + Write<u8, Error = SPIE>),
         delay: &mut (impl DelayMs<u32> + DelayUs<u32>),
     ) -> Result<(), KickerProgrammerError<GPIOE, SPIE>> {
-        self.program(include_bytes!("../bin/kicker.nib"), spi, delay)
+        self.program(&KICKER_BYTES_ON_BB, spi, delay)
     }
 
     /// Program the kicker with full functionality to control kicking via
@@ -121,7 +121,7 @@ where
         spi: &mut (impl Transfer<u8, Error = SPIE> + Write<u8, Error = SPIE>),
         delay: &mut (impl DelayMs<u32> + DelayUs<u32>),
     ) -> Result<(), KickerProgrammerError<GPIOE, SPIE>> {
-        self.program(&KICKER_BYTES_ON_BB, spi, delay)
+        self.program(include_bytes!("../bin/kicker.nib"), spi, delay)
     }
 
     /// Program the kicker
@@ -298,12 +298,6 @@ where
         spi: &mut (impl Transfer<u8, Error = SPIE> + Write<u8, Error = SPIE>),
         delay: &mut (impl DelayMs<u32> + DelayUs<u32>),
     ) -> Result<(), KickerProgrammerError<GPIOE, SPIE>> {
-        log::info!(
-            "Data Length: {}\n Pagesize: {}",
-            data.len(),
-            ATMEGA_PAGESIZE
-        );
-        log::info!("{}", min(ATMEGA_PAGESIZE, data.len() / 2));
         // Load the page data to memory
         for address in 0..min(ATMEGA_PAGESIZE, data.len() / 2) {
             let mut low_byte_buffer = [LOW_BYTE, 0x00, (address & 0x3F) as u8, data[2 * address]];

@@ -153,19 +153,24 @@ pub enum KickerServiceError<SPIE: Debug, GPIOE: Debug> {
 }
 
 /// Driver to control the kicker board
-pub struct Kicker<CS> {
+pub struct Kicker<CS, RESET> {
     /// The current state of the kicker
     pub state: KickerState,
     /// The chip select controlled by the kicker controller
     cs: CS,
+    /// The reset pin of the kicker (needs to be held high)
+    _reset: RESET,
 }
 
-impl<CS: OutputPin<Error = GPIOE>, GPIOE: Debug> Kicker<CS> {
+impl<CS: OutputPin<Error = GPIOE>, RESET: OutputPin<Error=GPIOE>, GPIOE: Debug> Kicker<CS, RESET> {
     /// Create a new kicker control driver
-    pub fn new(cs: CS) -> Self {
+    pub fn new(cs: CS, mut reset: RESET) -> Self {
+        reset.set_high().unwrap();
+
         Self {
             state: KickerState::default(),
             cs,
+            _reset: reset,
         }
     }
 
