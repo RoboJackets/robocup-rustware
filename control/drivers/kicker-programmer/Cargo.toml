@@ -1,0 +1,8 @@
+[package]
+name = "kicker-programmer"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+embedded-hal = "~0.2"
+log = "0.4"

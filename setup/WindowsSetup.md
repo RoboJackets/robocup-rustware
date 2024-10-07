@@ -31,7 +31,7 @@ cargo install cargo-binutils
 
 ## Teensy Dependencies
 
-It is a huge pita to actually build the teensy_loader_cli for windows so I stole it from platformio. In the setup folder there should be a zip file named `teensy_loader_cli.zip`. Extract the zipped folder.
+It is a huge pita to actually build the teensy_loader_cli for windows so I stole it from platformio. In the setup folder there should be a zip file named `teensy_loader_cli.zip`. Extract the zipped folder.  Also, in `setup/runner.rs`, uncomend the the line under Windows on line 29.
 
 ```sh
 cargo run --example demo --target thumbv7em-none-eabihf

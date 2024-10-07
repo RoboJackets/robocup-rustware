@@ -6,6 +6,17 @@ In 2023, we decided to switch microcontrollers from the team built A-Train micro
 
 Therefore, this repository contains the code for the firmware for the RoboJackets RoboCup team.
 
+## Setup
+
+If you are running linux or macos, run:
+```sh
+./setup/unix.sh
+```
+
+If running windows, follow the steps in [setup/WindowsSetup.md](setup/WindowsSetup.md). 
+
+To ensure the correct version of Teensy loader is used by your system ensure the line under your operating system (i.e. "MacOS", "Windows", and "Linux") is uncommented in [control/tools/runner.rs](control/tools/runner.rs)
+
 ## Common Commands
 
 ### Running main.rs
