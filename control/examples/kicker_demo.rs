@@ -55,10 +55,7 @@ mod app {
 
         let systick_token = rtic_monotonics::create_systick_token!();
         Systick::start(ctx.core.SYST, 600_000_000, systick_token);
-        let kicker = Kicker::new(
-            gpio4.output(pins.p5),
-            gpio2.output(pins.p6)
-        );
+        let kicker = Kicker::new(gpio4.output(pins.p5), gpio2.output(pins.p6));
 
         let pit_delay = Blocking::<_, PERCLK_FREQUENCY>::from_pit(pit3);
         let fake_spi = FakeSpi::new(
@@ -135,7 +132,11 @@ mod app {
         };
 
         for _ in 0..20 {
-            let kicker_status = ctx.local.kicker_controller.service(kicker_command, ctx.local.fake_spi).unwrap();
+            let kicker_status = ctx
+                .local
+                .kicker_controller
+                .service(kicker_command, ctx.local.fake_spi)
+                .unwrap();
             log::info!("Status: {:?}", kicker_status);
             Systick::delay(100u32.millis()).await;
         }

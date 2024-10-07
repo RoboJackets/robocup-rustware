@@ -162,7 +162,9 @@ pub struct Kicker<CS, RESET> {
     _reset: RESET,
 }
 
-impl<CS: OutputPin<Error = GPIOE>, RESET: OutputPin<Error=GPIOE>, GPIOE: Debug> Kicker<CS, RESET> {
+impl<CS: OutputPin<Error = GPIOE>, RESET: OutputPin<Error = GPIOE>, GPIOE: Debug>
+    Kicker<CS, RESET>
+{
     /// Create a new kicker control driver
     pub fn new(cs: CS, mut reset: RESET) -> Self {
         reset.set_high().unwrap();
