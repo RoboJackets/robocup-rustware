@@ -30,4 +30,4 @@ elif type brew > /dev/null 2>&1; then
 fi
 
 # unzip the teensy loader
-unzip "${currentDir}/teensy_loader_cli.zip" -d "${currentDir}/../control/teensy_loader_cli"
+unzip "${currentDir}/setup/teensy_loader_cli.zip" -d "${currentDir}/control"
