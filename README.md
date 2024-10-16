@@ -19,6 +19,8 @@ To ensure the correct version of Teensy loader is used by your system ensure the
 
 ## Common Commands
 
+> Run these under the `control/` directory
+
 ### Running main.rs
 
 Kelvin created a runner to make running code on the teensy easier.  To utilize this runner run:
@@ -41,6 +43,21 @@ To open the documentation for internal drivers, libraries, and dependencies run:
 
 ```sh
 cargo docs --open
+```
+
+### Troubleshooting
+
+#### \[Linux (maybe MacOS)\] "Unable to claim interface, check USB permissions"
+1. Run:
+> This add you to the `dialout` group, which allows you to access serial communication devices
+```sh
+sudo usermod -a -G dialout $USERNAME
+```
+2. Check if it works. If not, proceed to step 3.
+3. Run:
+> This allows everyone to access USB devices
+```sh
+sudo chmod 777 /dev/bus/usb
 ```
 
 ## New Members Project
