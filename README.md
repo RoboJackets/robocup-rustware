@@ -43,6 +43,21 @@ To open the documentation for internal drivers, libraries, and dependencies run:
 cargo docs --open
 ```
 
+### Troubleshooting
+
+#### \[Linux (maybe MacOS)\] "Unable to claim interface, check USB permissions"
+1. Run:
+> This add you to the `dialout` group, which allows you to access serial communication devices
+```sh
+sudo usermod -a -G dialout $USERNAME
+```
+2. Check if it works. If not, proceed to step 3.
+3. Run:
+> This allows everyone to access USB devices
+```sh
+sudo chmod 777 /dev/bus/usb
+```
+
 ## New Members Project
 
 As you may see, the repository is currently quite bare.  This is due to the rewrite having only started this semester (and a good amount of work and poc testing being done in other repositories).  Therefore, the documentation for a new member project is relatively sparse and probably seems thrown together at the last moment (that's because it is). As much as possible, this tutorial will treat you as though this is your first time seeing Rust and working with a microcontroller; as such, the tutorial will try to relate as many concepts as possible to more common coding langauges like Java. 
