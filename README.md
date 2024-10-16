@@ -19,6 +19,8 @@ To ensure the correct version of Teensy loader is used by your system ensure the
 
 ## Common Commands
 
+> Run these under the `control/` directory
+
 ### Running main.rs
 
 Kelvin created a runner to make running code on the teensy easier.  To utilize this runner run:
