@@ -24,3 +24,32 @@ pub mod errors;
 pub use errors::*;
 
 pub mod spi;
+
+/// The current state of the program.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum State {
+    /// Default Operation
+    Default,
+    /// Idling
+    Idle,
+    /// Testing the IMU
+    IMUTesting,
+    /// Benchmarking the radio receive
+    ReceiveBenchmark,
+    /// Benchmarking the radio sending
+    SendBenchmark,
+    /// Programming the kicker with kick-on-breakbeam
+    ProgramKickOnBreakbeam,
+    /// Programming the kicker with normal operations
+    ProgramKicker,
+    /// Testing the Kicker
+    KickerTesting,
+    /// Testing the FPGA Movement
+    FpgaTesting,
+}
+
+impl Default for State {
+    fn default() -> Self {
+        Self::Default
+    }
+}

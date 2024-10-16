@@ -122,7 +122,6 @@ mod app {
             usb,
             lpi2c1,
             lpspi4,
-            mut gpt1,
             mut gpt2,
             pit: (pit0, pit1, pit2, _pit3),
             ..
@@ -134,12 +133,6 @@ mod app {
         // Initialize Systick Async Delay
         let systick_token = rtic_monotonics::create_systick_token!();
         Systick::start(ctx.core.SYST, 600_000_000, systick_token);
-
-        // Gpt 1 as blocking delay
-        gpt1.disable();
-        gpt1.set_divider(GPT_DIVIDER);
-        gpt1.set_clock_source(GPT_CLOCK_SOURCE);
-        let delay1 = Blocking::<_, GPT_FREQUENCY>::from_gpt(gpt1);
 
         // Gpt 2 as blocking delay
         gpt2.disable();
@@ -204,7 +197,7 @@ mod app {
         let done = gpio3.input(pins.p30);
 
         // Initialize the FPGA
-        let fpga = match FPGA::new(spi, cs, init_b, prog_b, done, delay1) {
+        let fpga = match FPGA::new(spi, cs, init_b, prog_b, done) {
             Ok(fpga) => fpga,
             Err(_) => panic!("Unable to initialize the FPGA"),
         };
@@ -299,7 +292,7 @@ mod app {
     }
 
     #[task(
-        shared = [fpga, pit_delay, imu_init_error, fpga_init_error, fpga_prog_error, radio_init_error],
+        shared = [fpga, pit_delay, imu_init_error, fpga_init_error, fpga_prog_error, radio_init_error, delay2],
         priority = 1
     )]
     async fn initialize_fpga(ctx: initialize_fpga::Context) {
@@ -310,6 +303,7 @@ mod app {
             ctx.shared.fpga_init_error,
             ctx.shared.fpga_prog_error,
             ctx.shared.radio_init_error,
+            ctx.shared.delay2,
         )
             .lock(
                 |fpga,
@@ -317,14 +311,15 @@ mod app {
                  imu_init_error,
                  fpga_init_error,
                  fpga_prog_error,
-                 radio_init_error| {
-                    if let Err(err) = fpga.configure() {
+                 radio_init_error,
+                 delay| {
+                    if let Err(err) = fpga.configure(delay) {
                         *fpga_prog_error = Some(err);
                         return false;
                     }
                     pit_delay.delay_ms(10u8);
 
-                    if let Err(err) = fpga.motors_en(true) {
+                    if let Err(err) = fpga.motors_en(true, delay) {
                         *fpga_init_error = Some(err);
                         return false;
                     }
@@ -503,9 +498,9 @@ mod app {
         #[cfg(feature = "debug")]
         log::info!("Moving at {:?}", wheel_velocities);
 
-        let encoder_velocities = ctx.shared.fpga.lock(|fpga| {
+        let encoder_velocities = (ctx.shared.fpga, ctx.shared.delay2).lock(|fpga, delay| {
             let encoder_velocities =
-                match fpga.set_velocities(wheel_velocities.into(), dribbler_enabled) {
+                match fpga.set_velocities(wheel_velocities.into(), dribbler_enabled, delay) {
                     Ok(encoder_velocities) => encoder_velocities,
                     Err(_err) => {
                         #[cfg(feature = "debug")]

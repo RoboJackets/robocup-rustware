@@ -9,7 +9,6 @@
         "./drivers/kicker-controller/Cargo.toml"
     ],
     "rust-analyzer.check.extraArgs": [
-        "--examples",
         "--bins",
         "--lib"
     ],

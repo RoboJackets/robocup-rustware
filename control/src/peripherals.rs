@@ -26,7 +26,7 @@ use super::GPT_FREQUENCY;
 /// SPI that is used for the FPGA
 pub type FpgaSpi = Lpspi<board::LpspiPins<P11, P12, P13, P10>, 4>;
 /// The FPGA
-pub type Fpga = FPGA<FpgaSpi, Output<P9>, P29, Output<P28>, P30, Delay1, LpspiError, Infallible>;
+pub type Fpga = FPGA<FpgaSpi, Output<P9>, P29, Output<P28>, P30, LpspiError, Infallible>;
 /// Shared Spi
 pub type SharedSPI = Lpspi<board::LpspiPins<P26, P39, P27, P38>, 3>;
 /// The Chip Enable for the Radio

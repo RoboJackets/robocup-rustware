@@ -159,7 +159,7 @@ pub struct Kicker<CS, RESET> {
     /// The chip select controlled by the kicker controller
     cs: CS,
     /// The reset pin of the kicker (needs to be held high)
-    _reset: RESET,
+    reset: RESET,
 }
 
 impl<CS: OutputPin<Error = GPIOE>, RESET: OutputPin<Error = GPIOE>, GPIOE: Debug>
@@ -172,8 +172,13 @@ impl<CS: OutputPin<Error = GPIOE>, RESET: OutputPin<Error = GPIOE>, GPIOE: Debug
         Self {
             state: KickerState::default(),
             cs,
-            _reset: reset,
+            reset,
         }
+    }
+
+    /// Free the underlying peripherals of the kicker controller
+    pub fn destroy(self) -> (CS, RESET) {
+        (self.cs, self.reset)
     }
 
     /// Service the kicker by sending a command and receiving the kicker
