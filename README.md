@@ -24,7 +24,7 @@ To ensure the correct version of Teensy loader is used by your system ensure the
 Kelvin created a runner to make running code on the teensy easier.  To utilize this runner run:
 
 ```sh
-cargo run --target thumbv7em-none-eabihf
+cargo run --target thumbv7em-none-eabihf --release
 ```
 
 ### examples (and tests)
