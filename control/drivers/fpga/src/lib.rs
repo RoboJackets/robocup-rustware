@@ -149,8 +149,7 @@ where
 /// used different names from our custom FpgaError enum defined in the error.rs
 /// to outline how we are using our custom error to wrap embedded trait error types
 ///
-impl<SPI, CS, INIT, PROG, DONE, SPIE, GPIOE>
-    FPGA<SPI, CS, INIT, PROG, DONE, SPIE, GPIOE>
+impl<SPI, CS, INIT, PROG, DONE, SPIE, GPIOE> FPGA<SPI, CS, INIT, PROG, DONE, SPIE, GPIOE>
 where
     SPI: Write<u8, Error = SPIE> + Transfer<u8, Error = SPIE>,
     PROG: OutputPin<Error = GPIOE>,
@@ -195,7 +194,7 @@ where
     ///    5. Returns Ok if no errors or timeout
     pub fn configure(
         &mut self,
-        delay: &mut (impl DelayMs<u32> + DelayUs<u32>)
+        delay: &mut (impl DelayMs<u32> + DelayUs<u32>),
     ) -> Result<(), FpgaError<SPIE, GPIOE>> {
         // toggle the prog_b pin
         self.prog_b
@@ -599,7 +598,7 @@ where
     pub fn motors_en(
         &mut self,
         enable: bool,
-        delay: &mut impl DelayUs<u32>
+        delay: &mut impl DelayUs<u32>,
     ) -> Result<u8, FpgaError<SPIE, GPIOE>> {
         let mut write_buffer: [u8; 1] = [0x00];
         write_buffer[0] = if enable {
@@ -615,7 +614,7 @@ where
     /// Toggle the motors enable on and off to reset the motors
     pub fn reset_motors(
         &mut self,
-        delay: &mut impl DelayUs<u32>
+        delay: &mut impl DelayUs<u32>,
     ) -> Result<u8, FpgaError<SPIE, GPIOE>> {
         // Set Motors High -> Low -> High
         let mut buffer = [0x30 | 1 << 7];
@@ -630,7 +629,7 @@ where
     /// Reset the watchdog on the FPGA.
     pub fn watchdog_reset(
         &mut self,
-        delay: &mut impl DelayUs<u32>
+        delay: &mut impl DelayUs<u32>,
     ) -> Result<(), FpgaError<SPIE, GPIOE>> {
         let _ = self.motors_en(true, delay)?;
         delay.delay_us(1);

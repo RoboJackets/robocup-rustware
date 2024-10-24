@@ -30,7 +30,7 @@ mod app {
 
     use rtic_monotonics::systick::*;
 
-    use main::{Delay2, GPT_CLOCK_SOURCE, GPT_DIVIDER, GPT_FREQUENCY};
+    use robojackets_robocup_control::{Delay2, GPT_CLOCK_SOURCE, GPT_DIVIDER, GPT_FREQUENCY};
 
     const HEAP_SIZE: usize = 8192;
     static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];

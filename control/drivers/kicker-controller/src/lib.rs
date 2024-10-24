@@ -12,6 +12,8 @@ use embedded_hal::{
     digital::v2::OutputPin,
 };
 
+use robojackets_robocup_rtp::control_message::{ControlMessage, ShootMode, TriggerMode};
+
 /// Voltage threshold for the kicker board to be considered charged.
 pub const CHARGE_CUTOFF: u8 = 230;
 
@@ -31,6 +33,15 @@ pub enum KickType {
     Chip = 0,
 }
 
+impl From<ShootMode> for KickType {
+    fn from(value: ShootMode) -> Self {
+        match value {
+            ShootMode::Kick => Self::Kick,
+            ShootMode::Chip => Self::Chip,
+        }
+    }
+}
+
 /// The trigger for the kicker to perform a kick
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum KickTrigger {
@@ -40,6 +51,16 @@ pub enum KickTrigger {
     Breakbeam = 1 << 5,
     /// The kicker should kick immediately
     Immediate = 1 << 6,
+}
+
+impl From<TriggerMode> for KickTrigger {
+    fn from(value: TriggerMode) -> Self {
+        match value {
+            TriggerMode::Immediate => Self::Immediate,
+            TriggerMode::OnBreakBeam => Self::Breakbeam,
+            TriggerMode::StandDown => Self::Disabled,
+        }
+    }
 }
 
 /// The command to send to the kicker
@@ -109,6 +130,17 @@ impl Into<u8> for KickerCommand {
         }
 
         command
+    }
+}
+
+impl From<ControlMessage> for KickerCommand {
+    fn from(value: ControlMessage) -> Self {
+        Self {
+            kick_type: value.shoot_mode.into(),
+            kick_trigger: value.trigger_mode.into(),
+            kick_strength: value.kick_strength as f32 * 255.0 / 15.0,
+            charge_allowed: value.trigger_mode != TriggerMode::StandDown,
+        }
     }
 }
 

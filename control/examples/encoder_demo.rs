@@ -42,7 +42,7 @@ static HEAP: Heap = Heap::empty();
 mod app {
     use fpga::error::FpgaError;
 
-    use main::{Delay1, Fpga, GPT_CLOCK_SOURCE, GPT_DIVIDER, GPT_FREQUENCY};
+    use robojackets_robocup_control::{Delay1, Fpga, GPT_CLOCK_SOURCE, GPT_DIVIDER, GPT_FREQUENCY};
 
     // this allows us to define our packages outside the app module
     // we're essetially "bringing them all in"

@@ -59,7 +59,7 @@ mod app {
 
     use icm42605_driver::IMU;
 
-    use main::{
+    use robojackets_robocup_control::{
         Delay2, FPGAInitError, FPGAProgError, Fpga, Gpio1, Imu, ImuInitError, PitDelay, RFRadio,
         RadioInitError, RadioInterrupt, SharedSPI, BASE_AMPLIFICATION_LEVEL, CHANNEL,
         GPT_CLOCK_SOURCE, GPT_DIVIDER, GPT_FREQUENCY, RADIO_ADDRESS, ROBOT_ID,

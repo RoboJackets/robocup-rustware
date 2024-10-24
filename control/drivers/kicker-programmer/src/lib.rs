@@ -153,7 +153,7 @@ where
 
         if !self.is_binary_different(kicker_program, spi, delay)? {
             log::info!("Already Programmed");
-            return Ok(())
+            return Ok(());
         }
 
         // Erase the current contents of the kicker chip
@@ -177,7 +177,7 @@ where
         if num_pages > ATMEGA_NUM_PAGES {
             return Err(KickerProgrammerError::InvalidBinarySize);
         }
-        
+
         for page in 0..num_pages {
             log::info!("Programming Page {}", page);
             self.load_memory_page(
@@ -240,7 +240,7 @@ where
     fn is_binary_different<SPIE: Debug>(
         &mut self,
         binary: &[u8],
-        spi: &mut (impl Transfer<u8, Error=SPIE> + Write<u8, Error=SPIE>),
+        spi: &mut (impl Transfer<u8, Error = SPIE> + Write<u8, Error = SPIE>),
         delay: &mut (impl DelayMs<u32> + DelayUs<u32>),
     ) -> Result<bool, KickerProgrammerError<GPIOE, SPIE>> {
         let mut num_pages = binary.len() * 2 / ATMEGA_PAGESIZE;
@@ -251,11 +251,16 @@ where
             if let Err(err) = self.check_memory_page(
                 &binary[(page * 2 * ATMEGA_PAGESIZE)
                     ..min((page + 1) * 2 * ATMEGA_PAGESIZE, binary.len())],
-                    page,
-                    spi,
-                    delay,
+                page,
+                spi,
+                delay,
             ) {
-                if let KickerProgrammerError::BinaryDiffers { page_number: _, offset: _, low_byte: _ } = err {
+                if let KickerProgrammerError::BinaryDiffers {
+                    page_number: _,
+                    offset: _,
+                    low_byte: _,
+                } = err
+                {
                     return Ok(true);
                 } else {
                     return Err(err);

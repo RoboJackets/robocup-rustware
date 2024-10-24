@@ -29,8 +29,8 @@ mod app {
 
     use bsp::board;
     use bsp::board::PERCLK_FREQUENCY;
-    use main::Delay1;
     use nalgebra::{Vector3, Vector4};
+    use robojackets_robocup_rustware::Delay1;
     use teensy4_bsp as bsp;
 
     use hal::gpio::Trigger;
@@ -52,7 +52,9 @@ mod app {
 
     use icm42605_driver::{ImuError, IMU};
 
-    use main::{Fpga, Imu, PitDelay, GPT_CLOCK_SOURCE, GPT_DIVIDER, GPT_FREQUENCY};
+    use robojackets_robocup_control::{
+        Fpga, Imu, PitDelay, GPT_CLOCK_SOURCE, GPT_DIVIDER, GPT_FREQUENCY,
+    };
 
     const HEAP_SIZE: usize = 1024;
     static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
@@ -216,7 +218,7 @@ mod app {
             ctx.shared.imu_initialization_error,
             ctx.shared.fpga_programming_error,
             ctx.shared.fpga_initialization_error,
-            ctx.shared.delay
+            ctx.shared.delay,
         )
             .lock(
                 |fpga,
@@ -302,20 +304,20 @@ mod app {
             Vector3::new(-accel_y, accel_x, gyro),
             *ctx.local.last_encoders,
             body_velocities,
-            delta,
+            delta as u32,
         );
 
         #[cfg(feature = "debug")]
         log::info!("Moving at {:?}", wheel_velocities);
 
-        let encoder_velocities = (ctx.shared.fpga, ctx.shared.delay).lock(|fpga, delay| {
-            match fpga.set_velocities(wheel_velocities.into(), false, delay) {
-                Ok(encoder_velocities) => encoder_velocities,
-                Err(_err) => {
-                    #[cfg(feature = "debug")]
-                    log::info!("Unable to Read Encoder Values");
-                    [0.0; 4]
-                }
+        let encoder_velocities = (ctx.shared.fpga, ctx.shared.delay).lock(|fpga, delay| match fpga
+            .set_velocities(wheel_velocities.into(), false, delay)
+        {
+            Ok(encoder_velocities) => encoder_velocities,
+            Err(_err) => {
+                #[cfg(feature = "debug")]
+                log::info!("Unable to Read Encoder Values");
+                [0.0; 4]
             }
         });
 

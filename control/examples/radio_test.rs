@@ -31,7 +31,7 @@ mod app {
 
     use rtic_monotonics::systick::*;
 
-    use main::{
+    use robojackets_robocup_control::{
         Delay2, RadioCE, RadioCSN, SharedSPI, GPT_CLOCK_SOURCE, GPT_DIVIDER, GPT_FREQUENCY,
     };
 

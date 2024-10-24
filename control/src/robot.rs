@@ -2,6 +2,16 @@
 //! Robot Constants and Configuration Information
 //!
 
+use robojackets_robocup_rtp::Team;
+
+#[cfg(feature = "blue-team")]
+pub const TEAM_NUM: usize = robojackets_robocup_rtp::BLUE_TEAM;
+#[cfg(feature = "blue-team")]
+pub const TEAM: Team = Team::Blue;
+#[cfg(not(feature = "blue-team"))]
+pub const TEAM_NUM: usize = robojackets_robocup_rtp::YELLOW_TEAM;
+#[cfg(not(feature = "blue-team"))]
+pub const TEAM: Team = Team::Yellow;
 #[cfg(any(
     not(any(
         feature = "robot-0",
@@ -14,6 +24,7 @@
     feature = "robot-0"
 ))]
 pub mod robot_config {
+    use super::TEAM_NUM;
     use robojackets_robocup_rtp::ROBOT_RADIO_ADDRESSES;
 
     /// The Robot ID for Robot 0
@@ -23,11 +34,12 @@ pub mod robot_config {
     pub const CORRECTION_FACTORS: [(f32, f32); 4] =
         [(0.0, 0.0), (0.0, 0.0), (0.0, 0.0), (0.0, 0.0)];
     /// The Radio address of this robot
-    pub const RADIO_ADDRESS: [u8; 5] = ROBOT_RADIO_ADDRESSES[ROBOT_ID as usize];
+    pub const RADIO_ADDRESS: [u8; 5] = ROBOT_RADIO_ADDRESSES[TEAM_NUM][ROBOT_ID as usize];
 }
 
 #[cfg(feature = "robot-1")]
 pub mod robot_config {
+    use super::TEAM_NUM;
     use robojackets_robocup_rtp::ROBOT_RADIO_ADDRESSES;
 
     /// The Robot ID for Robot 1
@@ -37,11 +49,12 @@ pub mod robot_config {
     pub const CORRECTION_FACTORS: [(f32, f32); 4] =
         [(0.0, 0.0), (0.0, 0.0), (0.0, 0.0), (0.0, 0.0)];
     /// The Radio address of this robot
-    pub const RADIO_ADDRESS: [u8; 5] = ROBOT_RADIO_ADDRESSES[ROBOT_ID as usize];
+    pub const RADIO_ADDRESS: [u8; 5] = ROBOT_RADIO_ADDRESSES[TEAM_NUM][ROBOT_ID as usize];
 }
 
 #[cfg(feature = "robot-2")]
 pub mod robot_config {
+    use super::TEAM_NUM;
     use robojackets_robocup_rtp::ROBOT_RADIO_ADDRESSES;
 
     /// The Robot ID for Robot 2
@@ -51,11 +64,12 @@ pub mod robot_config {
     pub const CORRECTION_FACTORS: [(f32, f32); 4] =
         [(0.0, 0.0), (0.0, 0.0), (0.0, 0.0), (0.0, 0.0)];
     /// The Radio address of this robot
-    pub const RADIO_ADDRESS: [u8; 5] = ROBOT_RADIO_ADDRESSES[ROBOT_ID as usize];
+    pub const RADIO_ADDRESS: [u8; 5] = ROBOT_RADIO_ADDRESSES[TEAM_NUM][ROBOT_ID as usize];
 }
 
 #[cfg(feature = "robot-3")]
 pub mod robot_config {
+    use super::TEAM_NUM;
     use robojackets_robocup_rtp::ROBOT_RADIO_ADDRESSES;
 
     /// The Robot ID for Robot 3
@@ -65,11 +79,12 @@ pub mod robot_config {
     pub const CORRECTION_FACTORS: [(f32, f32); 4] =
         [(0.0, 0.0), (0.0, 0.0), (0.0, 0.0), (0.0, 0.0)];
     /// The Radio address of this robot
-    pub const RADIO_ADDRESS: [u8; 5] = ROBOT_RADIO_ADDRESSES[ROBOT_ID as usize];
+    pub const RADIO_ADDRESS: [u8; 5] = ROBOT_RADIO_ADDRESSES[TEAM_NUM][ROBOT_ID as usize];
 }
 
 #[cfg(feature = "robot-4")]
 pub mod robot_config {
+    use super::TEAM_NUM;
     use robojackets_robocup_rtp::ROBOT_RADIO_ADDRESSES;
 
     /// The Robot ID for Robot 4
@@ -79,11 +94,12 @@ pub mod robot_config {
     pub const CORRECTION_FACTORS: [(f32, f32); 4] =
         [(0.0, 0.0), (0.0, 0.0), (0.0, 0.0), (0.0, 0.0)];
     /// The Radio address of this robot
-    pub const RADIO_ADDRESS: [u8; 5] = ROBOT_RADIO_ADDRESSES[ROBOT_ID as usize];
+    pub const RADIO_ADDRESS: [u8; 5] = ROBOT_RADIO_ADDRESSES[TEAM_NUM][ROBOT_ID as usize];
 }
 
 #[cfg(feature = "robot-5")]
 pub mod robot_config {
+    use super::TEAM_NUM;
     use robojackets_robocup_rtp::ROBOT_RADIO_ADDRESSES;
 
     /// The Robot ID for Robot 5
@@ -93,5 +109,5 @@ pub mod robot_config {
     pub const CORRECTION_FACTORS: [(f32, f32); 4] =
         [(0.0, 0.0), (0.0, 0.0), (0.0, 0.0), (0.0, 0.0)];
     /// The Radio address of this robot
-    pub const RADIO_ADDRESS: [u8; 5] = ROBOT_RADIO_ADDRESSES[ROBOT_ID as usize];
+    pub const RADIO_ADDRESS: [u8; 5] = ROBOT_RADIO_ADDRESSES[TEAM_NUM][ROBOT_ID as usize];
 }

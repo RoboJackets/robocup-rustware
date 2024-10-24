@@ -353,6 +353,7 @@ name = "kicker-controller"
 version = "0.1.0"
 dependencies = [
  "embedded-hal 0.2.7",
+ "robojackets-robocup-rtp",
 ]
 
 [[package]]
@@ -380,36 +381,6 @@ name = "log"
 version = "0.4.22"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a7a70ba024b9dc04c27ea2f0c0548feb474ec5c54bba33a7f72f873a39d07b24"
-
-[[package]]
-name = "main"
-version = "0.1.0"
-dependencies = [
- "controller",
- "cortex-m",
- "defmt",
- "embedded-alloc",
- "embedded-hal 0.2.7",
- "fixed-queue",
- "fpga-rs",
- "icm42605-driver",
- "imxrt-hal",
- "imxrt-iomuxc",
- "kicker-controller",
- "kicker-programmer",
- "libm",
- "log",
- "motion",
- "nalgebra 0.33.0",
- "ncomm-utils",
- "robojackets-robocup-rtp",
- "rtic",
- "rtic-monotonics",
- "rtic-nrf24l01",
- "teensy4-bsp",
- "teensy4-panic",
- "teensy4-pins",
-]
 
 [[package]]
 name = "motion"
@@ -586,10 +557,40 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "46b71a9d9206e8b46714c74255adcaea8b11e0350c1d8456165073c3f75fc81a"
 
 [[package]]
+name = "robojackets-robocup-control"
+version = "0.2.0"
+dependencies = [
+ "controller",
+ "cortex-m",
+ "defmt",
+ "embedded-alloc",
+ "embedded-hal 0.2.7",
+ "fixed-queue",
+ "fpga-rs",
+ "icm42605-driver",
+ "imxrt-hal",
+ "imxrt-iomuxc",
+ "kicker-controller",
+ "kicker-programmer",
+ "libm",
+ "log",
+ "motion",
+ "nalgebra 0.33.0",
+ "ncomm-utils",
+ "robojackets-robocup-rtp",
+ "rtic",
+ "rtic-monotonics",
+ "rtic-nrf24l01",
+ "teensy4-bsp",
+ "teensy4-panic",
+ "teensy4-pins",
+]
+
+[[package]]
 name = "robojackets-robocup-rtp"
-version = "0.5.1"
+version = "0.6.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "17e4b0312afe8bdceaaa82d9a16e06eeda622b49c02fde184156b044fb729076"
+checksum = "af73f4a8d21a5cf02a425bf26126d28f8f5cf61af7dd9761d8e29f921c112689"
 dependencies = [
  "nalgebra 0.33.0",
  "ncomm-utils",

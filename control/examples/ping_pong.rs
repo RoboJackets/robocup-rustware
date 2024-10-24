@@ -27,7 +27,7 @@ mod app {
 
     use robojackets_robocup_rtp::BASE_STATION_ADDRESS;
 
-    use main::{
+    use robojackets_robocup_control::{
         Delay2, RFRadio, SharedSPI, BASE_AMPLIFICATION_LEVEL, CHANNEL, GPT_CLOCK_SOURCE,
         GPT_DIVIDER, GPT_FREQUENCY, RADIO_ADDRESS,
     };
