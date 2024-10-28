@@ -68,4 +68,3 @@ features = ["log"]
 members = [
     "tools"
 ]
-features = ["log"]
