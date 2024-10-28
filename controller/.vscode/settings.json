@@ -1,0 +1,6 @@
+{
+  "rust-analyzer.cargo.target": "thumbv7em-none-eabihf",
+  "rust-analyzer.check.allTargets": false,
+  "rust-analyzer.linkedProjects": ["./Cargo.toml"],
+  "rust-analyzer.check.extraArgs": ["--examples", "--bins"]
+}

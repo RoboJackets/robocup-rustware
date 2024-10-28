@@ -32,7 +32,7 @@ impl Configuration {
 
         // Linux
         let loader = env::var("TEENSY4RS_LOADER")
-            .unwrap_or_else(|_| "./teensy_loader_cli/teensy_loader_cli_linux".into());
+            .unwrap_or_else(|_| "../control/teensy_loader_cli/teensy_loader_cli_linux".into());
         Self { objcopy, loader }
     }
 }
