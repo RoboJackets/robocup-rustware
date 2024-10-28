@@ -24,6 +24,7 @@ mod app {
     use bsp::board;
     use teensy4_bsp as bsp;
     use teensy4_bsp::hal::gpio::{Input, Output};
+    use teensy4_bsp::hal::gpio::{Input, Output, Port};
     use teensy4_pins::t41::*;
 
     use rtic_monotonics::systick::*;
