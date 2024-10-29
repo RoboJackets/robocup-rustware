@@ -30,7 +30,7 @@ mod app {
     use bsp::board;
     use bsp::board::PERCLK_FREQUENCY;
     use nalgebra::{Vector3, Vector4};
-    use robojackets_robocup_rustware::Delay1;
+    use robojackets_robocup_control::Delay1;
     use teensy4_bsp as bsp;
 
     use hal::gpio::Trigger;
