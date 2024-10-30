@@ -4,13 +4,13 @@
 
 use robojackets_robocup_rtp::Team;
 
-#[cfg(feature = "blue-team")]
+#[cfg(not(feature = "yellow-team"))]
 pub const TEAM_NUM: usize = robojackets_robocup_rtp::BLUE_TEAM;
-#[cfg(feature = "blue-team")]
+#[cfg(not(feature = "yellow-team"))]
 pub const TEAM: Team = Team::Blue;
-#[cfg(not(feature = "blue-team"))]
+#[cfg(feature = "yellow-team")]
 pub const TEAM_NUM: usize = robojackets_robocup_rtp::YELLOW_TEAM;
-#[cfg(not(feature = "blue-team"))]
+#[cfg(feature = "yellow-team")]
 pub const TEAM: Team = Team::Yellow;
 #[cfg(any(
     not(any(
