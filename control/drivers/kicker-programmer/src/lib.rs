@@ -170,8 +170,8 @@ where
         // let kicker_program = include_bytes!("../bin/kicker.nib");
         // The total number of pages is twice the binary length divided by the number of pages
         // because the total number of pages is in words (which are two bytes in length)
-        let mut num_pages = kicker_program.len() * 2 / ATMEGA_PAGESIZE;
-        if num_pages * ATMEGA_PAGESIZE < kicker_program.len() * 2 {
+        let mut num_pages = kicker_program.len() / (ATMEGA_PAGESIZE * 2);
+        if num_pages * ATMEGA_PAGESIZE * 2 < kicker_program.len() {
             num_pages += 1;
         }
         if num_pages > ATMEGA_NUM_PAGES {
@@ -243,8 +243,8 @@ where
         spi: &mut (impl Transfer<u8, Error = SPIE> + Write<u8, Error = SPIE>),
         delay: &mut (impl DelayMs<u32> + DelayUs<u32>),
     ) -> Result<bool, KickerProgrammerError<GPIOE, SPIE>> {
-        let mut num_pages = binary.len() * 2 / ATMEGA_PAGESIZE;
-        if num_pages * ATMEGA_PAGESIZE < binary.len() {
+        let mut num_pages = binary.len() / (ATMEGA_PAGESIZE * 2);
+        if num_pages * ATMEGA_PAGESIZE * 2 < binary.len() {
             num_pages += 1;
         }
         for page in 0..num_pages {

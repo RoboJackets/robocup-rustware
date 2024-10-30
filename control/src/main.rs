@@ -611,12 +611,15 @@ mod app {
         ctx.shared.pit0.lock(|pit| {
             pit.clear_elapsed();
             pit.set_load_timer_value(MOTION_CONTROL_DELAY_MS);
+            pit.set_interrupt_enable(true);
+            pit.enable();
         });
     }
 
     /// Interrupt called when the radio receives new data
     #[task(binds = GPIO1_COMBINED_16_31, shared = [rx_int, gpio1, elapsed_time], priority = 2)]
     fn radio_interrupt(ctx: radio_interrupt::Context) {
+        log::info!("Command Received");
         if (ctx.shared.rx_int, ctx.shared.gpio1, ctx.shared.elapsed_time).lock(
             |rx_int, gpio1, elapsed_time| {
                 if rx_int.is_triggered() {
@@ -649,7 +652,9 @@ mod app {
         )
             .lock(|spi, delay, command, robot_status, counter, radio| {
                 let mut read_buffer = [0u8; CONTROL_MESSAGE_SIZE];
-                radio.read(&mut read_buffer, spi, delay);
+                while radio.available(spi, delay) {
+                    radio.read(&mut read_buffer, spi, delay);
+                }
 
                 let control_message = ControlMessage::unpack(&read_buffer).unwrap();
 
@@ -685,11 +690,12 @@ mod app {
 
                 radio.set_payload_size(CONTROL_MESSAGE_SIZE as u8, spi, delay);
                 radio.start_listening(spi, delay);
+                radio.clear_interrupts(spi, delay);
             });
 
         (ctx.shared.rx_int, ctx.shared.gpio1).lock(|rx_int, gpio1| {
             rx_int.clear_triggered();
-            gpio1.set_interrupt(rx_int, Some(Trigger::FallingEdge));
+            gpio1.set_interrupt(rx_int, Some(Trigger::Low));
         });
     }
 
@@ -704,6 +710,8 @@ mod app {
         ctx.shared.pit0.lock(|pit| {
             pit.clear_elapsed();
             pit.set_load_timer_value(MOTION_CONTROL_DELAY_MS);
+            pit.set_interrupt_enable(true);
+            pit.enable();
         });
 
         // Most of the testing programs ceil the priority and should not
@@ -819,8 +827,8 @@ mod app {
             delta,
         );
 
-        #[cfg(feature = "debug")]
-        log::info!("Moving at {:?}", wheel_velocities);
+        // #[cfg(feature = "debug")]
+        // log::info!("Moving at {:?}", wheel_velocities);
 
         // TODO: Eventually it may be useful to update the fpga_status every tick, however I feel this might be unnecessary
         // so I'm currently only updating the fpga status field on the robot status whenever the kicker is serviced to make
@@ -836,9 +844,6 @@ mod app {
                     }
                 }
             });
-
-        #[cfg(feature = "debug")]
-        log::info!("Fpga Status: {:#010b}", ctx.local.fpga.status);
 
         *ctx.local.last_encoders = Vector4::new(
             encoder_velocities[0],
@@ -864,14 +869,15 @@ mod app {
             )
                 .lock(
                     |controller, programmer, robot_status, fake_spi| match controller.take() {
-                        Some(mut controller) => {
-                            let state = controller.service(kicker_command, fake_spi).unwrap();
+                        Some(mut kicker_controller) => {
+                            let state = kicker_controller.service(kicker_command, fake_spi).unwrap();
                             robot_status.kick_status =
                                 kicker_command.kick_trigger != KickTrigger::Disabled;
                             robot_status.ball_sense_status = state.ball_sensed;
                             robot_status.kick_healthy = state.healthy;
                             robot_status.motor_errors = fpga_status & 0x1F;
                             robot_status.fpga_status = fpga_status & 0x80 != 0;
+                            *controller = Some(kicker_controller);
                         }
                         None => {
                             let (cs, reset) = programmer.take().unwrap().destroy();

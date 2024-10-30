@@ -44,7 +44,7 @@ mod app {
 
     use ncomm_utils::packing::Packable;
 
-    use robojackets_robocup_rtp::BASE_STATION_ADDRESS;
+    use robojackets_robocup_rtp::BASE_STATION_ADDRESSES;
     use robojackets_robocup_rtp::{ControlMessage, CONTROL_MESSAGE_SIZE};
     use robojackets_robocup_rtp::{
         RobotStatusMessage, RobotStatusMessageBuilder, ROBOT_STATUS_SIZE,
@@ -281,7 +281,7 @@ mod app {
                         radio.set_pa_level(BASE_AMPLIFICATION_LEVEL, spi, delay);
                         radio.set_channel(CHANNEL, spi, delay);
                         radio.set_payload_size(CONTROL_MESSAGE_SIZE as u8, spi, delay);
-                        radio.open_writing_pipe(BASE_STATION_ADDRESS, spi, delay);
+                        radio.open_writing_pipe(BASE_STATION_ADDRESSES[0], spi, delay);
                         radio.open_reading_pipe(1, RADIO_ADDRESS, spi, delay);
                     }
                     Err(err) => *radio_init_error = Some(err),
@@ -492,7 +492,7 @@ mod app {
             Vector3::new(-accel_y, accel_x, gyro),
             *ctx.local.last_encoders,
             body_velocities,
-            delta,
+            delta as u32,
         );
 
         #[cfg(feature = "debug")]
