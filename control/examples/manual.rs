@@ -283,6 +283,7 @@ mod app {
                         radio.set_payload_size(CONTROL_MESSAGE_SIZE as u8, spi, delay);
                         radio.open_writing_pipe(BASE_STATION_ADDRESSES[0], spi, delay);
                         radio.open_reading_pipe(1, RADIO_ADDRESS, spi, delay);
+                        radio.stop_listening(spi, delay);
                     }
                     Err(err) => *radio_init_error = Some(err),
                 },

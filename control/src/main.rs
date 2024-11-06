@@ -75,6 +75,7 @@ mod app {
         KickerCSn, KickerProg, KickerProgramError, KickerReset, KickerServicingError, PitDelay,
         RFRadio, RadioInitError, RadioInterrupt, SharedSPI, State, BASE_AMPLIFICATION_LEVEL,
         CHANNEL, GPT_CLOCK_SOURCE, GPT_DIVIDER, GPT_FREQUENCY, RADIO_ADDRESS, ROBOT_ID,
+        GPT_1_DIVIDER,
     };
 
     use kicker_controller::{KickTrigger, KickType, Kicker, KickerCommand};
@@ -91,7 +92,7 @@ mod app {
     const KICKER_SERVICE_DELAY_TICKS: u32 = KICKER_SERVICE_DELAY_MS / MOTION_CONTROL_DELAY_MS;
     /// The amount of time the robot should continue moving without receiving a
     /// new message from the base station before it stops moving
-    const DIE_TIME_US: u32 = 250_000;
+    const DIE_TIME_US: u32 = 500_000;
 
     /// Helper method to disable radio interrupts and prepare to
     /// send messages of `message_size` over the radio
@@ -205,7 +206,7 @@ mod app {
 
         // Gpt 1 as blocking delay
         gpt1.disable();
-        gpt1.set_divider(GPT_DIVIDER);
+        gpt1.set_divider(GPT_1_DIVIDER);
         gpt1.set_clock_source(GPT_CLOCK_SOURCE);
         gpt1.enable();
 
@@ -366,6 +367,7 @@ mod app {
                         radio.set_payload_size(CONTROL_MESSAGE_SIZE as u8, spi, delay);
                         radio.open_writing_pipe(BASE_STATION_ADDRESSES[TEAM_NUM], spi, delay);
                         radio.open_reading_pipe(1, RADIO_ADDRESS, spi, delay);
+                        radio.stop_listening(spi, delay);
                     }
                     Err(err) => *radio_init_error = Some(err),
                 },
@@ -619,7 +621,6 @@ mod app {
     /// Interrupt called when the radio receives new data
     #[task(binds = GPIO1_COMBINED_16_31, shared = [rx_int, gpio1, elapsed_time], priority = 2)]
     fn radio_interrupt(ctx: radio_interrupt::Context) {
-        log::info!("Command Received");
         if (ctx.shared.rx_int, ctx.shared.gpio1, ctx.shared.elapsed_time).lock(
             |rx_int, gpio1, elapsed_time| {
                 if rx_int.is_triggered() {
@@ -652,9 +653,7 @@ mod app {
         )
             .lock(|spi, delay, command, robot_status, counter, radio| {
                 let mut read_buffer = [0u8; CONTROL_MESSAGE_SIZE];
-                while radio.available(spi, delay) {
-                    radio.read(&mut read_buffer, spi, delay);
-                }
+                radio.read(&mut read_buffer, spi, delay);
 
                 let control_message = ControlMessage::unpack(&read_buffer).unwrap();
 
@@ -690,7 +689,6 @@ mod app {
 
                 radio.set_payload_size(CONTROL_MESSAGE_SIZE as u8, spi, delay);
                 radio.start_listening(spi, delay);
-                radio.clear_interrupts(spi, delay);
             });
 
         (ctx.shared.rx_int, ctx.shared.gpio1).lock(|rx_int, gpio1| {
@@ -809,7 +807,7 @@ mod app {
         });
 
         let now = ctx.shared.gpt.lock(|gpt| gpt.count());
-        let delta = *ctx.local.last_time - now;
+        let delta = now - *ctx.local.last_time;
         *ctx.local.last_time = now;
         let elapsed_time = ctx.shared.elapsed_time.lock(|elapsed_time| {
             *elapsed_time += delta;
@@ -818,6 +816,7 @@ mod app {
 
         if elapsed_time > DIE_TIME_US {
             body_velocities = Vector3::zeros();
+            log::info!("DEAD: {}", elapsed_time);
         }
 
         let wheel_velocities = ctx.local.motion_controller.control_update(
