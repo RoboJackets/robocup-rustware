@@ -28,20 +28,27 @@ mod app {
 
     use rtic_monotonics::systick::*;
 
+    use core::fmt::Write;
+    use embedded_graphics::draw_target::DrawTargetExt;
+    use embedded_graphics::{
+        mono_font::{ascii::FONT_6X10, MonoTextStyleBuilder},
+        pixelcolor::BinaryColor,
+        prelude::*,
+        text::{Baseline, Text},
+    };
+    use ssd1306::{mode::BufferedGraphicsMode, prelude::*, I2CDisplayInterface, Ssd1306};
     #[local]
     struct Local {}
 
     #[shared]
-    struct Shared {
-        ledout: Output<P0>,
-        button: Input<P1>,
-    }
+    struct Shared {}
 
     #[init]
     fn init(ctx: init::Context) -> (Shared, Local) {
         let board::Resources {
             usb,
             pins,
+            lpi2c1,
             mut gpio1,
             ..
         } = board::t41(ctx.device);
@@ -51,43 +58,36 @@ mod app {
         let systick_token = rtic_monotonics::create_systick_token!();
         Systick::start(ctx.core.SYST, 600_000_000, systick_token);
 
-        //set pin 0 to output
-        let ledout = gpio1.output(pins.p0);
+        //set i2c
+        let i2c = board::lpi2c(lpi2c1, pins.p19, pins.p18, board::Lpi2cClockSpeed::KHz400);
 
-        let button = gpio1.input(pins.p1);
+        let interface = I2CDisplayInterface::new(i2c);
+        let mut display = Ssd1306::new(interface, DisplaySize128x64, DisplayRotation::Rotate0)
+            .into_buffered_graphics_mode();
+        display.init().unwrap();
 
-        blink_led::spawn().ok();
+        let text_style = MonoTextStyleBuilder::new()
+            .font(&FONT_6X10)
+            .text_color(BinaryColor::On)
+            .build();
 
-        (Shared { ledout, button }, Local {})
+        Text::with_baseline("Hello world!", Point::zero(), text_style, Baseline::Top)
+            .draw(&mut display)
+            .unwrap();
+
+        Text::with_baseline("Hello Rust!", Point::new(0, 16), text_style, Baseline::Top)
+            .draw(&mut display)
+            .unwrap();
+
+        display.flush().unwrap();
+
+        (Shared {}, Local {})
     }
 
     #[idle]
     fn idle(_: idle::Context) -> ! {
         loop {
             cortex_m::asm::wfi();
-        }
-    }
-
-    #[task(priority = 1,shared=[ledout, button])]
-    async fn blink_led(mut _ctx: blink_led::Context) {
-        let mut toggle = false;
-        loop {
-            log::info!("On");
-            _ctx.shared.ledout.lock(|led| {
-                _ctx.shared.button.lock(|button| {
-                    if button.is_set() {
-                        if toggle {
-                            led.set();
-                        } else {
-                            led.clear();
-                        }
-
-                        toggle = !toggle;
-                    }
-                });
-            });
-
-            Systick::delay(100u32.millis()).await;
         }
     }
 }
