@@ -23,34 +23,35 @@ use teensy4_panic as _;
 mod app {
     use bsp::board;
     use teensy4_bsp as bsp;
-    use teensy4_bsp::hal::gpio::{Input, Output};
-    use teensy4_pins::t41::*;
 
     use rtic_monotonics::systick::*;
 
-    use core::fmt::Write;
-    use embedded_graphics::draw_target::DrawTargetExt;
     use embedded_graphics::{
-        mono_font::{ascii::FONT_6X10, MonoTextStyleBuilder},
-        pixelcolor::BinaryColor,
+        mono_font::{ascii::FONT_7X13_BOLD, MonoTextStyleBuilder},
+        pixelcolor::{BinaryColor, Rgb888},
         prelude::*,
+        primitives::{PrimitiveStyleBuilder, Rectangle},
         text::{Baseline, Text},
     };
-    use ssd1306::{mode::BufferedGraphicsMode, prelude::*, I2CDisplayInterface, Ssd1306};
+    use ssd1306::{prelude::*, I2CDisplayInterface, Ssd1306};
+    use teensy4_pins::t41::*;
+
     #[local]
     struct Local {}
 
     #[shared]
-    struct Shared {}
+    struct Shared {
+        display: Ssd1306<
+            I2CInterface<imxrt_hal::lpi2c::Lpi2c<imxrt_hal::lpi2c::Pins<P19, P18>, 1>>,
+            DisplaySize128x64,
+            ssd1306::mode::BufferedGraphicsMode<DisplaySize128x64>,
+        >,
+    }
 
     #[init]
     fn init(ctx: init::Context) -> (Shared, Local) {
         let board::Resources {
-            usb,
-            pins,
-            lpi2c1,
-            mut gpio1,
-            ..
+            usb, pins, lpi2c1, ..
         } = board::t41(ctx.device);
 
         bsp::LoggingFrontend::default_log().register_usb(usb);
@@ -66,28 +67,99 @@ mod app {
             .into_buffered_graphics_mode();
         display.init().unwrap();
 
-        let text_style = MonoTextStyleBuilder::new()
-            .font(&FONT_6X10)
-            .text_color(BinaryColor::On)
-            .build();
+        display_looper::spawn().ok();
 
-        Text::with_baseline("Hello world!", Point::zero(), text_style, Baseline::Top)
-            .draw(&mut display)
-            .unwrap();
-
-        Text::with_baseline("Hello Rust!", Point::new(0, 16), text_style, Baseline::Top)
-            .draw(&mut display)
-            .unwrap();
-
-        display.flush().unwrap();
-
-        (Shared {}, Local {})
+        (Shared { display }, Local {})
     }
 
     #[idle]
     fn idle(_: idle::Context) -> ! {
         loop {
             cortex_m::asm::wfi();
+        }
+    }
+
+    #[task(priority = 1,shared=[display])]
+    async fn display_looper(mut _ctx: display_looper::Context) {
+        while true {
+            for i in 0..6 {
+                _ctx.shared.display.lock(|display| {
+                    display.clear();
+
+                    let style = PrimitiveStyleBuilder::new()
+                        .fill_color(BinaryColor::On)
+                        .build();
+
+                    Rectangle::new(Point::new(0, 10 * i + 1), Size::new(128, 10))
+                        .into_styled(style)
+                        .draw(display)
+                        .unwrap();
+
+                    let ts_dark = MonoTextStyleBuilder::new()
+                        .font(&FONT_7X13_BOLD)
+                        .text_color(BinaryColor::Off)
+                        .build();
+
+                    let ts_light = MonoTextStyleBuilder::new()
+                        .font(&FONT_7X13_BOLD)
+                        .text_color(BinaryColor::On)
+                        .build();
+
+                    Text::with_baseline(
+                        "Line 0",
+                        Point::zero(),
+                        if i == 0 { ts_dark } else { ts_light },
+                        Baseline::Top,
+                    )
+                    .draw(display)
+                    .unwrap();
+
+                    Text::with_baseline(
+                        "Line 1",
+                        Point::new(0, 10),
+                        if i == 1 { ts_dark } else { ts_light },
+                        Baseline::Top,
+                    )
+                    .draw(display)
+                    .unwrap();
+                    Text::with_baseline(
+                        "Line 2",
+                        Point::new(0, 20),
+                        if i == 2 { ts_dark } else { ts_light },
+                        Baseline::Top,
+                    )
+                    .draw(display)
+                    .unwrap();
+                    Text::with_baseline(
+                        "Line 3",
+                        Point::new(0, 30),
+                        if i == 3 { ts_dark } else { ts_light },
+                        Baseline::Top,
+                    )
+                    .draw(display)
+                    .unwrap();
+                    Text::with_baseline(
+                        "Line 4",
+                        Point::new(0, 40),
+                        if i == 4 { ts_dark } else { ts_light },
+                        Baseline::Top,
+                    )
+                    .draw(display)
+                    .unwrap();
+                    Text::with_baseline(
+                        "Line 5",
+                        Point::new(0, 50),
+                        if i == 5 { ts_dark } else { ts_light },
+                        Baseline::Top,
+                    )
+                    .draw(display)
+                    .unwrap();
+
+                    display.flush().unwrap();
+                });
+
+                Systick::delay(1000u32.millis()).await;
+            }
         }
     }
 }
