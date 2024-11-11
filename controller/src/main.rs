@@ -22,6 +22,7 @@ use teensy4_panic as _;
 #[rtic::app(device = teensy4_bsp, peripherals = true, dispatchers = [GPT2])]
 mod app {
     use bsp::board;
+    use imxrt_hal::gpio::Input;
     use teensy4_bsp as bsp;
 
     use rtic_monotonics::systick::*;
@@ -46,15 +47,27 @@ mod app {
             DisplaySize128x64,
             ssd1306::mode::BufferedGraphicsMode<DisplaySize128x64>,
         >,
+        buttoninc: Input<P10>,
+        buttondec: Input<P9>,
     }
 
     #[init]
     fn init(ctx: init::Context) -> (Shared, Local) {
         let board::Resources {
-            usb, pins, lpi2c1, ..
+            usb,
+            pins,
+            lpi2c1,
+            mut gpio2,
+            ..
         } = board::t41(ctx.device);
 
         bsp::LoggingFrontend::default_log().register_usb(usb);
+
+        //setup buttoninc
+        let buttoninc = gpio2.input(pins.p10);
+
+        //setup buttondec
+        let buttondec = gpio2.input(pins.p9);
 
         let systick_token = rtic_monotonics::create_systick_token!();
         Systick::start(ctx.core.SYST, 600_000_000, systick_token);
@@ -69,7 +82,14 @@ mod app {
 
         display_looper::spawn().ok();
 
-        (Shared { display }, Local {})
+        (
+            Shared {
+                display,
+                buttoninc,
+                buttondec,
+            },
+            Local {},
+        )
     }
 
     #[idle]
@@ -79,87 +99,112 @@ mod app {
         }
     }
 
-    #[task(priority = 1,shared=[display])]
+    #[task(priority = 1,shared=[display,buttoninc,buttondec])]
     async fn display_looper(mut _ctx: display_looper::Context) {
+        let mut lastbuttonincState = false;
+        let mut lastbuttondecState = false;
+        let mut i: i32 = 0;
         while true {
-            for i in 0..6 {
-                _ctx.shared.display.lock(|display| {
-                    display.clear();
+            _ctx.shared.buttoninc.lock(|btn| {
+                let currentbuttonincState = btn.is_set();
 
-                    let style = PrimitiveStyleBuilder::new()
-                        .fill_color(BinaryColor::On)
-                        .build();
+                if !lastbuttonincState && currentbuttonincState {
+                    i += 1;
+                    if i > 5 {
+                        i = 0
+                    };
+                }
 
-                    Rectangle::new(Point::new(0, 10 * i + 1), Size::new(128, 10))
-                        .into_styled(style)
-                        .draw(display)
-                        .unwrap();
+                lastbuttonincState = currentbuttonincState;
+            });
 
-                    let ts_dark = MonoTextStyleBuilder::new()
-                        .font(&FONT_7X13_BOLD)
-                        .text_color(BinaryColor::Off)
-                        .build();
+            _ctx.shared.buttondec.lock(|btn| {
+                let currentbuttondecState = btn.is_set();
 
-                    let ts_light = MonoTextStyleBuilder::new()
-                        .font(&FONT_7X13_BOLD)
-                        .text_color(BinaryColor::On)
-                        .build();
+                if !lastbuttondecState && currentbuttondecState {
+                    i -= 1;
+                    if i < 0 {
+                        i = 5
+                    };
+                }
 
-                    Text::with_baseline(
-                        "Line 0",
-                        Point::zero(),
-                        if i == 0 { ts_dark } else { ts_light },
-                        Baseline::Top,
-                    )
+                lastbuttondecState = currentbuttondecState;
+            });
+
+            _ctx.shared.display.lock(|display| {
+                display.clear();
+
+                let style = PrimitiveStyleBuilder::new()
+                    .fill_color(BinaryColor::On)
+                    .build();
+
+                Rectangle::new(Point::new(0, 10 * i + 1), Size::new(128, 11))
+                    .into_styled(style)
                     .draw(display)
                     .unwrap();
 
-                    Text::with_baseline(
-                        "Line 1",
-                        Point::new(0, 10),
-                        if i == 1 { ts_dark } else { ts_light },
-                        Baseline::Top,
-                    )
-                    .draw(display)
-                    .unwrap();
-                    Text::with_baseline(
-                        "Line 2",
-                        Point::new(0, 20),
-                        if i == 2 { ts_dark } else { ts_light },
-                        Baseline::Top,
-                    )
-                    .draw(display)
-                    .unwrap();
-                    Text::with_baseline(
-                        "Line 3",
-                        Point::new(0, 30),
-                        if i == 3 { ts_dark } else { ts_light },
-                        Baseline::Top,
-                    )
-                    .draw(display)
-                    .unwrap();
-                    Text::with_baseline(
-                        "Line 4",
-                        Point::new(0, 40),
-                        if i == 4 { ts_dark } else { ts_light },
-                        Baseline::Top,
-                    )
-                    .draw(display)
-                    .unwrap();
-                    Text::with_baseline(
-                        "Line 5",
-                        Point::new(0, 50),
-                        if i == 5 { ts_dark } else { ts_light },
-                        Baseline::Top,
-                    )
-                    .draw(display)
-                    .unwrap();
+                let ts_dark = MonoTextStyleBuilder::new()
+                    .font(&FONT_7X13_BOLD)
+                    .text_color(BinaryColor::Off)
+                    .build();
 
-                    display.flush().unwrap();
-                });
+                let ts_light = MonoTextStyleBuilder::new()
+                    .font(&FONT_7X13_BOLD)
+                    .text_color(BinaryColor::On)
+                    .build();
 
-                Systick::delay(1000u32.millis()).await;
-            }
+                Text::with_baseline(
+                    "Line 0",
+                    Point::new(2, 0),
+                    if i == 0 { ts_dark } else { ts_light },
+                    Baseline::Top,
+                )
+                .draw(display)
+                .unwrap();
+
+                Text::with_baseline(
+                    "Line 1",
+                    Point::new(2, 10),
+                    if i == 1 { ts_dark } else { ts_light },
+                    Baseline::Top,
+                )
+                .draw(display)
+                .unwrap();
+                Text::with_baseline(
+                    "Line 2",
+                    Point::new(2, 20),
+                    if i == 2 { ts_dark } else { ts_light },
+                    Baseline::Top,
+                )
+                .draw(display)
+                .unwrap();
+                Text::with_baseline(
+                    "Line 3",
+                    Point::new(2, 30),
+                    if i == 3 { ts_dark } else { ts_light },
+                    Baseline::Top,
+                )
+                .draw(display)
+                .unwrap();
+                Text::with_baseline(
+                    "Line 4",
+                    Point::new(2, 40),
+                    if i == 4 { ts_dark } else { ts_light },
+                    Baseline::Top,
+                )
+                .draw(display)
+                .unwrap();
+                Text::with_baseline(
+                    "Line 5",
+                    Point::new(2, 50),
+                    if i == 5 { ts_dark } else { ts_light },
+                    Baseline::Top,
+                )
+                .draw(display)
+                .unwrap();
+
+                display.flush().unwrap();
+            });
         }
     }
 }
