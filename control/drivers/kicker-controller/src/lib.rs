@@ -115,20 +115,15 @@ impl Default for KickerCommand {
     }
 }
 
-impl Into<u8> for KickerCommand {
-    fn into(self) -> u8 {
+impl From<KickerCommand> for u8 {
+    fn from(value: KickerCommand) -> Self {
         let mut command = 0x00;
-
-        command |= self.kick_type as u8;
-
-        command |= self.kick_trigger as u8;
-
-        command |= (self.kick_strength / 255.0 * 15.0) as u8 & KICK_POWER_MASK;
-
-        if self.charge_allowed {
+        command |= value.kick_type as u8;
+        command |= value.kick_trigger as u8;
+        command |= (value.kick_strength / 255.0 * 15.0) as u8 & KICK_POWER_MASK;
+        if value.charge_allowed {
             command |= 1 << 4;
         }
-
         command
     }
 }

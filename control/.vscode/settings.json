@@ -11,5 +11,5 @@
     "rust-analyzer.check.extraArgs": [
         "--bins",
         "--lib"
-    ],
+    ]
 }

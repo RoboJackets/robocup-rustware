@@ -776,32 +776,9 @@ mod app {
                 });
 
         let (gyro, accel_x, accel_y) = ctx.shared.imu.lock(|imu| {
-            let gyro = match imu.gyro_z() {
-                Ok(gyro) => gyro,
-                Err(_err) => {
-                    #[cfg(feature = "debug")]
-                    log::info!("Unable to Read Gyro");
-                    0.0
-                }
-            };
-
-            let accel_x = match imu.accel_x() {
-                Ok(accel_x) => accel_x,
-                Err(_err) => {
-                    #[cfg(feature = "debug")]
-                    log::info!("Unable to Read Accel X");
-                    0.0
-                }
-            };
-
-            let accel_y = match imu.accel_y() {
-                Ok(accel_y) => accel_y,
-                Err(_err) => {
-                    #[cfg(feature = "debug")]
-                    log::info!("Unable to Read Accel Y");
-                    0.0
-                }
-            };
+            let gyro = imu.gyro_z().unwrap_or(0.0);
+            let accel_x = imu.accel_x().unwrap_or(0.0);
+            let accel_y = imu.accel_y().unwrap_or(0.0);
 
             (gyro, accel_x, accel_y)
         });
@@ -834,14 +811,11 @@ mod app {
         // rust borrowing easier.
         let (encoder_velocities, fpga_status) =
             (ctx.shared.fpga, ctx.shared.blocking_delay).lock(|fpga, delay| {
-                match fpga.set_velocities(wheel_velocities.into(), dribbler_enabled, delay) {
-                    Ok(encoder_velocities) => (encoder_velocities, fpga.status),
-                    Err(_err) => {
-                        #[cfg(feature = "debug")]
-                        log::info!("Unable to Read Encoder Values");
-                        ([0.0; 4], fpga.status)
-                    }
-                }
+                (
+                    fpga.set_velocities(wheel_velocities.into(), dribbler_enabled, delay)
+                        .unwrap_or([0.0; 4]),
+                    fpga.status,
+                )
             });
 
         *ctx.local.last_encoders = Vector4::new(
@@ -1572,20 +1546,9 @@ mod app {
 
                     let mut last_time = gpt.count();
                     for _ in 0..1_000 {
-                        let gyro = match imu.gyro_z() {
-                            Ok(gyro) => gyro,
-                            Err(_) => 0.0,
-                        };
-
-                        let accel_x = match imu.accel_x() {
-                            Ok(accel_x) => accel_x,
-                            Err(_) => 0.0,
-                        };
-
-                        let accel_y = match imu.accel_y() {
-                            Ok(accel_y) => accel_y,
-                            Err(_) => 0.0,
-                        };
+                        let gyro = imu.gyro_z().unwrap_or(0.0);
+                        let accel_x = imu.accel_x().unwrap_or(0.0);
+                        let accel_y = imu.accel_y().unwrap_or(0.0);
 
                         let now = gpt.count();
                         let delta = last_time - now;
@@ -1597,12 +1560,9 @@ mod app {
                             setpoint,
                             delta,
                         );
-
-                        let encoder_velocities =
-                            match fpga.set_velocities(wheel_velocities.into(), false, delay) {
-                                Ok(encoder_velocities) => encoder_velocities,
-                                Err(_) => [0.0; 4],
-                            };
+                        let encoder_velocities = fpga
+                            .set_velocities(wheel_velocities.into(), false, delay)
+                            .unwrap_or([0.0; 4]);
 
                         last_encoder_values = Vector4::new(
                             encoder_velocities[0],

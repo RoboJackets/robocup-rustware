@@ -44,6 +44,7 @@ mod app {
 
     use ncomm_utils::packing::Packable;
 
+    use robojackets_robocup_control::robot::TEAM_NUM;
     use robojackets_robocup_rtp::BASE_STATION_ADDRESSES;
     use robojackets_robocup_rtp::{ControlMessage, CONTROL_MESSAGE_SIZE};
     use robojackets_robocup_rtp::{
@@ -281,7 +282,7 @@ mod app {
                         radio.set_pa_level(BASE_AMPLIFICATION_LEVEL, spi, delay);
                         radio.set_channel(CHANNEL, spi, delay);
                         radio.set_payload_size(CONTROL_MESSAGE_SIZE as u8, spi, delay);
-                        radio.open_writing_pipe(BASE_STATION_ADDRESSES[0], spi, delay);
+                        radio.open_writing_pipe(BASE_STATION_ADDRESSES[TEAM_NUM], spi, delay);
                         radio.open_reading_pipe(1, RADIO_ADDRESS, spi, delay);
                         radio.stop_listening(spi, delay);
                     }
