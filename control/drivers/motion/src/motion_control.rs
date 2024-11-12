@@ -117,7 +117,7 @@ impl MotionControl {
         imu_measurements: Vector3<f32>,
         encoder_velocities: Vector4<f32>,
         target_velocity: Vector3<f32>,
-        delta: u64,
+        delta: u32,
     ) -> Vector4<f32> {
         // Make Sure 0 is 0
         if target_velocity == Vector3::zeros() {
@@ -170,7 +170,7 @@ impl MotionControl {
     /// Returns:
     ///     Velocity Estimate (v_xt,  y_xt,  w_t)
     ///                      ((m/s), (m/s), (rad/s))
-    fn imu_estimate(&mut self, imu_measurements: Vector3<f32>, delta: u64) -> Vector3<f32> {
+    fn imu_estimate(&mut self, imu_measurements: Vector3<f32>, delta: u32) -> Vector3<f32> {
         let delta = (delta as f32) / 1_000_000.0;
         Vector3::new(
             delta * (imu_measurements[0] - self.last_imu[0]) + self.last_state[0],

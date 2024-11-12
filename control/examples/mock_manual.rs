@@ -21,7 +21,7 @@ mod app {
 
     use core::mem::MaybeUninit;
 
-    use main::ROBOT_ID;
+    use robojackets_robocup_control::ROBOT_ID;
 
     use embedded_hal::spi::MODE_0;
 
@@ -47,11 +47,11 @@ mod app {
     use robojackets_robocup_rtp::{
         RobotStatusMessage, RobotStatusMessageBuilder, ROBOT_STATUS_SIZE,
     };
-    use robojackets_robocup_rtp::{BASE_STATION_ADDRESS, ROBOT_RADIO_ADDRESSES};
+    use robojackets_robocup_rtp::{BASE_STATION_ADDRESSES, ROBOT_RADIO_ADDRESSES};
 
     use motion::MotionControl;
 
-    use main::{
+    use robojackets_robocup_control::{
         Delay1, Delay2, Gpio1, RFRadio, RadioInterrupt, SharedSPI, GPT_CLOCK_SOURCE, GPT_DIVIDER,
         GPT_FREQUENCY,
     };
@@ -149,10 +149,10 @@ mod app {
             &mut delay2,
         );
         radio.set_payload_size(CONTROL_MESSAGE_SIZE as u8, &mut shared_spi, &mut delay2);
-        radio.open_writing_pipe(BASE_STATION_ADDRESS, &mut shared_spi, &mut delay2);
+        radio.open_writing_pipe(BASE_STATION_ADDRESSES[0], &mut shared_spi, &mut delay2);
         radio.open_reading_pipe(
             1,
-            ROBOT_RADIO_ADDRESSES[ROBOT_ID as usize],
+            ROBOT_RADIO_ADDRESSES[0][ROBOT_ID as usize],
             &mut shared_spi,
             &mut delay2,
         );

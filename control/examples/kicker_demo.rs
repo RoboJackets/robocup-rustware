@@ -29,7 +29,7 @@ mod app {
 
     use kicker_controller::{KickTrigger, KickType, Kicker, KickerCommand};
 
-    use main::{spi::FakeSpi, KickerCSn, KickerReset};
+    use robojackets_robocup_control::{spi::FakeSpi, KickerCSn, KickerReset};
 
     #[local]
     struct Local {

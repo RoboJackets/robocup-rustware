@@ -26,7 +26,7 @@ use super::GPT_FREQUENCY;
 /// SPI that is used for the FPGA
 pub type FpgaSpi = Lpspi<board::LpspiPins<P11, P12, P13, P10>, 4>;
 /// The FPGA
-pub type Fpga = FPGA<FpgaSpi, Output<P9>, P29, Output<P28>, P30, Delay1, LpspiError, Infallible>;
+pub type Fpga = FPGA<FpgaSpi, Output<P9>, P29, Output<P28>, P30, LpspiError, Infallible>;
 /// Shared Spi
 pub type SharedSPI = Lpspi<board::LpspiPins<P26, P39, P27, P38>, 3>;
 /// The Chip Enable for the Radio
@@ -36,8 +36,7 @@ pub type RadioCSN = Output<P14>;
 /// The Interrupt for the Radio
 pub type RadioInterrupt = Input<P15>;
 /// The Radio
-pub type RFRadio =
-    rtic_nrf24l01::Radio<RadioCE, RadioCSN, SharedSPI, Delay2, Infallible, LpspiError>;
+pub type RFRadio = rtic_nrf24l01::Radio<RadioCE, RadioCSN, SharedSPI, Infallible, LpspiError>;
 /// The Delay used by the FPGA
 pub type Delay1 = Blocking<Gpt1, GPT_FREQUENCY>;
 /// The general-purpose delay shared by different peripherals

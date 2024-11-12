@@ -5,3 +5,4 @@ edition = "2021"
 
 [dependencies]
 embedded-hal = "~0.2"
+robojackets-robocup-rtp = "0.6.3"

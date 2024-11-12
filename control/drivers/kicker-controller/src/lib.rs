@@ -12,6 +12,8 @@ use embedded_hal::{
     digital::v2::OutputPin,
 };
 
+use robojackets_robocup_rtp::control_message::{ControlMessage, ShootMode, TriggerMode};
+
 /// Voltage threshold for the kicker board to be considered charged.
 pub const CHARGE_CUTOFF: u8 = 230;
 
@@ -31,6 +33,15 @@ pub enum KickType {
     Chip = 0,
 }
 
+impl From<ShootMode> for KickType {
+    fn from(value: ShootMode) -> Self {
+        match value {
+            ShootMode::Kick => Self::Kick,
+            ShootMode::Chip => Self::Chip,
+        }
+    }
+}
+
 /// The trigger for the kicker to perform a kick
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum KickTrigger {
@@ -40,6 +51,16 @@ pub enum KickTrigger {
     Breakbeam = 1 << 5,
     /// The kicker should kick immediately
     Immediate = 1 << 6,
+}
+
+impl From<TriggerMode> for KickTrigger {
+    fn from(value: TriggerMode) -> Self {
+        match value {
+            TriggerMode::Immediate => Self::Immediate,
+            TriggerMode::OnBreakBeam => Self::Breakbeam,
+            TriggerMode::StandDown => Self::Disabled,
+        }
+    }
 }
 
 /// The command to send to the kicker
@@ -94,21 +115,27 @@ impl Default for KickerCommand {
     }
 }
 
-impl Into<u8> for KickerCommand {
-    fn into(self) -> u8 {
+impl From<KickerCommand> for u8 {
+    fn from(value: KickerCommand) -> Self {
         let mut command = 0x00;
-
-        command |= self.kick_type as u8;
-
-        command |= self.kick_trigger as u8;
-
-        command |= (self.kick_strength / 255.0 * 15.0) as u8 & KICK_POWER_MASK;
-
-        if self.charge_allowed {
+        command |= value.kick_type as u8;
+        command |= value.kick_trigger as u8;
+        command |= (value.kick_strength / 255.0 * 15.0) as u8 & KICK_POWER_MASK;
+        if value.charge_allowed {
             command |= 1 << 4;
         }
-
         command
+    }
+}
+
+impl From<ControlMessage> for KickerCommand {
+    fn from(value: ControlMessage) -> Self {
+        Self {
+            kick_type: value.shoot_mode.into(),
+            kick_trigger: value.trigger_mode.into(),
+            kick_strength: value.kick_strength as f32 * 255.0 / 15.0,
+            charge_allowed: value.trigger_mode != TriggerMode::StandDown,
+        }
     }
 }
 
@@ -159,7 +186,7 @@ pub struct Kicker<CS, RESET> {
     /// The chip select controlled by the kicker controller
     cs: CS,
     /// The reset pin of the kicker (needs to be held high)
-    _reset: RESET,
+    reset: RESET,
 }
 
 impl<CS: OutputPin<Error = GPIOE>, RESET: OutputPin<Error = GPIOE>, GPIOE: Debug>
@@ -172,8 +199,13 @@ impl<CS: OutputPin<Error = GPIOE>, RESET: OutputPin<Error = GPIOE>, GPIOE: Debug
         Self {
             state: KickerState::default(),
             cs,
-            _reset: reset,
+            reset,
         }
+    }
+
+    /// Free the underlying peripherals of the kicker controller
+    pub fn destroy(self) -> (CS, RESET) {
+        (self.cs, self.reset)
     }
 
     /// Service the kicker by sending a command and receiving the kicker

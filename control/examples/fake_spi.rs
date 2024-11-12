@@ -27,8 +27,8 @@ mod app {
 
     use bsp::board::{self, PERCLK_FREQUENCY};
     use imxrt_iomuxc::{configure, Config, PullKeeper};
-    use main::spi::FakeSpi;
-    use main::KickerCSn;
+    use robojackets_robocup_control::spi::FakeSpi;
+    use robojackets_robocup_control::KickerCSn;
     use teensy4_bsp as bsp;
 
     use bsp::hal::timer::Blocking;

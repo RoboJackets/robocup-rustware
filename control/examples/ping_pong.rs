@@ -25,9 +25,10 @@ mod app {
 
     use rtic_monotonics::systick::*;
 
-    use robojackets_robocup_rtp::BASE_STATION_ADDRESS;
+    use robojackets_robocup_control::robot::TEAM_NUM;
+    use robojackets_robocup_rtp::BASE_STATION_ADDRESSES;
 
-    use main::{
+    use robojackets_robocup_control::{
         Delay2, RFRadio, SharedSPI, BASE_AMPLIFICATION_LEVEL, CHANNEL, GPT_CLOCK_SOURCE,
         GPT_DIVIDER, GPT_FREQUENCY, RADIO_ADDRESS,
     };
@@ -91,7 +92,11 @@ mod app {
         radio.set_pa_level(BASE_AMPLIFICATION_LEVEL, &mut shared_spi, &mut delay);
         radio.set_channel(CHANNEL, &mut shared_spi, &mut delay);
         radio.set_payload_size(4, &mut shared_spi, &mut delay);
-        radio.open_writing_pipe(BASE_STATION_ADDRESS, &mut shared_spi, &mut delay);
+        radio.open_writing_pipe(
+            BASE_STATION_ADDRESSES[TEAM_NUM],
+            &mut shared_spi,
+            &mut delay,
+        );
         radio.open_reading_pipe(1, RADIO_ADDRESS, &mut shared_spi, &mut delay);
         radio.start_listening(&mut shared_spi, &mut delay);
 
