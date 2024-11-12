@@ -74,8 +74,8 @@ mod app {
         spi::FakeSpi, Delay2, FPGAInitError, FPGAProgError, Fpga, Gpio1, Imu, ImuInitError,
         KickerCSn, KickerProg, KickerProgramError, KickerReset, KickerServicingError, PitDelay,
         RFRadio, RadioInitError, RadioInterrupt, SharedSPI, State, BASE_AMPLIFICATION_LEVEL,
-        CHANNEL, GPT_CLOCK_SOURCE, GPT_DIVIDER, GPT_FREQUENCY, RADIO_ADDRESS, ROBOT_ID,
-        GPT_1_DIVIDER,
+        CHANNEL, GPT_1_DIVIDER, GPT_CLOCK_SOURCE, GPT_DIVIDER, GPT_FREQUENCY, RADIO_ADDRESS,
+        ROBOT_ID,
     };
 
     use kicker_controller::{KickTrigger, KickType, Kicker, KickerCommand};
@@ -793,6 +793,7 @@ mod app {
 
         if elapsed_time > DIE_TIME_US {
             body_velocities = Vector3::zeros();
+            #[cfg(feature = "debug")]
             log::info!("DEAD: {}", elapsed_time);
         }
 
@@ -803,8 +804,8 @@ mod app {
             delta,
         );
 
-        // #[cfg(feature = "debug")]
-        // log::info!("Moving at {:?}", wheel_velocities);
+        #[cfg(feature = "debug")]
+        log::info!("Moving at {:?}", wheel_velocities);
 
         // TODO: Eventually it may be useful to update the fpga_status every tick, however I feel this might be unnecessary
         // so I'm currently only updating the fpga status field on the robot status whenever the kicker is serviced to make
@@ -843,7 +844,8 @@ mod app {
                 .lock(
                     |controller, programmer, robot_status, fake_spi| match controller.take() {
                         Some(mut kicker_controller) => {
-                            let state = kicker_controller.service(kicker_command, fake_spi).unwrap();
+                            let state =
+                                kicker_controller.service(kicker_command, fake_spi).unwrap();
                             robot_status.kick_status =
                                 kicker_command.kick_trigger != KickTrigger::Disabled;
                             robot_status.ball_sense_status = state.ball_sensed;
@@ -941,29 +943,9 @@ mod app {
 
                     let mut buffer = [0u8; IMU_MESSAGE_SIZE];
                     for i in 0..100 {
-                        let gyro_z = match imu.gyro_z() {
-                            Ok(gyro_z) => gyro_z,
-                            Err(err) => {
-                                log::info!("Unable to Read Gyro Z: {:?}", err);
-                                0.0
-                            }
-                        };
-
-                        let accel_x = match imu.accel_x() {
-                            Ok(accel_x) => accel_x,
-                            Err(err) => {
-                                log::info!("Unable to Read Accel X: {:?}", err);
-                                0.0
-                            }
-                        };
-
-                        let accel_y = match imu.accel_y() {
-                            Ok(accel_y) => accel_y,
-                            Err(err) => {
-                                log::info!("Unable to Read Accel Y: {:?}", err);
-                                0.0
-                            }
-                        };
+                        let gyro_z = imu.gyro_z().unwrap_or(0.0);
+                        let accel_x = imu.accel_x().unwrap_or(0.0);
+                        let accel_y = imu.accel_y().unwrap_or(0.0);
 
                         // Write the update message
                         let imu_message: ImuTestMessage = ImuTestMessage {

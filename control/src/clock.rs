@@ -4,7 +4,6 @@
 
 use teensy4_bsp::{board::PERCLK_FREQUENCY, hal::gpt::ClockSource};
 
-
 /// Frequency of the Motion Control Refernce Clock
 pub const GPT_1_FREQUENCY: u32 = 1_000_000;
 /// Divider for the Motion Control Reference Clock

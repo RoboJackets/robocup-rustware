@@ -44,9 +44,7 @@ mod app {
     }
 
     #[shared]
-    struct Shared {
-        
-    }
+    struct Shared {}
 
     #[init]
     fn init(ctx: init::Context) -> (Shared, Local) {
@@ -91,9 +89,7 @@ mod app {
         program_kicker::spawn().ok();
 
         (
-            Shared {
-                
-            },
+            Shared {},
             Local {
                 fake_spi,
                 delay2,
@@ -107,7 +103,10 @@ mod app {
         priority = 1
     )]
     async fn program_kicker(ctx: program_kicker::Context) {
-        let result = ctx.local.kicker_programmer.program_kicker(ctx.local.fake_spi, ctx.local.delay2);
+        let result = ctx
+            .local
+            .kicker_programmer
+            .program_kicker(ctx.local.fake_spi, ctx.local.delay2);
 
         match result {
             Ok(_) => log::info!("Kicker Programming Successful!!!"),
