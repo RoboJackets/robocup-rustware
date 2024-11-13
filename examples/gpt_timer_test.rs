@@ -2,6 +2,11 @@
 //! Collection Collects Data from Basic Movement by the Robot and stores the data
 //! in flash memory that can be read via report.rs
 //! 
+//! 
+
+
+
+// *****GPT TIMER USES MICROSECONDS WHEN DIVIDED WITH GPT_DIVIDER
 
 #![no_std]
 #![no_main]
@@ -71,6 +76,7 @@ mod app {
         gpt2.disable();
         gpt2.set_divider(GPT_DIVIDER);
         gpt2.set_clock_source(GPT_CLOCK_SOURCE);
+        
         let delay2 = Blocking::<_, GPT_FREQUENCY>::from_gpt(gpt2);
 
         motion_control_update::spawn().ok();
@@ -95,7 +101,7 @@ mod app {
 
     #[task(local = [delay, pit], priority=1)]
     async fn motion_control_update(ctx: motion_control_update::Context) {
-        Systick::delay(1000u32.millis()).await;
+        Systick::delay(3000u32.millis()).await;
 
         let start_pit = ctx.local.pit.current_timer_value();
         ctx.local.delay.block_ms(1_000);

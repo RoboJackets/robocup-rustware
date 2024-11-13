@@ -11,6 +11,7 @@ pub(crate) enum Instruction {
     EN_MOTORS = 0x30,
     DIS_MOTORS = 0xB0,
     R_ENC_W_VEL = 0x80,
+    R_DTY_W_VEL = 0x81,
     R_ENC = 0x91,
     R_HALLS = 0x92,
     R_DUTY = 0x93,

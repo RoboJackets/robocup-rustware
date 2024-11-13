@@ -14,11 +14,22 @@ static HEAP: Heap = Heap::empty();
 
 use teensy4_panic as _;
 
+/// Wheel Radius (m)
+pub const WHEEL_RADIUS: f32 = 0.02786;
+/// Duty Cycle to Velocity (m/s) (Tested.  See duty-to-wheel-data <https://docs.google.com/spreadsheets/d/1Y931pXyfOq7iaclSkPCwzVSvX_aOvcgqkb2LaQmUZGI/edit?usp=sharing>)
+pub const DUTY_CYCLE_TO_VELOCITY: f32 = 7.37;
+/// Velocity (m/s) to Duty Cycle
+pub const VELOCITY_TO_DUTY_CYCLES: f32 = 1.0 / DUTY_CYCLE_TO_VELOCITY;
+/// The maximum duty cycle
+pub const MAX_DUTY_CYCLE: f32 = 511.0;
+
+
 #[rtic::app(device = teensy4_bsp, peripherals = true, dispatchers = [GPIO1_INT0, GPIO1_INT1])]
 mod app {
     use super::*;
 
     use core::convert::Infallible;
+    use core::f32::MAX;
     use core::mem::MaybeUninit;
 
     use embedded_hal::blocking::delay::DelayMs;
@@ -59,9 +70,14 @@ mod app {
     static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
 
     const MOTION_CONTROL_DELAY_US: u32 = 200;
+    const MOTION_CONTROL_TRANSITION_DELAY_US: u64 = 1_000_000;
 
     #[local]
     struct Local {
+        gpt2: imxrt_hal::gpt::Gpt2,
+        body_velocities: Vector3<f32>,
+        next_body_velocities: Vector3<f32>,
+        start_time: u32,
         motion_controller: MotionControl,
         last_encoders: Vector4<f32>,
         chain_timer: Chained01,
@@ -97,6 +113,7 @@ mod app {
             lpi2c1,
             lpspi4,
             mut gpt1,
+            mut gpt2,
             pit: (pit0, pit1, pit2, _pit3),
             ..
         } = board::t41(ctx.device);
@@ -113,6 +130,11 @@ mod app {
         gpt1.set_divider(GPT_DIVIDER);
         gpt1.set_clock_source(GPT_CLOCK_SOURCE);
         let delay1 = Blocking::<_, GPT_FREQUENCY>::from_gpt(gpt1);
+
+        gpt2.disable();
+        gpt2.set_divider(GPT_DIVIDER);
+        gpt2.set_clock_source(GPT_CLOCK_SOURCE);
+        gpt2.enable();
 
         // Chained Pit<0> and Pit<1>
         let mut chained_timer = Chained01::new(pit0, pit1);
@@ -168,6 +190,10 @@ mod app {
                 fpga_initialization_error: None,
             },
             Local {
+                gpt2: gpt2,
+                body_velocities: Vector3::new(0.0, 1.0, 0.0),
+                next_body_velocities: Vector3::new(0.0, 0.0, 0.0),
+                start_time: 0,
                 motion_controller: MotionControl::new(),
                 last_encoders: Vector4::zeros(),
                 chain_timer: chained_timer,
@@ -232,18 +258,34 @@ mod app {
         }
     }
 
+
+
+
     #[task(
         shared = [control_message, counter, fpga, imu],
-        local = [motion_controller, last_encoders, chain_timer, initialized: bool = false, iteration: u32 = 0, last_time: u64 = 0],
+        local = [gpt2, body_velocities, next_body_velocities, start_time, motion_controller, last_encoders, chain_timer, initialized: bool = false, iteration: u32 = 0, last_time: u64 = 0, transitioning: bool = false, done: bool = false],
         priority = 1
     )]
     async fn motion_control_loop(mut ctx: motion_control_loop::Context) {
         if !*ctx.local.initialized {
             *ctx.local.initialized = true;
-            *ctx.local.last_time = ctx.local.chain_timer.current_timer_value();
+            *ctx.local.start_time = ctx.local.gpt2.count();
+            log::info!("Testing and measuring FPGA Delay");
+            *ctx.local.body_velocities = Vector3::new(0.0, 1.0, 0.0); // start at this velocity
+            *ctx.local.transitioning = false;
         }
-
-        let body_velocities = Vector3::new(0.0, 1.0, 0.0);
+        //always wait 1 second between direction changes
+        else if *ctx.local.transitioning {
+            if (ctx.local.gpt2.count() - *ctx.local.start_time) > 1000000 { // FIGURE OUT HOW THE TIMER WORKS
+                *ctx.local.body_velocities = *ctx.local.next_body_velocities;
+                log::info!("LEAVING TRANSITIONING");
+                *ctx.local.transitioning = false;
+                *ctx.local.start_time = ctx.local.gpt2.count(); // reset start time to avoid overestimation
+            }
+        }
+        
+        
+        //log::info!("running");
 
         let (gyro, accel_x, accel_y) = ctx.shared.imu.lock(|imu| {
             let gyro = match imu.gyro_z() {
@@ -275,45 +317,102 @@ mod app {
 
             (gyro, accel_x, accel_y)
         });
-
+        
         let now = ctx.local.chain_timer.current_timer_value();
         let delta = *ctx.local.last_time - now;
         *ctx.local.last_time = now;
 
         
+        //let test_body_vel = Vector3::new(0.0, 1.0, 0.0);
+        
+        *ctx.local.last_encoders = Vector4::new(0.0,0.0,0.0,0.0);
 
         let wheel_velocities = ctx.local.motion_controller.control_update(
             Vector3::new(-accel_y, accel_x, gyro),
-            *ctx.local.last_encoders,
-            body_velocities,
-            delta,
+            *ctx.local.last_encoders, 
+            *ctx.local.body_velocities,
+            delta
         );
+        
 
-        #[cfg(feature = "debug")]
-        log::info!("Moving at {:?}", wheel_velocities);
 
-        let encoder_velocities = ctx.shared.fpga.lock(|fpga| {
-            match fpga.set_velocities(wheel_velocities.into(), false) {
-                Ok(encoder_velocities) => encoder_velocities,
+
+        //#[cfg(feature = "debug")]
+        //log::info!("Moving at {:?}", wheel_velocities);
+
+        
+        // conduct SPI transfer to FPGA, feeding it duty cycles and receiving the current operating duty cycle
+        let actual_phases = ctx.shared.fpga.lock(|fpga| {
+            match fpga.set_velocities_rcv_duty(wheel_velocities.into(), false) {
+                Ok(actual_phases) => actual_phases,
                 Err(_err) => {
-                    #[cfg(feature = "debug")]
+                    //#[cfg(feature = "debug")]
                     log::info!("Unable to Read Encoder Values");
                     [0.0; 4]
                 }
             }
         });
 
+        //log::info!("Phases at {:?}, should be {:?}", actual_phases, wheel_velocities * VELOCITY_TO_DUTY_CYCLES * MAX_DUTY_CYCLE);
+
+
+        let delta_phase = Vector4::from(actual_phases) - wheel_velocities * VELOCITY_TO_DUTY_CYCLES * MAX_DUTY_CYCLE;
+
+        if Vector4::abs(&delta_phase) < Vector4::new(2.5, 2.5, 2.5, 2.5) && !*ctx.local.done && !*ctx.local.transitioning {
+
+            let seconds_between = ((ctx.local.gpt2.count() - *ctx.local.start_time) as f32) / 1_000_000.0;
+            log::info!("time between sending duty cycle to reaching duty cycle is {} s", seconds_between);
+            log::info!("Phases from FPGA: {:?}, phases expected: {:?}", actual_phases, wheel_velocities * VELOCITY_TO_DUTY_CYCLES * MAX_DUTY_CYCLE);
+
+            // kind of a state machine set up here
+            // add more steps in betweeen
+            if *ctx.local.body_velocities == Vector3::new(0.0, 1.0, 0.0) {
+                *ctx.local.next_body_velocities = Vector3::new(1.0, 0.0, 0.0);
+                log::info!("Going from body velocity {:?} to {:?}", *ctx.local.body_velocities, *ctx.local.next_body_velocities);
+            } 
+
+            else if *ctx.local.body_velocities == Vector3::new(1.0, 0.0, 0.0) {
+                *ctx.local.next_body_velocities = Vector3::new(0.0, 0.0, 0.0);
+                log::info!("Going from body velocity {:?} to {:?}", *ctx.local.body_velocities, *ctx.local.next_body_velocities);
+            }
+
+            else if *ctx.local.body_velocities == Vector3::new(0.0, 0.0, 0.0) {
+                *ctx.local.done = true;
+                log::info!("Going from body velocity {:?} to {:?}", *ctx.local.body_velocities, *ctx.local.next_body_velocities);
+            }
+
+            // still print out all of the phases for the motors, to make sure that all match
+            // only checking motor 0 for the time measurement, could implement checking all
+            /*
+            log::info!("Actual phase of motor 0 is {}", actual_phases[0]);
+            log::info!("Expected phase of motor 0 is {}", wheel_velocities[0] * VELOCITY_TO_DUTY_CYCLES * MAX_DUTY_CYCLE);
+            log::info!("Actual phase of motor 0 is {}", actual_phases[1]);
+            log::info!("Expected phase of motor 0 is {}", wheel_velocities[1] * VELOCITY_TO_DUTY_CYCLES * MAX_DUTY_CYCLE);
+            log::info!("Actual phase of motor 0 is {}", actual_phases[2]);
+            log::info!("Expected phase of motor 0 is {}", wheel_velocities[2] * VELOCITY_TO_DUTY_CYCLES * MAX_DUTY_CYCLE);
+            log::info!("Actual phase of motor 0 is {}", actual_phases[3]);
+            log::info!("Expected phase of motor 0 is {}", wheel_velocities[3] * VELOCITY_TO_DUTY_CYCLES * MAX_DUTY_CYCLE);
+            */
+
+            *ctx.local.start_time = ctx.local.gpt2.count(); // reset the start time for the next stage, going to 0
+            *ctx.local.transitioning = true;
+        }
+
         #[cfg(feature = "debug")]
         log::info!("Fpga Status: {:#010b}", ctx.local.fpga.status);
 
+        /* 
         *ctx.local.last_encoders = Vector4::new(
             encoder_velocities[0],
             encoder_velocities[1],
             encoder_velocities[2],
             encoder_velocities[3],
-        );
-
+         );
+        */
+        
         motion_control_delay::spawn().ok();
+        
+
     }
 
     #[task(priority = 1)]
@@ -322,6 +421,7 @@ mod app {
 
         motion_control_loop::spawn().ok();
     }
+
 
     #[task(
         shared = [imu_initialization_error, fpga_programming_error, fpga_initialization_error],
