@@ -23,16 +23,16 @@ impl Configuration {
     fn new() -> Self {
         let objcopy = env::var("TEENSY4RS_OBJCOPY").unwrap_or_else(|_| "rust-objcopy".into());
         // MacOS
-        // let loader = env::var("TEENSY4RS_LOADER")
-        //     .unwrap_or_else(|_| "./teensy_loader_cli/teensy_loader_cli_macos".into());
+        let loader = env::var("TEENSY4RS_LOADER")
+            .unwrap_or_else(|_| "../control/teensy_loader_cli/teensy_loader_cli_macos".into());
 
         // Windows
         // let loader = env::var("TEENSY4RS_LOADER")
         //     .unwrap_or_else(|_| "./teensy_loader_cli/teensy_loader_cli_windows.exe".into());
 
         // Linux
-        let loader = env::var("TEENSY4RS_LOADER")
-            .unwrap_or_else(|_| "../control/teensy_loader_cli/teensy_loader_cli_linux".into());
+        // let loader = env::var("TEENSY4RS_LOADER")
+        //     .unwrap_or_else(|_| "../control/teensy_loader_cli/teensy_loader_cli_linux".into());
         Self { objcopy, loader }
     }
 }

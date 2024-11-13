@@ -1,93 +1,91 @@
-//!
-//! This demo example shows how a teensy 4 RTIC application can be set up
-//! and spawns a software task that blinks an onboard led.
-//!
+// Cargo.toml dependencies
+/*
+[dependencies]
+teensy4-bsp = "0.4"
+imxrt-hal = "0.5"
+embedded-hal = "0.2.7"
+rtic = { version = "2.0", features = ["thumbv7-backend"] }
+rtic-monotonics = { version = "1.0", features = ["cortex-m-systick"] }
+log = "0.4"
+*/
 
 #![no_std]
 #![no_main]
-#![feature(type_alias_impl_trait)]
 
-///
-/// This is a demo example file that turns on and off the onboard led.
-///
-/// Please follow this example for future examples and sanity tests
-///
-use embedded_alloc::Heap;
-
-#[global_allocator]
-static HEAP: Heap = Heap::empty();
-
+use rtic::app;
+use rtic_monotonics::systick::*;
 use teensy4_panic as _;
 
-#[rtic::app(device = teensy4_bsp, peripherals = true, dispatchers = [GPT2])]
+#[app(device = teensy4_bsp, peripherals = true, dispatchers = [GPIO1_INT0, GPIO1_INT1])]
 mod app {
-    use bsp::board;
-    use teensy4_bsp as bsp;
-    use teensy4_bsp::hal::gpio::{Input, Output};
-    use teensy4_pins::t41::*;
+    use super::*;
 
-    use rtic_monotonics::systick::*;
+    use teensy4_bsp as bsp;
+    use bsp::board;
+    
+    #[shared]
+    struct Shared {}
 
     #[local]
-    struct Local {}
-
-    #[shared]
-    struct Shared {
-        ledout: Output<P0>,
-        button: Input<P1>,
+    struct Local {
+        adc: bsp::hal::adc::Adc<1>,
+        a1: bsp::hal::adc::AnalogInput<bsp::pins::t41::P16, 1>,
+        a2: bsp::hal::adc::AnalogInput<bsp::pins::t41::P17,1>,
     }
 
     #[init]
     fn init(ctx: init::Context) -> (Shared, Local) {
+        // Get board resources
         let board::Resources {
-            usb,
             pins,
-            mut gpio1,
+            adc1,
             ..
         } = board::t41(ctx.device);
 
-        bsp::LoggingFrontend::default_log().register_usb(usb);
-
+        // Configure systick for timing
         let systick_token = rtic_monotonics::create_systick_token!();
         Systick::start(ctx.core.SYST, 600_000_000, systick_token);
 
-        //set pin 0 to output
-        let ledout = gpio1.output(pins.p0);
+        // Configure ADC input on pin P0
+        let a1 = bsp::hal::adc::AnalogInput::new(pins.p16);
+        let a2 = bsp::hal::adc::AnalogInput::new(pins.p17);
+        // Start the ADC reading task
+        log::info!("logging");
+        read_adc::spawn().ok();
 
-        let button = gpio1.input(pins.p1);
-
-        blink_led::spawn().ok();
-
-        (Shared { ledout, button }, Local {})
+        (
+            Shared { },
+            Local {
+                adc: adc1,
+                a1,
+                a2,
+            },
+        )
     }
 
+    #[task(local = [adc, a1, a2], priority = 1)]
+    async fn read_adc(ctx: read_adc::Context) {
+        loop {
+            // Read ADC value using OneShot trait
+            let readingX: u16 = ctx.local.adc.read_blocking(ctx.local.a1);
+
+            let readingY: u16 = ctx.local.adc.read_blocking(ctx.local.a2);
+            
+            // Log the reading
+            log::info!("ADC ReadingX: {}", readingX);
+
+            log::info!("ADC ReadingY: {}", readingY);
+
+            // Wait for 1 second before next reading
+            Systick::delay(1_000u32.millis()).await;
+        }
+    }
+
+    // Required idle task when using RTIC
     #[idle]
     fn idle(_: idle::Context) -> ! {
         loop {
             cortex_m::asm::wfi();
-        }
-    }
-
-    #[task(priority = 1,shared=[ledout, button])]
-    async fn blink_led(mut _ctx: blink_led::Context) {
-        let mut toggle = false;
-        loop {
-            log::info!("On");
-            _ctx.shared.ledout.lock(|led| {
-                _ctx.shared.button.lock(|button| {
-                    if button.is_set() {
-                        if toggle {
-                            led.set();
-                        } else {
-                            led.clear();
-                        }
-
-                        toggle = !toggle;
-                    }
-                });
-            });
-
-            Systick::delay(100u32.millis()).await;
         }
     }
 }
