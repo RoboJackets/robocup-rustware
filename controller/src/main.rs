@@ -7,6 +7,48 @@
 #![no_main]
 #![feature(type_alias_impl_trait)]
 
+pub mod fsm_menu {
+    use teensy4_bsp as bsp;
+
+    use rtic_monotonics::systick::*;
+
+    use embedded_graphics::{
+        mono_font::{ascii::FONT_7X13_BOLD, MonoTextStyleBuilder},
+        pixelcolor::BinaryColor,
+        prelude::*,
+        primitives::{PrimitiveStyleBuilder, Rectangle},
+        text::{Baseline, Text},
+    };
+    use ssd1306::{prelude::*, I2CDisplayInterface, Ssd1306};
+    use teensy4_pins::t41::*;
+
+    type Display = Ssd1306<
+        I2CInterface<imxrt_hal::lpi2c::Lpi2c<imxrt_hal::lpi2c::Pins<P19, P18>, 1>>,
+        DisplaySize128x64,
+        ssd1306::mode::BufferedGraphicsMode<DisplaySize128x64>,
+    >;
+
+    struct MenuItem<'a> {
+        label: &'a str,
+        goto: i32,
+        from: i32,
+    }
+
+    struct Menu<'a> {
+        label: &'a str,
+        entries: [MenuItem<'a>],
+    }
+
+    impl<'a> Menu<'a> {
+        fn fetch_item(&self, n: usize) -> &MenuItem {
+            &self.entries[n]
+        }
+    }
+
+
+    
+}
+
 ///
 /// This is a demo example file that turns on and off the onboard led.
 ///
@@ -29,7 +71,7 @@ mod app {
 
     use embedded_graphics::{
         mono_font::{ascii::FONT_7X13_BOLD, MonoTextStyleBuilder},
-        pixelcolor::{BinaryColor, Rgb888},
+        pixelcolor::BinaryColor,
         prelude::*,
         primitives::{PrimitiveStyleBuilder, Rectangle},
         text::{Baseline, Text},
@@ -47,8 +89,8 @@ mod app {
             DisplaySize128x64,
             ssd1306::mode::BufferedGraphicsMode<DisplaySize128x64>,
         >,
-        buttoninc: Input<P10>,
-        buttondec: Input<P9>,
+        buttoninc: Input<P5>,
+        buttondec: Input<P4>,
     }
 
     #[init]
@@ -57,17 +99,17 @@ mod app {
             usb,
             pins,
             lpi2c1,
-            mut gpio2,
+            mut gpio4,
             ..
         } = board::t41(ctx.device);
 
         bsp::LoggingFrontend::default_log().register_usb(usb);
 
         //setup buttoninc
-        let buttoninc = gpio2.input(pins.p10);
+        let buttoninc = gpio4.input(pins.p5);
 
         //setup buttondec
-        let buttondec = gpio2.input(pins.p9);
+        let buttondec = gpio4.input(pins.p4);
 
         let systick_token = rtic_monotonics::create_systick_token!();
         Systick::start(ctx.core.SYST, 600_000_000, systick_token);
@@ -104,7 +146,7 @@ mod app {
         let mut lastbuttonincState = false;
         let mut lastbuttondecState = false;
         let mut i: i32 = 0;
-        while true {
+        loop {
             _ctx.shared.buttoninc.lock(|btn| {
                 let currentbuttonincState = btn.is_set();
 
