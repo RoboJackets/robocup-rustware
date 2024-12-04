@@ -29,7 +29,9 @@ mod app {
 
     use kicker_programmer::KickerProgrammer;
 
-    use main::{spi::FakeSpi, Delay2, KickerProg, GPT_CLOCK_SOURCE, GPT_DIVIDER, GPT_FREQUENCY};
+    use robojackets_robocup_control::{
+        spi::FakeSpi, Delay2, KickerProg, GPT_CLOCK_SOURCE, GPT_DIVIDER, GPT_FREQUENCY,
+    };
 
     const HEAP_SIZE: usize = 1024;
     static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];

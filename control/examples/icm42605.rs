@@ -39,7 +39,7 @@ mod app {
 
     use rtic_monotonics::systick::*;
 
-    use main::{Imu, PitDelay};
+    use robojackets_robocup_control::{Imu, PitDelay};
 
     #[local]
     struct Local {}

@@ -42,11 +42,11 @@ mod app {
 
     use ncomm_utils::packing::Packable;
 
-    use robojackets_robocup_rtp::BASE_STATION_ADDRESS;
+    use robojackets_robocup_rtp::BASE_STATION_ADDRESSES;
     use robojackets_robocup_rtp::{ControlMessage, CONTROL_MESSAGE_SIZE};
     use robojackets_robocup_rtp::{RobotStatusMessage, RobotStatusMessageBuilder};
 
-    use main::{
+    use robojackets_robocup_control::{
         Delay2, RFRadio, SharedSPI, CHANNEL, GPT_CLOCK_SOURCE, GPT_DIVIDER, GPT_FREQUENCY,
         RADIO_ADDRESS,
     };
@@ -117,7 +117,7 @@ mod app {
         radio.set_pa_level(PA_LEVEL, &mut shared_spi, &mut delay2);
         radio.set_channel(CHANNEL, &mut shared_spi, &mut delay2);
         radio.set_payload_size(CONTROL_MESSAGE_SIZE as u8, &mut shared_spi, &mut delay2);
-        radio.open_writing_pipe(BASE_STATION_ADDRESS, &mut shared_spi, &mut delay2);
+        radio.open_writing_pipe(BASE_STATION_ADDRESSES[0], &mut shared_spi, &mut delay2);
         radio.open_reading_pipe(1, RADIO_ADDRESS, &mut shared_spi, &mut delay2);
         radio.start_listening(&mut shared_spi, &mut delay2);
 

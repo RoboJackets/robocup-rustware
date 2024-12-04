@@ -29,20 +29,22 @@ mod app {
 
     use kicker_programmer::KickerProgrammer;
 
-    use main::{spi::FakeSpi, Delay2, KickerProg, GPT_CLOCK_SOURCE, GPT_DIVIDER, GPT_FREQUENCY};
+    use robojackets_robocup_control::{
+        spi::FakeSpi, Delay2, KickerProg, GPT_CLOCK_SOURCE, GPT_DIVIDER, GPT_FREQUENCY,
+    };
 
     const HEAP_SIZE: usize = 1024;
     static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
 
     #[local]
-    struct Local {}
-
-    #[shared]
-    struct Shared {
+    struct Local {
         delay2: Delay2,
         fake_spi: FakeSpi,
         kicker_programmer: KickerProg,
     }
+
+    #[shared]
+    struct Shared {}
 
     #[init]
     fn init(ctx: init::Context) -> (Shared, Local) {
@@ -87,26 +89,24 @@ mod app {
         program_kicker::spawn().ok();
 
         (
-            Shared {
+            Shared {},
+            Local {
                 fake_spi,
                 delay2,
                 kicker_programmer,
             },
-            Local {},
         )
     }
 
     #[task(
-        shared = [fake_spi, delay2, kicker_programmer],
+        local = [fake_spi, delay2, kicker_programmer],
         priority = 1
     )]
     async fn program_kicker(ctx: program_kicker::Context) {
-        let result = (
-            ctx.shared.fake_spi,
-            ctx.shared.delay2,
-            ctx.shared.kicker_programmer,
-        )
-            .lock(|spi, delay, kicker_programmer| kicker_programmer.program_kicker(spi, delay));
+        let result = ctx
+            .local
+            .kicker_programmer
+            .program_kicker(ctx.local.fake_spi, ctx.local.delay2);
 
         match result {
             Ok(_) => log::info!("Kicker Programming Successful!!!"),

@@ -30,6 +30,7 @@ mod app {
     use bsp::board;
     use bsp::board::PERCLK_FREQUENCY;
     use nalgebra::{Vector3, Vector4};
+    use robojackets_robocup_control::Delay1;
     use teensy4_bsp as bsp;
 
     use hal::gpio::Trigger;
@@ -51,7 +52,9 @@ mod app {
 
     use icm42605_driver::{ImuError, IMU};
 
-    use main::{Fpga, Imu, PitDelay, GPT_CLOCK_SOURCE, GPT_DIVIDER, GPT_FREQUENCY};
+    use robojackets_robocup_control::{
+        Fpga, Imu, PitDelay, GPT_CLOCK_SOURCE, GPT_DIVIDER, GPT_FREQUENCY,
+    };
 
     const HEAP_SIZE: usize = 1024;
     static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
@@ -72,6 +75,7 @@ mod app {
         pit_delay: PitDelay,
         control_message: Option<ControlMessage>,
         counter: u32,
+        delay: Delay1,
 
         // Errors
         imu_initialization_error: Option<ImuError<ControllerStatus>>,
@@ -149,7 +153,7 @@ mod app {
         let done = gpio3.input(pins.p30);
 
         // Initialize the FPGA
-        let fpga = FPGA::new(spi, cs, init_b, prog_b, done, delay1)
+        let fpga = FPGA::new(spi, cs, init_b, prog_b, done)
             .expect("Unable to modify peripheral pins for FPGA");
 
         rx_int.clear_triggered();
@@ -163,6 +167,7 @@ mod app {
                 fpga,
                 imu,
                 pit_delay,
+                delay: delay1,
 
                 imu_initialization_error: None,
                 fpga_programming_error: None,
@@ -203,7 +208,7 @@ mod app {
     }
 
     #[task(
-        shared = [fpga, pit_delay, imu_initialization_error, fpga_programming_error, fpga_initialization_error],
+        shared = [fpga, pit_delay, imu_initialization_error, fpga_programming_error, fpga_initialization_error, delay],
         priority = 1,
     )]
     async fn initialize_fpga(ctx: initialize_fpga::Context) {
@@ -213,19 +218,21 @@ mod app {
             ctx.shared.imu_initialization_error,
             ctx.shared.fpga_programming_error,
             ctx.shared.fpga_initialization_error,
+            ctx.shared.delay,
         )
             .lock(
                 |fpga,
                  pit_delay,
                  imu_initialization_error,
                  fpga_programming_error,
-                 fpga_initialization_error| {
-                    if let Err(err) = fpga.configure() {
+                 fpga_initialization_error,
+                 delay| {
+                    if let Err(err) = fpga.configure(delay) {
                         *fpga_programming_error = Some(err);
                         return false;
                     }
                     pit_delay.delay_ms(10u8);
-                    if let Err(err) = fpga.motors_en(true) {
+                    if let Err(err) = fpga.motors_en(true, delay) {
                         *fpga_initialization_error = Some(err);
                         return false;
                     }
@@ -246,7 +253,7 @@ mod app {
     }
 
     #[task(
-        shared = [control_message, counter, fpga, imu],
+        shared = [control_message, counter, fpga, imu, delay],
         local = [motion_controller, last_encoders, chain_timer, initialized: bool = false, iteration: u32 = 0, last_time: u64 = 0],
         priority = 1
     )]
@@ -297,20 +304,20 @@ mod app {
             Vector3::new(-accel_y, accel_x, gyro),
             *ctx.local.last_encoders,
             body_velocities,
-            delta,
+            delta as u32,
         );
 
         #[cfg(feature = "debug")]
         log::info!("Moving at {:?}", wheel_velocities);
 
-        let encoder_velocities = ctx.shared.fpga.lock(|fpga| {
-            match fpga.set_velocities(wheel_velocities.into(), false) {
-                Ok(encoder_velocities) => encoder_velocities,
-                Err(_err) => {
-                    #[cfg(feature = "debug")]
-                    log::info!("Unable to Read Encoder Values");
-                    [0.0; 4]
-                }
+        let encoder_velocities = (ctx.shared.fpga, ctx.shared.delay).lock(|fpga, delay| match fpga
+            .set_velocities(wheel_velocities.into(), false, delay)
+        {
+            Ok(encoder_velocities) => encoder_velocities,
+            Err(_err) => {
+                #[cfg(feature = "debug")]
+                log::info!("Unable to Read Encoder Values");
+                [0.0; 4]
             }
         });
 
