@@ -658,9 +658,7 @@ mod app {
             log::info!("DEAD: {}", elapsed_time);
         }
 
-        let wheel_velocities = ctx.local.motion_controller.body_to_wheels(
-            body_velocities
-        );
+        let wheel_velocities = ctx.local.motion_controller.body_to_wheels(body_velocities);
 
         log::info!("Moving at {:?}", wheel_velocities);
 
@@ -721,45 +719,36 @@ mod app {
             ctx.shared.shared_spi,
             ctx.shared.blocking_delay,
         )
-            .lock(
-                |delay, state, radio, rx_int, gpio1, spi, radio_delay| {
-                    // Disable Radio Interrupts for Testing
-                    disable_radio_interrupts(
-                        IMU_MESSAGE_SIZE,
-                        rx_int,
-                        gpio1,
-                        radio,
-                        spi,
-                        radio_delay,
-                    );
+            .lock(|delay, state, radio, rx_int, gpio1, spi, radio_delay| {
+                // Disable Radio Interrupts for Testing
+                disable_radio_interrupts(IMU_MESSAGE_SIZE, rx_int, gpio1, radio, spi, radio_delay);
 
-                    let mut buffer = [0u8; IMU_MESSAGE_SIZE];
-                    for i in 0..100 {
-                        let gyro_z = 0.0;
-                        let accel_x = 0.0;
-                        let accel_y = 0.0;
+                let mut buffer = [0u8; IMU_MESSAGE_SIZE];
+                for i in 0..100 {
+                    let gyro_z = 0.0;
+                    let accel_x = 0.0;
+                    let accel_y = 0.0;
 
-                        // Write the update message
-                        let imu_message: ImuTestMessage = ImuTestMessage {
-                            first_message: i == 0,
-                            last_message: i == 99,
-                            gyro_z,
-                            accel_x,
-                            accel_y,
-                        };
-                        imu_message.pack(&mut buffer).unwrap();
-                        radio.write(&buffer, spi, radio_delay);
-                        log::info!("X: {}, Y: {}, Z: {}", accel_x, accel_y, gyro_z);
+                    // Write the update message
+                    let imu_message: ImuTestMessage = ImuTestMessage {
+                        first_message: i == 0,
+                        last_message: i == 99,
+                        gyro_z,
+                        accel_x,
+                        accel_y,
+                    };
+                    imu_message.pack(&mut buffer).unwrap();
+                    radio.write(&buffer, spi, radio_delay);
+                    log::info!("X: {}, Y: {}, Z: {}", accel_x, accel_y, gyro_z);
 
-                        delay.delay_ms(10u8);
-                    }
+                    delay.delay_ms(10u8);
+                }
 
-                    *state = State::Idle;
+                *state = State::Idle;
 
-                    // Re-enable the radio interrupts
-                    enable_radio_interrupts(rx_int, gpio1, radio, spi, radio_delay);
-                },
-            );
+                // Re-enable the radio interrupts
+                enable_radio_interrupts(rx_int, gpio1, radio, spi, radio_delay);
+            });
     }
 
     /// Benchmark the number of radio packets received
@@ -933,46 +922,39 @@ mod app {
             ctx.shared.shared_spi,
             ctx.shared.blocking_delay,
         )
-            .lock(
-                |state,
-                 rx_int,
-                 gpio1,
-                 radio,
-                 radio_spi,
-                 radio_delay| {
-                    disable_radio_interrupts(
-                        KICKER_PROGRAM_MESSAGE,
-                        rx_int,
-                        gpio1,
-                        radio,
-                        radio_spi,
-                        radio_delay,
-                    );
+            .lock(|state, rx_int, gpio1, radio, radio_spi, radio_delay| {
+                disable_radio_interrupts(
+                    KICKER_PROGRAM_MESSAGE,
+                    rx_int,
+                    gpio1,
+                    radio,
+                    radio_spi,
+                    radio_delay,
+                );
 
-                    let mut buffer = [0u8; KICKER_PROGRAM_MESSAGE];
-                    let message = KickerProgramMessage {
-                        kick_on_breakbeam: true,
-                        finished: false,
-                        page: 0,
-                    };
-                    message.pack(&mut buffer).unwrap();
-                    radio.write(&buffer, radio_spi, radio_delay);
+                let mut buffer = [0u8; KICKER_PROGRAM_MESSAGE];
+                let message = KickerProgramMessage {
+                    kick_on_breakbeam: true,
+                    finished: false,
+                    page: 0,
+                };
+                message.pack(&mut buffer).unwrap();
+                radio.write(&buffer, radio_spi, radio_delay);
 
-                    log::info!("Kicker Programmed with Kick on Breakbeam");
+                log::info!("Kicker Programmed with Kick on Breakbeam");
 
-                    let message = KickerProgramMessage {
-                        kick_on_breakbeam: true,
-                        finished: true,
-                        page: 0,
-                    };
-                    message.pack(&mut buffer).unwrap();
-                    radio.write(&buffer, radio_spi, radio_delay);
+                let message = KickerProgramMessage {
+                    kick_on_breakbeam: true,
+                    finished: true,
+                    page: 0,
+                };
+                message.pack(&mut buffer).unwrap();
+                radio.write(&buffer, radio_spi, radio_delay);
 
-                    *state = State::Idle;
+                *state = State::Idle;
 
-                    enable_radio_interrupts(rx_int, gpio1, radio, radio_spi, radio_delay);
-                },
-            );
+                enable_radio_interrupts(rx_int, gpio1, radio, radio_spi, radio_delay);
+            });
     }
 
     /// Program the kicker with normal operations
@@ -1000,45 +982,38 @@ mod app {
             ctx.shared.shared_spi,
             ctx.shared.blocking_delay,
         )
-            .lock(
-                |state,
-                 rx_int,
-                 gpio1,
-                 radio,
-                 radio_spi,
-                 radio_delay| {
-                    disable_radio_interrupts(
-                        KICKER_PROGRAM_MESSAGE,
-                        rx_int,
-                        gpio1,
-                        radio,
-                        radio_spi,
-                        radio_delay,
-                    );
+            .lock(|state, rx_int, gpio1, radio, radio_spi, radio_delay| {
+                disable_radio_interrupts(
+                    KICKER_PROGRAM_MESSAGE,
+                    rx_int,
+                    gpio1,
+                    radio,
+                    radio_spi,
+                    radio_delay,
+                );
 
-                    let mut buffer = [0u8; KICKER_PROGRAM_MESSAGE];
-                    let message = KickerProgramMessage {
-                        kick_on_breakbeam: false,
-                        finished: false,
-                        page: 0,
-                    };
-                    message.pack(&mut buffer).unwrap();
-                    radio.write(&buffer, radio_spi, radio_delay);
+                let mut buffer = [0u8; KICKER_PROGRAM_MESSAGE];
+                let message = KickerProgramMessage {
+                    kick_on_breakbeam: false,
+                    finished: false,
+                    page: 0,
+                };
+                message.pack(&mut buffer).unwrap();
+                radio.write(&buffer, radio_spi, radio_delay);
 
-                    log::info!("Programmed Kicker");
-                    let message = KickerProgramMessage {
-                        kick_on_breakbeam: false,
-                        finished: true,
-                        page: 0,
-                    };
-                    message.pack(&mut buffer).unwrap();
-                    radio.write(&buffer, radio_spi, radio_delay);
+                log::info!("Programmed Kicker");
+                let message = KickerProgramMessage {
+                    kick_on_breakbeam: false,
+                    finished: true,
+                    page: 0,
+                };
+                message.pack(&mut buffer).unwrap();
+                radio.write(&buffer, radio_spi, radio_delay);
 
-                    *state = State::Idle;
+                *state = State::Idle;
 
-                    enable_radio_interrupts(rx_int, gpio1, radio, radio_spi, radio_delay);
-                },
-            );
+                enable_radio_interrupts(rx_int, gpio1, radio, radio_spi, radio_delay);
+            });
     }
 
     /// Test the kicker is working properly
@@ -1070,13 +1045,7 @@ mod app {
             ctx.shared.blocking_delay,
         )
             .lock(
-                |delay,
-                 state,
-                 rx_int,
-                 gpio1,
-                 radio,
-                 radio_spi,
-                 radio_delay| {
+                |delay, state, rx_int, gpio1, radio, radio_spi, radio_delay| {
                     disable_radio_interrupts(
                         KICKER_TESTING_SIZE,
                         rx_int,
@@ -1086,7 +1055,7 @@ mod app {
                         radio_delay,
                     );
 
-                    let mut buffer= [0u8; 2];
+                    let mut buffer = [0u8; 2];
 
                     log::info!("KICKING!!!");
                     let message = KickerTestingMessage {
@@ -1095,7 +1064,7 @@ mod app {
                         kicking: true,
                         kick_immediately: true,
                         kick_on_ball_sense: false,
-                        voltage: 0
+                        voltage: 0,
                     };
                     message.pack(&mut buffer).unwrap();
                     radio.write(&buffer, radio_spi, radio_delay);
@@ -1149,14 +1118,7 @@ mod app {
             ctx.shared.shared_spi,
         )
             .lock(
-                |delay,
-                 control_message,
-                 gpt,
-                 state,
-                 radio,
-                 rx_int,
-                 gpio1,
-                 shared_spi| {
+                |delay, control_message, gpt, state, radio, rx_int, gpio1, shared_spi| {
                     // Disable Radio Interrupts
                     disable_radio_interrupts(
                         CONTROL_TEST_MESSAGE_SIZE,
