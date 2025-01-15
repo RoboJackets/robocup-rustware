@@ -178,6 +178,7 @@ mod app {
     fn init(ctx: init::Context) -> (Shared, Local) {
         // Initialize the Heap
         unsafe {
+            #[allow(static_mut_refs)]
             HEAP.init(HEAP_MEM.as_ptr() as usize, HEAP_SIZE);
         }
 
