@@ -463,7 +463,6 @@ mod app {
 
                 *counter = 0;
 
-                #[cfg(feature = "debug")]
                 log::info!("Control Command Received: {:?}", control_message);
 
                 let new_state = ctx.shared.state.lock(|state| {
