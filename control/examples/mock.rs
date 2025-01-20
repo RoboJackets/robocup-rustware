@@ -22,7 +22,6 @@ mod app {
 
     use imxrt_hal::gpt::Gpt;
     use imxrt_hal::pit::Pit;
-    use imxrt_iomuxc::prelude::*;
 
     use embedded_hal::{blocking::delay::DelayMs, spi::MODE_0};
 
@@ -63,22 +62,12 @@ mod app {
 
     use motion::MotionControl;
 
-    use fpga::FPGA;
-    use fpga::FPGA_SPI_FREQUENCY;
-    use fpga::FPGA_SPI_MODE;
-    use fpga_rs as fpga;
-
-    use icm42605_driver::IMU;
-
     use robojackets_robocup_control::{
-        spi::FakeSpi, Delay2, FPGAInitError, FPGAProgError, Fpga, Gpio1, Imu, ImuInitError,
-        KickerCSn, KickerProg, KickerProgramError, KickerReset, KickerServicingError, PitDelay,
-        RFRadio, RadioInitError, RadioInterrupt, SharedSPI, State, BASE_AMPLIFICATION_LEVEL,
-        CHANNEL, GPT_1_DIVIDER, GPT_CLOCK_SOURCE, GPT_DIVIDER, GPT_FREQUENCY, RADIO_ADDRESS,
-        ROBOT_ID,
+        Delay2, FPGAInitError, FPGAProgError, Gpio1, ImuInitError, KickerProgramError,
+        KickerServicingError, PitDelay, RFRadio, RadioInitError, RadioInterrupt, SharedSPI, State,
+        BASE_AMPLIFICATION_LEVEL, CHANNEL, GPT_1_DIVIDER, GPT_CLOCK_SOURCE, GPT_DIVIDER,
+        GPT_FREQUENCY, RADIO_ADDRESS, ROBOT_ID,
     };
-
-    use kicker_controller::Kicker;
 
     const HEAP_SIZE: usize = 1024;
     static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
@@ -142,13 +131,8 @@ mod app {
         rx_int: RadioInterrupt,
         gpio1: Gpio1,
         pit_delay: PitDelay,
-        fake_spi: FakeSpi,
-        kicker_programmer: Option<KickerProg>,
-        kicker_controller: Option<Kicker<KickerCSn, KickerReset>>,
 
         // Drivers
-        fpga: Fpga,
-        imu: Imu,
         radio: RFRadio,
 
         // Motion Control
@@ -179,17 +163,12 @@ mod app {
 
         // Grab the board peripherals
         let board::Resources {
-            mut pins,
+            pins,
             mut gpio1,
-            mut gpio2,
-            mut gpio3,
-            mut gpio4,
             usb,
-            lpi2c1,
-            lpspi4,
             mut gpt1,
             mut gpt2,
-            pit: (pit0, _pit1, pit2, pit3),
+            pit: (pit0, _pit1, pit2, _pit3),
             ..
         } = board::t41(ctx.device);
 
@@ -216,23 +195,8 @@ mod app {
         let rx_int = gpio1.input(pins.p15);
         gpio1.set_interrupt(&rx_int, None);
 
-        // Initialize Fpga SPI
-        let mut spi = board::lpspi(
-            lpspi4,
-            board::LpspiPins {
-                pcs0: pins.p10,
-                sck: pins.p13,
-                sdo: pins.p11,
-                sdi: pins.p12,
-            },
-            FPGA_SPI_FREQUENCY,
-        );
-        spi.disabled(|spi| spi.set_mode(FPGA_SPI_MODE));
-
         // Initialize IMU
-        let i2c = board::lpi2c(lpi2c1, pins.p19, pins.p18, board::Lpi2cClockSpeed::KHz400);
         let pit_delay = Blocking::<_, PERCLK_FREQUENCY>::from_pit(pit2);
-        let imu = IMU::new(i2c);
 
         // Initialize Shared SPI
         let shared_spi_pins = Pins {
@@ -256,32 +220,8 @@ mod app {
         // Initialize radio
         let radio = Radio::new(ce, radio_cs);
 
-        // Initialize pins for the FPGA
-        let cs = gpio2.output(pins.p9);
-        let init_b = gpio4.input(pins.p29);
-        let config = Config::zero().set_open_drain(OpenDrain::Enabled);
-        configure(&mut pins.p28, config);
-        let prog_b = gpio3.output(pins.p28);
-        let done = gpio3.input(pins.p30);
-
-        // Initialize the FPGA
-        let fpga = match FPGA::new(spi, cs, init_b, prog_b, done) {
-            Ok(fpga) => fpga,
-            Err(_) => panic!("Unable to initialize the FPGA"),
-        };
-
         // Set an initial robot status
         let initial_robot_status = RobotStatusMessageBuilder::new().robot_id(ROBOT_ID).build();
-
-        let fake_spi_delay = Blocking::<_, PERCLK_FREQUENCY>::from_pit(pit3);
-        let fake_spi = FakeSpi::new(
-            gpio4.output(pins.p2),
-            gpio4.output(pins.p3),
-            gpio4.input(pins.p4),
-            fake_spi_delay,
-        );
-
-        let kicker_controller = Kicker::new(gpio4.output(pins.p5), gpio2.output(pins.p6));
 
         rx_int.clear_triggered();
 
@@ -294,18 +234,13 @@ mod app {
                 shared_spi,
                 blocking_delay: delay2,
                 rx_int,
-                fpga,
                 gpio1,
                 robot_status: initial_robot_status,
                 control_message: None,
                 counter: 0,
                 elapsed_time: 0,
                 radio,
-                imu,
                 pit_delay,
-                kicker_programmer: None,
-                kicker_controller: Some(kicker_controller),
-                fake_spi,
                 state: State::default(),
 
                 // Errors
@@ -528,19 +463,22 @@ mod app {
 
                 *counter = 0;
 
-                #[cfg(feature = "debug")]
                 log::info!("Control Command Received: {:?}", control_message);
 
-                ctx.shared.state.lock(|state| match control_message.mode {
-                    Mode::Default => *state = State::Default,
-                    Mode::ImuTest => *state = State::IMUTesting,
-                    Mode::ReceiveBenchmark => *state = State::ReceiveBenchmark,
-                    Mode::SendBenchmark => *state = State::SendBenchmark,
-                    Mode::ProgramKickOnBreakbeam => *state = State::ProgramKickOnBreakbeam,
-                    Mode::ProgramKicker => *state = State::ProgramKicker,
-                    Mode::KickerTest => *state = State::KickerTesting,
-                    Mode::FpgaTest => *state = State::FpgaTesting,
+                let new_state = ctx.shared.state.lock(|state| {
+                    match control_message.mode {
+                        Mode::Default => *state = State::Default,
+                        Mode::ImuTest => *state = State::IMUTesting,
+                        Mode::ReceiveBenchmark => *state = State::ReceiveBenchmark,
+                        Mode::SendBenchmark => *state = State::SendBenchmark,
+                        Mode::ProgramKickOnBreakbeam => *state = State::ProgramKickOnBreakbeam,
+                        Mode::ProgramKicker => *state = State::ProgramKicker,
+                        Mode::KickerTest => *state = State::KickerTesting,
+                        Mode::FpgaTest => *state = State::FpgaTesting,
+                    }
+                    state.clone()
                 });
+                log::info!("New State: {:?}", new_state);
                 *command = Some(control_message);
 
                 let mut packed_data = [0u8; ROBOT_STATUS_SIZE];
@@ -570,6 +508,7 @@ mod app {
     /// pit countdown timer
     #[task(
         shared = [state, pit0],
+        local = [iteration: u32 = 0],
         priority = 1,
         binds = PIT
     )]
@@ -584,7 +523,8 @@ mod app {
         // Most of the testing programs ceil the priority and should not
         // be interruptable but the only way for spawning them to error is if
         // they are already running so we can safely ignore their failure.
-        match ctx.shared.state.lock(|state| *state) {
+        let current_state = ctx.shared.state.lock(|state| *state);
+        match current_state {
             State::Default => {
                 // Default operation is running the motion control loop
                 if motion_control_loop::spawn().is_err() {
@@ -613,7 +553,12 @@ mod app {
             State::FpgaTesting => {
                 let _ = test_fpga_movement::spawn();
             }
-        };
+        }
+        if *ctx.local.iteration % 100 == 0 {
+            log::info!("Current State: {:?}", current_state);
+        }
+
+        *ctx.local.iteration = ctx.local.iteration.wrapping_add(1);
     }
 
     /// The motion control loop.
@@ -623,7 +568,16 @@ mod app {
     ///
     /// The motion control loop is triggered by the PIT to have maximum reliability
     #[task(
-        shared = [imu, control_message, counter, elapsed_time, fpga, rx_int, gpio1, blocking_delay, gpt, kicker_controller, kicker_programmer, robot_status, fake_spi],
+        shared = [
+            control_message,
+            counter,
+            elapsed_time,
+            rx_int,
+            gpio1,
+            blocking_delay,
+            gpt,
+            robot_status,
+        ],
         local = [motion_controller, last_encoders, initialized: bool = false, iteration: u32 = 0, last_time: u32 = 0],
         priority = 1,
     )]
@@ -658,9 +612,7 @@ mod app {
             log::info!("DEAD: {}", elapsed_time);
         }
 
-        let wheel_velocities = ctx.local.motion_controller.body_to_wheels(body_velocities);
-
-        log::info!("Moving at {:?}", wheel_velocities);
+        let _wheel_velocities = ctx.local.motion_controller.body_to_wheels(body_velocities);
 
         *ctx.local.iteration = ctx.local.iteration.wrapping_add(1);
     }
@@ -900,9 +852,6 @@ mod app {
     /// Program the kicker with kick-on-breakbeam
     #[task(
         shared = [
-            fake_spi,
-            kicker_programmer,
-            kicker_controller,
             pit_delay,
             state,
             rx_int,
@@ -960,9 +909,6 @@ mod app {
     /// Program the kicker with normal operations
     #[task(
         shared = [
-            fake_spi,
-            kicker_programmer,
-            kicker_controller,
             pit_delay,
             state,
             rx_int,
@@ -1019,9 +965,6 @@ mod app {
     /// Test the kicker is working properly
     #[task(
         shared = [
-            fake_spi,
-            kicker_programmer,
-            kicker_controller,
             pit_delay,
             state,
             rx_int,
@@ -1093,8 +1036,6 @@ mod app {
     /// Test the fpga moving at a given velocity for 1 second.
     #[task(
         shared = [
-            fpga,
-            imu,
             blocking_delay,
             control_message,
             gpt,
