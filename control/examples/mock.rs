@@ -22,7 +22,6 @@ mod app {
 
     use imxrt_hal::gpt::Gpt;
     use imxrt_hal::pit::Pit;
-    use imxrt_iomuxc::prelude::*;
 
     use embedded_hal::{blocking::delay::DelayMs, spi::MODE_0};
 
@@ -63,33 +62,18 @@ mod app {
 
     use motion::MotionControl;
 
-    use fpga::FPGA;
-    use fpga::FPGA_SPI_FREQUENCY;
-    use fpga::FPGA_SPI_MODE;
-    use fpga_rs as fpga;
-
-    use icm42605_driver::IMU;
-
     use robojackets_robocup_control::{
-        spi::FakeSpi, Delay2, FPGAInitError, FPGAProgError, Fpga, Gpio1, Imu, ImuInitError,
-        KickerCSn, KickerProg, KickerProgramError, KickerReset, KickerServicingError, PitDelay,
-        RFRadio, RadioInitError, RadioInterrupt, SharedSPI, State, BASE_AMPLIFICATION_LEVEL,
-        CHANNEL, GPT_1_DIVIDER, GPT_CLOCK_SOURCE, GPT_DIVIDER, GPT_FREQUENCY, RADIO_ADDRESS,
-        ROBOT_ID,
+        Delay2, FPGAInitError, FPGAProgError, Gpio1, ImuInitError, KickerProgramError,
+        KickerServicingError, PitDelay, RFRadio, RadioInitError, RadioInterrupt, SharedSPI, State,
+        BASE_AMPLIFICATION_LEVEL, CHANNEL, GPT_1_DIVIDER, GPT_CLOCK_SOURCE, GPT_DIVIDER,
+        GPT_FREQUENCY, RADIO_ADDRESS, ROBOT_ID,
     };
-
-    use kicker_controller::{KickTrigger, KickType, Kicker, KickerCommand};
-    use kicker_programmer::KickerProgrammer;
 
     const HEAP_SIZE: usize = 1024;
     static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
 
     /// The amount of time (in ms) between each motion control delay
     const MOTION_CONTROL_DELAY_MS: u32 = 1;
-    /// The amount of time (in ms) between servicing the kicker
-    const KICKER_SERVICE_DELAY_MS: u32 = 50;
-    /// The number of motion control updates between servicing the kicker
-    const KICKER_SERVICE_DELAY_TICKS: u32 = KICKER_SERVICE_DELAY_MS / MOTION_CONTROL_DELAY_MS;
     /// The amount of time the robot should continue moving without receiving a
     /// new message from the base station before it stops moving
     const DIE_TIME_US: u32 = 500_000;
@@ -147,13 +131,8 @@ mod app {
         rx_int: RadioInterrupt,
         gpio1: Gpio1,
         pit_delay: PitDelay,
-        fake_spi: FakeSpi,
-        kicker_programmer: Option<KickerProg>,
-        kicker_controller: Option<Kicker<KickerCSn, KickerReset>>,
 
         // Drivers
-        fpga: Fpga,
-        imu: Imu,
         radio: RFRadio,
 
         // Motion Control
@@ -184,17 +163,12 @@ mod app {
 
         // Grab the board peripherals
         let board::Resources {
-            mut pins,
+            pins,
             mut gpio1,
-            mut gpio2,
-            mut gpio3,
-            mut gpio4,
             usb,
-            lpi2c1,
-            lpspi4,
             mut gpt1,
             mut gpt2,
-            pit: (pit0, _pit1, pit2, pit3),
+            pit: (pit0, _pit1, pit2, _pit3),
             ..
         } = board::t41(ctx.device);
 
@@ -221,23 +195,8 @@ mod app {
         let rx_int = gpio1.input(pins.p15);
         gpio1.set_interrupt(&rx_int, None);
 
-        // Initialize Fpga SPI
-        let mut spi = board::lpspi(
-            lpspi4,
-            board::LpspiPins {
-                pcs0: pins.p10,
-                sck: pins.p13,
-                sdo: pins.p11,
-                sdi: pins.p12,
-            },
-            FPGA_SPI_FREQUENCY,
-        );
-        spi.disabled(|spi| spi.set_mode(FPGA_SPI_MODE));
-
         // Initialize IMU
-        let i2c = board::lpi2c(lpi2c1, pins.p19, pins.p18, board::Lpi2cClockSpeed::KHz400);
         let pit_delay = Blocking::<_, PERCLK_FREQUENCY>::from_pit(pit2);
-        let imu = IMU::new(i2c);
 
         // Initialize Shared SPI
         let shared_spi_pins = Pins {
@@ -261,36 +220,12 @@ mod app {
         // Initialize radio
         let radio = Radio::new(ce, radio_cs);
 
-        // Initialize pins for the FPGA
-        let cs = gpio2.output(pins.p9);
-        let init_b = gpio4.input(pins.p29);
-        let config = Config::zero().set_open_drain(OpenDrain::Enabled);
-        configure(&mut pins.p28, config);
-        let prog_b = gpio3.output(pins.p28);
-        let done = gpio3.input(pins.p30);
-
-        // Initialize the FPGA
-        let fpga = match FPGA::new(spi, cs, init_b, prog_b, done) {
-            Ok(fpga) => fpga,
-            Err(_) => panic!("Unable to initialize the FPGA"),
-        };
-
         // Set an initial robot status
         let initial_robot_status = RobotStatusMessageBuilder::new().robot_id(ROBOT_ID).build();
 
-        let fake_spi_delay = Blocking::<_, PERCLK_FREQUENCY>::from_pit(pit3);
-        let fake_spi = FakeSpi::new(
-            gpio4.output(pins.p2),
-            gpio4.output(pins.p3),
-            gpio4.input(pins.p4),
-            fake_spi_delay,
-        );
-
-        let kicker_controller = Kicker::new(gpio4.output(pins.p5), gpio2.output(pins.p6));
-
         rx_int.clear_triggered();
 
-        initialize_imu::spawn().ok();
+        initialize_radio::spawn().ok();
 
         (
             Shared {
@@ -299,18 +234,13 @@ mod app {
                 shared_spi,
                 blocking_delay: delay2,
                 rx_int,
-                fpga,
                 gpio1,
                 robot_status: initial_robot_status,
                 control_message: None,
                 counter: 0,
                 elapsed_time: 0,
                 radio,
-                imu,
                 pit_delay,
-                kicker_programmer: None,
-                kicker_controller: Some(kicker_controller),
-                fake_spi,
                 state: State::default(),
 
                 // Errors
@@ -326,26 +256,6 @@ mod app {
                 last_encoders: Vector4::zeros(),
             },
         )
-    }
-
-    /// Initialize the IMU
-    #[task(
-        shared = [imu, pit_delay, imu_init_error],
-        priority = 1
-    )]
-    async fn initialize_imu(ctx: initialize_imu::Context) {
-        (
-            ctx.shared.imu,
-            ctx.shared.pit_delay,
-            ctx.shared.imu_init_error,
-        )
-            .lock(|imu, pit_delay, imu_init_error| {
-                if let Err(err) = imu.init(pit_delay) {
-                    *imu_init_error = Some(err);
-                }
-            });
-
-        initialize_radio::spawn().ok();
     }
 
     /// Initialize the nRF24l01 Radio
@@ -371,113 +281,6 @@ mod app {
                         radio.stop_listening(spi, delay);
                     }
                     Err(err) => *radio_init_error = Some(err),
-                },
-            );
-
-        initialize_fpga::spawn().ok();
-    }
-
-    /// Initialize the FPGA Motor Driver
-    #[task(
-        shared = [fpga, blocking_delay, imu_init_error, fpga_init_error, fpga_prog_error, radio_init_error],
-        priority = 1
-    )]
-    async fn initialize_fpga(ctx: initialize_fpga::Context) {
-        (
-            ctx.shared.fpga,
-            ctx.shared.blocking_delay,
-            ctx.shared.fpga_init_error,
-            ctx.shared.fpga_prog_error,
-        )
-            .lock(|fpga, delay, fpga_init_error, fpga_prog_error| {
-                if let Err(err) = fpga.configure(delay) {
-                    *fpga_prog_error = Some(err);
-                    return;
-                }
-
-                delay.delay_ms(10u8);
-
-                if let Err(err) = fpga.motors_en(true, delay) {
-                    *fpga_init_error = Some(err);
-                }
-            });
-
-        initialize_kicker::spawn().ok();
-    }
-
-    /// Initialize the kicker and kicker controller
-    #[task(
-        shared = [
-            kicker_programmer,
-            kicker_controller,
-            pit_delay,
-            fake_spi,
-            kicker_program_error,
-            kicker_service_error,
-            robot_status,
-        ],
-        priority = 1
-    )]
-    async fn initialize_kicker(ctx: initialize_kicker::Context) {
-        (
-            ctx.shared.kicker_programmer,
-            ctx.shared.kicker_controller,
-            ctx.shared.pit_delay,
-            ctx.shared.robot_status,
-            ctx.shared.fake_spi,
-            ctx.shared.kicker_program_error,
-            ctx.shared.kicker_service_error,
-        )
-            .lock(
-                |programmer,
-                 controller,
-                 delay,
-                 robot_status,
-                 spi,
-                 kicker_program_error,
-                 kicker_service_error| {
-                    let mut kicker_programmer = match programmer.take() {
-                        Some(kicker_programmer) => kicker_programmer,
-                        None => {
-                            let (cs, reset) = controller.take().unwrap().destroy();
-                            KickerProgrammer::new(cs, reset)
-                        }
-                    };
-
-                    match kicker_programmer.program_kicker(spi, delay) {
-                        Ok(_) => {
-                            log::info!("Kicker Programmed");
-                            let (cs, reset) = kicker_programmer.destroy();
-                            let mut kicker_controller = Kicker::new(cs, reset);
-
-                            match kicker_controller.service(
-                                KickerCommand {
-                                    kick_type: KickType::Kick,
-                                    kick_trigger: KickTrigger::Disabled,
-                                    kick_strength: 0.0,
-                                    charge_allowed: false,
-                                },
-                                spi,
-                            ) {
-                                Ok(status) => {
-                                    log::info!("Kicker Serviced");
-                                    robot_status.kick_status = false;
-                                    robot_status.ball_sense_status = status.ball_sensed;
-                                    robot_status.kick_healthy = status.healthy;
-                                }
-                                Err(err) => {
-                                    log::error!("Unable to Service Kicker: {:?}", err);
-                                    *kicker_service_error = Some(err);
-                                }
-                            }
-
-                            *controller = Some(kicker_controller);
-                        }
-                        Err(err) => {
-                            log::error!("Unable to program kicker: {:?}", err);
-                            *kicker_program_error = Some(err);
-                        }
-                    }
                 },
             );
 
@@ -660,19 +463,22 @@ mod app {
 
                 *counter = 0;
 
-                #[cfg(feature = "debug")]
                 log::info!("Control Command Received: {:?}", control_message);
 
-                ctx.shared.state.lock(|state| match control_message.mode {
-                    Mode::Default => *state = State::Default,
-                    Mode::ImuTest => *state = State::IMUTesting,
-                    Mode::ReceiveBenchmark => *state = State::ReceiveBenchmark,
-                    Mode::SendBenchmark => *state = State::SendBenchmark,
-                    Mode::ProgramKickOnBreakbeam => *state = State::ProgramKickOnBreakbeam,
-                    Mode::ProgramKicker => *state = State::ProgramKicker,
-                    Mode::KickerTest => *state = State::KickerTesting,
-                    Mode::FpgaTest => *state = State::FpgaTesting,
+                let new_state = ctx.shared.state.lock(|state| {
+                    match control_message.mode {
+                        Mode::Default => *state = State::Default,
+                        Mode::ImuTest => *state = State::IMUTesting,
+                        Mode::ReceiveBenchmark => *state = State::ReceiveBenchmark,
+                        Mode::SendBenchmark => *state = State::SendBenchmark,
+                        Mode::ProgramKickOnBreakbeam => *state = State::ProgramKickOnBreakbeam,
+                        Mode::ProgramKicker => *state = State::ProgramKicker,
+                        Mode::KickerTest => *state = State::KickerTesting,
+                        Mode::FpgaTest => *state = State::FpgaTesting,
+                    }
+                    state.clone()
                 });
+                log::info!("New State: {:?}", new_state);
                 *command = Some(control_message);
 
                 let mut packed_data = [0u8; ROBOT_STATUS_SIZE];
@@ -702,6 +508,7 @@ mod app {
     /// pit countdown timer
     #[task(
         shared = [state, pit0],
+        local = [iteration: u32 = 0],
         priority = 1,
         binds = PIT
     )]
@@ -716,7 +523,8 @@ mod app {
         // Most of the testing programs ceil the priority and should not
         // be interruptable but the only way for spawning them to error is if
         // they are already running so we can safely ignore their failure.
-        match ctx.shared.state.lock(|state| *state) {
+        let current_state = ctx.shared.state.lock(|state| *state);
+        match current_state {
             State::Default => {
                 // Default operation is running the motion control loop
                 if motion_control_loop::spawn().is_err() {
@@ -745,7 +553,12 @@ mod app {
             State::FpgaTesting => {
                 let _ = test_fpga_movement::spawn();
             }
-        };
+        }
+        if *ctx.local.iteration % 100 == 0 {
+            log::info!("Current State: {:?}", current_state);
+        }
+
+        *ctx.local.iteration = ctx.local.iteration.wrapping_add(1);
     }
 
     /// The motion control loop.
@@ -755,7 +568,16 @@ mod app {
     ///
     /// The motion control loop is triggered by the PIT to have maximum reliability
     #[task(
-        shared = [imu, control_message, counter, elapsed_time, fpga, rx_int, gpio1, blocking_delay, gpt, kicker_controller, kicker_programmer, robot_status, fake_spi],
+        shared = [
+            control_message,
+            counter,
+            elapsed_time,
+            rx_int,
+            gpio1,
+            blocking_delay,
+            gpt,
+            robot_status,
+        ],
         local = [motion_controller, last_encoders, initialized: bool = false, iteration: u32 = 0, last_time: u32 = 0],
         priority = 1,
     )]
@@ -765,7 +587,7 @@ mod app {
             *ctx.local.last_time = ctx.shared.gpt.lock(|gpt| gpt.count());
         }
 
-        let (mut body_velocities, dribbler_enabled) =
+        let (mut body_velocities, _dribbler_enabled) =
             ctx.shared
                 .control_message
                 .lock(|control_message| match control_message {
@@ -775,14 +597,6 @@ mod app {
                     ),
                     None => (Vector3::new(0.0, 0.0, 0.0), false),
                 });
-
-        let (gyro, accel_x, accel_y) = ctx.shared.imu.lock(|imu| {
-            let gyro = imu.gyro_z().unwrap_or(0.0);
-            let accel_x = imu.accel_x().unwrap_or(0.0);
-            let accel_y = imu.accel_y().unwrap_or(0.0);
-
-            (gyro, accel_x, accel_y)
-        });
 
         let now = ctx.shared.gpt.lock(|gpt| gpt.count());
         let delta = now - *ctx.local.last_time;
@@ -798,79 +612,7 @@ mod app {
             log::info!("DEAD: {}", elapsed_time);
         }
 
-        let wheel_velocities = ctx.local.motion_controller.control_update(
-            Vector3::new(-accel_y, accel_x, gyro),
-            *ctx.local.last_encoders,
-            body_velocities,
-            delta,
-        );
-
-        #[cfg(feature = "debug")]
-        log::info!("Moving at {:?}", wheel_velocities);
-
-        // TODO: Eventually it may be useful to update the fpga_status every tick, however I feel this might be unnecessary
-        // so I'm currently only updating the fpga status field on the robot status whenever the kicker is serviced to make
-        // rust borrowing easier.
-        let (encoder_velocities, fpga_status) =
-            (ctx.shared.fpga, ctx.shared.blocking_delay).lock(|fpga, delay| {
-                (
-                    fpga.set_velocities(wheel_velocities.into(), dribbler_enabled, delay)
-                        .unwrap_or([0.0; 4]),
-                    fpga.status,
-                )
-            });
-
-        *ctx.local.last_encoders = Vector4::new(
-            encoder_velocities[0],
-            encoder_velocities[1],
-            encoder_velocities[2],
-            encoder_velocities[3],
-        );
-
-        // Service the kicker
-        if *ctx.local.iteration % KICKER_SERVICE_DELAY_TICKS == 0 {
-            let kicker_command = ctx.shared.control_message.lock(|control_message| {
-                if let Some(control_message) = control_message {
-                    (*control_message).into()
-                } else {
-                    KickerCommand::default()
-                }
-            });
-            (
-                ctx.shared.kicker_controller,
-                ctx.shared.kicker_programmer,
-                ctx.shared.robot_status,
-                ctx.shared.fake_spi,
-            )
-                .lock(
-                    |controller, programmer, robot_status, fake_spi| match controller.take() {
-                        Some(mut kicker_controller) => {
-                            let state =
-                                kicker_controller.service(kicker_command, fake_spi).unwrap();
-                            robot_status.kick_status =
-                                kicker_command.kick_trigger != KickTrigger::Disabled;
-                            robot_status.ball_sense_status = state.ball_sensed;
-                            robot_status.kick_healthy = state.healthy;
-                            robot_status.motor_errors = fpga_status & 0x1F;
-                            robot_status.fpga_status = fpga_status & 0x80 != 0;
-                            *controller = Some(kicker_controller);
-                        }
-                        None => {
-                            let (cs, reset) = programmer.take().unwrap().destroy();
-                            let mut kicker_controller = Kicker::new(cs, reset);
-                            let state =
-                                kicker_controller.service(kicker_command, fake_spi).unwrap();
-                            robot_status.kick_status =
-                                kicker_command.kick_trigger != KickTrigger::Disabled;
-                            robot_status.ball_sense_status = state.ball_sensed;
-                            robot_status.kick_healthy = state.healthy;
-                            robot_status.motor_errors = fpga_status & 0x1F;
-                            robot_status.fpga_status = fpga_status & 0x80 != 0;
-                            *controller = Some(kicker_controller);
-                        }
-                    },
-                );
-        }
+        let _wheel_velocities = ctx.local.motion_controller.body_to_wheels(body_velocities);
 
         *ctx.local.iteration = ctx.local.iteration.wrapping_add(1);
     }
@@ -916,12 +658,11 @@ mod app {
     /// Test that the IMU on the Teensy is reading reasonable
     /// values
     #[task(
-        shared = [imu, pit_delay, state, radio, rx_int, gpio1, shared_spi, blocking_delay],
+        shared = [pit_delay, state, radio, rx_int, gpio1, shared_spi, blocking_delay],
         priority = 1
     )]
     async fn imu_test(ctx: imu_test::Context) {
         (
-            ctx.shared.imu,
             ctx.shared.pit_delay,
             ctx.shared.state,
             ctx.shared.radio,
@@ -930,45 +671,36 @@ mod app {
             ctx.shared.shared_spi,
             ctx.shared.blocking_delay,
         )
-            .lock(
-                |imu, delay, state, radio, rx_int, gpio1, spi, radio_delay| {
-                    // Disable Radio Interrupts for Testing
-                    disable_radio_interrupts(
-                        IMU_MESSAGE_SIZE,
-                        rx_int,
-                        gpio1,
-                        radio,
-                        spi,
-                        radio_delay,
-                    );
+            .lock(|delay, state, radio, rx_int, gpio1, spi, radio_delay| {
+                // Disable Radio Interrupts for Testing
+                disable_radio_interrupts(IMU_MESSAGE_SIZE, rx_int, gpio1, radio, spi, radio_delay);
 
-                    let mut buffer = [0u8; IMU_MESSAGE_SIZE];
-                    for i in 0..100 {
-                        let gyro_z = imu.gyro_z().unwrap_or(0.0);
-                        let accel_x = imu.accel_x().unwrap_or(0.0);
-                        let accel_y = imu.accel_y().unwrap_or(0.0);
+                let mut buffer = [0u8; IMU_MESSAGE_SIZE];
+                for i in 0..100 {
+                    let gyro_z = 0.0;
+                    let accel_x = 0.0;
+                    let accel_y = 0.0;
 
-                        // Write the update message
-                        let imu_message: ImuTestMessage = ImuTestMessage {
-                            first_message: i == 0,
-                            last_message: i == 99,
-                            gyro_z,
-                            accel_x,
-                            accel_y,
-                        };
-                        imu_message.pack(&mut buffer).unwrap();
-                        radio.write(&buffer, spi, radio_delay);
-                        log::info!("X: {}, Y: {}, Z: {}", accel_x, accel_y, gyro_z);
+                    // Write the update message
+                    let imu_message: ImuTestMessage = ImuTestMessage {
+                        first_message: i == 0,
+                        last_message: i == 99,
+                        gyro_z,
+                        accel_x,
+                        accel_y,
+                    };
+                    imu_message.pack(&mut buffer).unwrap();
+                    radio.write(&buffer, spi, radio_delay);
+                    log::info!("X: {}, Y: {}, Z: {}", accel_x, accel_y, gyro_z);
 
-                        delay.delay_ms(10u8);
-                    }
+                    delay.delay_ms(10u8);
+                }
 
-                    *state = State::Idle;
+                *state = State::Idle;
 
-                    // Re-enable the radio interrupts
-                    enable_radio_interrupts(rx_int, gpio1, radio, spi, radio_delay);
-                },
-            );
+                // Re-enable the radio interrupts
+                enable_radio_interrupts(rx_int, gpio1, radio, spi, radio_delay);
+            });
     }
 
     /// Benchmark the number of radio packets received
@@ -1120,9 +852,6 @@ mod app {
     /// Program the kicker with kick-on-breakbeam
     #[task(
         shared = [
-            fake_spi,
-            kicker_programmer,
-            kicker_controller,
             pit_delay,
             state,
             rx_int,
@@ -1135,10 +864,6 @@ mod app {
     )]
     async fn program_kick_on_breakbeam(ctx: program_kick_on_breakbeam::Context) {
         (
-            ctx.shared.fake_spi,
-            ctx.shared.kicker_programmer,
-            ctx.shared.kicker_controller,
-            ctx.shared.pit_delay,
             ctx.shared.state,
             ctx.shared.rx_int,
             ctx.shared.gpio1,
@@ -1146,72 +871,44 @@ mod app {
             ctx.shared.shared_spi,
             ctx.shared.blocking_delay,
         )
-            .lock(
-                |spi,
-                 kicker_programmer,
-                 kicker_controller,
-                 delay,
-                 state,
-                 rx_int,
-                 gpio1,
-                 radio,
-                 radio_spi,
-                 radio_delay| {
-                    disable_radio_interrupts(
-                        KICKER_PROGRAM_MESSAGE,
-                        rx_int,
-                        gpio1,
-                        radio,
-                        radio_spi,
-                        radio_delay,
-                    );
+            .lock(|state, rx_int, gpio1, radio, radio_spi, radio_delay| {
+                disable_radio_interrupts(
+                    KICKER_PROGRAM_MESSAGE,
+                    rx_int,
+                    gpio1,
+                    radio,
+                    radio_spi,
+                    radio_delay,
+                );
 
-                    let mut programmer = match kicker_programmer.take() {
-                        Some(kicker_programmer) => kicker_programmer,
-                        None => {
-                            let (cs, reset) = kicker_controller.take().unwrap().destroy();
-                            KickerProgrammer::new(cs, reset)
-                        }
-                    };
+                let mut buffer = [0u8; KICKER_PROGRAM_MESSAGE];
+                let message = KickerProgramMessage {
+                    kick_on_breakbeam: true,
+                    finished: false,
+                    page: 0,
+                };
+                message.pack(&mut buffer).unwrap();
+                radio.write(&buffer, radio_spi, radio_delay);
 
-                    let mut buffer = [0u8; KICKER_PROGRAM_MESSAGE];
-                    let message = KickerProgramMessage {
-                        kick_on_breakbeam: true,
-                        finished: false,
-                        page: 0,
-                    };
-                    message.pack(&mut buffer).unwrap();
-                    radio.write(&buffer, radio_spi, radio_delay);
+                log::info!("Kicker Programmed with Kick on Breakbeam");
 
-                    // TODO: Send updates while programming the kicker
-                    match programmer.program_kick_on_breakbeam(spi, delay) {
-                        Ok(_) => log::info!("Kicker Programmed with Kick on Breakbeam"),
-                        Err(err) => log::error!("Unable to Program Kicker: {:?}", err),
-                    }
+                let message = KickerProgramMessage {
+                    kick_on_breakbeam: true,
+                    finished: true,
+                    page: 0,
+                };
+                message.pack(&mut buffer).unwrap();
+                radio.write(&buffer, radio_spi, radio_delay);
 
-                    let message = KickerProgramMessage {
-                        kick_on_breakbeam: true,
-                        finished: true,
-                        page: 0,
-                    };
-                    message.pack(&mut buffer).unwrap();
-                    radio.write(&buffer, radio_spi, radio_delay);
+                *state = State::Idle;
 
-                    *kicker_programmer = Some(programmer);
-
-                    *state = State::Idle;
-
-                    enable_radio_interrupts(rx_int, gpio1, radio, radio_spi, radio_delay);
-                },
-            );
+                enable_radio_interrupts(rx_int, gpio1, radio, radio_spi, radio_delay);
+            });
     }
 
     /// Program the kicker with normal operations
     #[task(
         shared = [
-            fake_spi,
-            kicker_programmer,
-            kicker_controller,
             pit_delay,
             state,
             rx_int,
@@ -1224,10 +921,6 @@ mod app {
     )]
     async fn program_kicker_normal(ctx: program_kicker_normal::Context) {
         (
-            ctx.shared.fake_spi,
-            ctx.shared.kicker_programmer,
-            ctx.shared.kicker_controller,
-            ctx.shared.pit_delay,
             ctx.shared.state,
             ctx.shared.rx_int,
             ctx.shared.gpio1,
@@ -1235,78 +928,43 @@ mod app {
             ctx.shared.shared_spi,
             ctx.shared.blocking_delay,
         )
-            .lock(
-                |spi,
-                 kicker_programmer,
-                 kicker_controller,
-                 delay,
-                 state,
-                 rx_int,
-                 gpio1,
-                 radio,
-                 radio_spi,
-                 radio_delay| {
-                    disable_radio_interrupts(
-                        KICKER_PROGRAM_MESSAGE,
-                        rx_int,
-                        gpio1,
-                        radio,
-                        radio_spi,
-                        radio_delay,
-                    );
+            .lock(|state, rx_int, gpio1, radio, radio_spi, radio_delay| {
+                disable_radio_interrupts(
+                    KICKER_PROGRAM_MESSAGE,
+                    rx_int,
+                    gpio1,
+                    radio,
+                    radio_spi,
+                    radio_delay,
+                );
 
-                    let mut programmer = match kicker_programmer.take() {
-                        Some(kicker_programmer) => kicker_programmer,
-                        None => {
-                            let (cs, reset) = kicker_controller.take().unwrap().destroy();
-                            KickerProgrammer::new(cs, reset)
-                        }
-                    };
+                let mut buffer = [0u8; KICKER_PROGRAM_MESSAGE];
+                let message = KickerProgramMessage {
+                    kick_on_breakbeam: false,
+                    finished: false,
+                    page: 0,
+                };
+                message.pack(&mut buffer).unwrap();
+                radio.write(&buffer, radio_spi, radio_delay);
 
-                    let mut buffer = [0u8; KICKER_PROGRAM_MESSAGE];
-                    let message = KickerProgramMessage {
-                        kick_on_breakbeam: false,
-                        finished: false,
-                        page: 0,
-                    };
-                    message.pack(&mut buffer).unwrap();
-                    radio.write(&buffer, radio_spi, radio_delay);
+                log::info!("Programmed Kicker");
+                let message = KickerProgramMessage {
+                    kick_on_breakbeam: false,
+                    finished: true,
+                    page: 0,
+                };
+                message.pack(&mut buffer).unwrap();
+                radio.write(&buffer, radio_spi, radio_delay);
 
-                    // TODO: Send updates while programming the kicker
-                    match programmer.program_kicker(spi, delay) {
-                        Ok(_) => {
-                            log::info!("Kicker Programmed");
-                            let (cs, reset) = programmer.destroy();
-                            *kicker_controller = Some(Kicker::new(cs, reset));
-                        }
-                        Err(err) => {
-                            // TODO: Spawn a task to print error
-                            log::error!("Unable to Program Kicker: {:?}", err);
-                            *kicker_programmer = Some(programmer);
-                        }
-                    }
+                *state = State::Idle;
 
-                    let message = KickerProgramMessage {
-                        kick_on_breakbeam: false,
-                        finished: true,
-                        page: 0,
-                    };
-                    message.pack(&mut buffer).unwrap();
-                    radio.write(&buffer, radio_spi, radio_delay);
-
-                    *state = State::Idle;
-
-                    enable_radio_interrupts(rx_int, gpio1, radio, radio_spi, radio_delay);
-                },
-            );
+                enable_radio_interrupts(rx_int, gpio1, radio, radio_spi, radio_delay);
+            });
     }
 
     /// Test the kicker is working properly
     #[task(
         shared = [
-            fake_spi,
-            kicker_programmer,
-            kicker_controller,
             pit_delay,
             state,
             rx_int,
@@ -1321,9 +979,6 @@ mod app {
         program_kicker_normal::spawn().ok();
 
         (
-            ctx.shared.fake_spi,
-            ctx.shared.kicker_programmer,
-            ctx.shared.kicker_controller,
             ctx.shared.pit_delay,
             ctx.shared.state,
             ctx.shared.rx_int,
@@ -1333,16 +988,7 @@ mod app {
             ctx.shared.blocking_delay,
         )
             .lock(
-                |spi,
-                 kicker_programmer,
-                 kicker_controller,
-                 delay,
-                 state,
-                 rx_int,
-                 gpio1,
-                 radio,
-                 radio_spi,
-                 radio_delay| {
+                |delay, state, rx_int, gpio1, radio, radio_spi, radio_delay| {
                     disable_radio_interrupts(
                         KICKER_TESTING_SIZE,
                         rx_int,
@@ -1352,113 +998,33 @@ mod app {
                         radio_delay,
                     );
 
-                    let mut kicker = match kicker_controller.take() {
-                        Some(kicker_controller) => kicker_controller,
-                        None => {
-                            let (cs, reset) = kicker_programmer.take().unwrap().destroy();
-                            Kicker::new(cs, reset)
-                        }
-                    };
-
-                    log::info!("Charging the Kicker");
-                    let kicker_command = KickerCommand {
-                        kick_type: KickType::Kick,
-                        kick_trigger: KickTrigger::Disabled,
-                        kick_strength: 20.0,
-                        charge_allowed: true,
-                    };
-                    let mut buffer = [0u8; KICKER_TESTING_SIZE];
-                    for i in 0..20 {
-                        let kicker_state = match kicker.service(kicker_command, spi) {
-                            Ok(status) => {
-                                log::info!("Kicker Status: {:?}", status);
-                                Some(status)
-                            }
-                            Err(err) => {
-                                log::error!("Error Servicing Kicker: {:?}", err);
-                                None
-                            }
-                        };
-                        if let Some(state) = kicker_state {
-                            let message = KickerTestingMessage {
-                                healthy: state.healthy,
-                                ball_sense: state.ball_sensed,
-                                kicking: i == 19,
-                                kick_on_ball_sense: false,
-                                kick_immediately: false,
-                                voltage: state.current_voltage,
-                            };
-                            message.pack(&mut buffer).unwrap();
-                            radio.write(&buffer, radio_spi, radio_delay);
-                        }
-                        delay.delay_ms(100u32);
-                    }
+                    let mut buffer = [0u8; 2];
 
                     log::info!("KICKING!!!");
-                    let kicker_command = KickerCommand {
-                        kick_type: KickType::Kick,
-                        kick_trigger: KickTrigger::Immediate,
-                        kick_strength: 100.0,
-                        charge_allowed: true,
+                    let message = KickerTestingMessage {
+                        healthy: true,
+                        ball_sense: false,
+                        kicking: true,
+                        kick_immediately: true,
+                        kick_on_ball_sense: false,
+                        voltage: 0,
                     };
-                    let kicker_state = match kicker.service(kicker_command, spi) {
-                        Ok(status) => {
-                            log::info!("Kicker Status: {:?}", status);
-                            Some(status)
-                        }
-                        Err(err) => {
-                            log::error!("Error Kicking: {:?}", err);
-                            None
-                        }
-                    };
-                    if let Some(state) = kicker_state {
-                        let message = KickerTestingMessage {
-                            healthy: state.healthy,
-                            ball_sense: state.ball_sensed,
-                            kicking: true,
-                            kick_immediately: true,
-                            kick_on_ball_sense: false,
-                            voltage: state.current_voltage,
-                        };
-                        message.pack(&mut buffer).unwrap();
-                        radio.write(&buffer, radio_spi, radio_delay);
-                    }
+                    message.pack(&mut buffer).unwrap();
+                    radio.write(&buffer, radio_spi, radio_delay);
                     delay.delay_ms(100u32);
 
                     log::info!("Powering Down the Kicker");
-                    let kicker_command = KickerCommand {
-                        kick_type: KickType::Kick,
-                        kick_trigger: KickTrigger::Disabled,
-                        kick_strength: 0.0,
-                        charge_allowed: false,
+                    let message = KickerTestingMessage {
+                        healthy: true,
+                        ball_sense: false,
+                        kicking: true,
+                        kick_immediately: false,
+                        kick_on_ball_sense: false,
+                        voltage: 0,
                     };
-                    for _ in 0..20 {
-                        let kicker_state = match kicker.service(kicker_command, spi) {
-                            Ok(status) => {
-                                log::info!("Kicker Status: {:?}", status);
-                                Some(status)
-                            }
-                            Err(err) => {
-                                log::error!("Error Powering Down Kicker: {:?}", err);
-                                None
-                            }
-                        };
-                        if let Some(state) = kicker_state {
-                            let message = KickerTestingMessage {
-                                healthy: state.healthy,
-                                ball_sense: state.ball_sensed,
-                                kicking: true,
-                                kick_immediately: false,
-                                kick_on_ball_sense: false,
-                                voltage: state.current_voltage,
-                            };
-                            message.pack(&mut buffer).unwrap();
-                            radio.write(&buffer, radio_spi, radio_delay);
-                        }
-                        delay.delay_ms(100u32);
-                    }
-
-                    *kicker_controller = Some(kicker);
+                    message.pack(&mut buffer).unwrap();
+                    radio.write(&buffer, radio_spi, radio_delay);
+                    delay.delay_ms(100u32);
 
                     *state = State::Idle;
 
@@ -1470,8 +1036,6 @@ mod app {
     /// Test the fpga moving at a given velocity for 1 second.
     #[task(
         shared = [
-            fpga,
-            imu,
             blocking_delay,
             control_message,
             gpt,
@@ -1485,8 +1049,6 @@ mod app {
     )]
     async fn test_fpga_movement(ctx: test_fpga_movement::Context) {
         (
-            ctx.shared.fpga,
-            ctx.shared.imu,
             ctx.shared.blocking_delay,
             ctx.shared.control_message,
             ctx.shared.gpt,
@@ -1497,16 +1059,7 @@ mod app {
             ctx.shared.shared_spi,
         )
             .lock(
-                |fpga,
-                 imu,
-                 delay,
-                 control_message,
-                 gpt,
-                 state,
-                 radio,
-                 rx_int,
-                 gpio1,
-                 shared_spi| {
+                |delay, control_message, gpt, state, radio, rx_int, gpio1, shared_spi| {
                     // Disable Radio Interrupts
                     disable_radio_interrupts(
                         CONTROL_TEST_MESSAGE_SIZE,
@@ -1517,9 +1070,6 @@ mod app {
                         delay,
                     );
 
-                    let mut motion_controller = MotionControl::new();
-                    let mut last_encoder_values = Vector4::zeros();
-
                     let setpoint = match control_message {
                         Some(control_message) => control_message.get_velocity(),
                         None => Vector3::new(1.0, 0.0, 0.0),
@@ -1529,37 +1079,15 @@ mod app {
 
                     let mut last_time = gpt.count();
                     for _ in 0..1_000 {
-                        let gyro = imu.gyro_z().unwrap_or(0.0);
-                        let accel_x = imu.accel_x().unwrap_or(0.0);
-                        let accel_y = imu.accel_y().unwrap_or(0.0);
-
                         let now = gpt.count();
                         let delta = last_time - now;
                         last_time = now;
 
-                        let wheel_velocities = motion_controller.control_update(
-                            Vector3::new(-accel_y, accel_x, gyro),
-                            last_encoder_values,
-                            setpoint,
-                            delta,
-                        );
-                        let encoder_velocities = fpga
-                            .set_velocities(wheel_velocities.into(), false, delay)
-                            .unwrap_or([0.0; 4]);
-
-                        last_encoder_values = Vector4::new(
-                            encoder_velocities[0],
-                            encoder_velocities[1],
-                            encoder_velocities[2],
-                            encoder_velocities[3],
-                        );
-
-                        // TODO: Include delta in ControlTestMessage
                         let message = ControlTestMessage {
-                            gyro_z: gyro,
-                            accel_x,
-                            accel_y,
-                            motor_encoders: encoder_velocities,
+                            gyro_z: setpoint.z,
+                            accel_x: setpoint.x,
+                            accel_y: setpoint.y,
+                            motor_encoders: [0.0; 4],
                             delta,
                         };
                         message.pack(&mut buffer).unwrap();
@@ -1567,8 +1095,6 @@ mod app {
 
                         delay.delay_ms(1u32);
                     }
-
-                    let _ = fpga.set_velocities([0.0, 0.0, 0.0, 0.0], false, delay);
 
                     delay.delay_ms(500u32);
 
