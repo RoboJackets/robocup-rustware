@@ -1,0 +1,19 @@
+[package]
+name = "rotary_switch_rs"
+version = "0.1.0"
+authors = ["wade-groff <wgroff7@gatech.edu>"]
+edition = "2021"
+
+# this is needed for all device drivers
+[dependencies.embedded-hal]
+version = "~0.2"
+
+[dependencies.teensy4-bsp]
+version = "0.4"
+
+[dependencies]
+io_expander_rs = { path = "../io_expander" }
+
+[dependencies.rtic-monotonics]
+version = "1.0.0"
+features = ["cortex-m-systick"]

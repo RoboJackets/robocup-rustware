@@ -8,7 +8,7 @@ use core::convert::Infallible;
 
 use teensy4_pins::t41::*;
 
-use teensy4_bsp::board::{self, Lpi2c1, PERCLK_FREQUENCY};
+use teensy4_bsp::board::{self, Lpi2c1, Lpi2c3, PERCLK_FREQUENCY};
 use teensy4_bsp::hal::{
     lpspi::{LpspiError, Lpspi},
     gpio::{Output, Input, Port},
@@ -18,6 +18,8 @@ use teensy4_bsp::hal::{
 };
 
 use fpga_rs::FPGA;
+use rotary_switch_rs::RotarySwitch;
+use io_expander_rs::IoExpander;
 use icm42605_driver::IMU;
 
 use super::GPT_FREQUENCY;
@@ -26,6 +28,13 @@ use super::GPT_FREQUENCY;
 pub type FpgaSpi = Lpspi<board::LpspiPins<P11, P12, P13, P10>, 4>;
 /// The FPGA
 pub type Fpga = FPGA<FpgaSpi, Output<P9>, P29, Output<P28>, P30, Delay1, LpspiError, Infallible>;
+// i2c for the io expander
+pub type IoI2C = Lpi2c3;
+// io expander
+pub type Expander = IoExpander<IoI2C, imxrt_hal::lpi2c::ControllerStatus>;
+// rotary switch
+pub type Rotary = RotarySwitch<IoI2C, imxrt_hal::lpi2c::ControllerStatus>;
+
 /// Shared Spi
 pub type SharedSPI = Lpspi<board::LpspiPins<P26, P39, P27, P38>, 3>;
 /// The Chip Enable for the Radio

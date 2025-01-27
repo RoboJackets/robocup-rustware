@@ -1,0 +1,12 @@
+[package]
+name = "io_expander_rs"
+version = "0.1.0"
+authors = ["wade-groff <wgroff7@gatech.edu>"]
+edition = "2021"
+
+# this is needed for all device drivers
+[dependencies.embedded-hal]
+version = "~0.2"
+
+[dependencies.teensy4-bsp]
+version = "0.4"

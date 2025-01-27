@@ -367,6 +367,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "io_expander_rs"
+version = "0.1.0"
+dependencies = [
+ "embedded-hal 0.2.7",
+ "teensy4-bsp",
+]
+
+[[package]]
 name = "libm"
 version = "0.2.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -398,12 +406,14 @@ dependencies = [
  "icm42605-driver",
  "imxrt-hal",
  "imxrt-iomuxc",
+ "io_expander_rs",
  "libm",
  "log",
  "motion",
  "nalgebra",
  "packed_struct",
  "robojackets-robocup-rtp",
+ "rotary_switch_rs",
  "rtic",
  "rtic-monotonics",
  "rtic-nrf24l01",
@@ -601,6 +611,16 @@ checksum = "297505bf155ed49586c74cbce69a595b246f313a514fb1ab3140daa507959e62"
 dependencies = [
  "nalgebra",
  "packed_struct",
+]
+
+[[package]]
+name = "rotary_switch_rs"
+version = "0.1.0"
+dependencies = [
+ "embedded-hal 0.2.7",
+ "io_expander_rs",
+ "rtic-monotonics",
+ "teensy4-bsp",
 ]
 
 [[package]]
