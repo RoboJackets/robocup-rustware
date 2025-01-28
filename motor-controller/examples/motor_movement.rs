@@ -13,7 +13,7 @@ use defmt_rtt as _;
 #[rtic::app(device = stm32f0xx_hal::pac, peripherals = true, dispatchers = [TSC])]
 mod app {
     use rtic_monotonics::stm32::prelude::*;
-    use motor_controller::{HS1, HS2, HS3, TIM2_CLOCK_HZ};
+    use motor_controller::{hall_to_phases, set_pwm_output, HS1, HS2, HS3, TIM2_CLOCK_HZ};
     use stm32f0xx_hal::{pac::TIM1, prelude::*, pwm::{PwmChannels, C1, C1N, C2, C2N, C3, C3N}};
 
     // The value given to eaech motor as the high value for duty cycles
@@ -145,47 +145,22 @@ mod app {
     )]
     /// Move the motor clockwise according to the following chart:
     /// 
-    /// Step | Current | HS1 | HS2 | HS3 | Hall Status
-    ///    1 | U -> V  |   1 |   0 |   1 |   5
-    ///    2 | U -> W  |   1 |   0 |   0 |   4
-    ///    3 | V -> W  |   1 |   1 |   0 |   6
-    ///    4 | V -> U  |   0 |   1 |   0 |   2
-    ///    5 | W -> U  |   0 |   1 |   1 |   3
-    ///    6 | W -> V  |   0 |   0 |   1 |   1
-    /// 
-    /// Move the motor counter-clockwise according to the following chart:
-    /// 
-    /// Step | Current | HS1 | HS2 | HS3 | Hall Status
-    ///    6 | W -> V  |   1 |   1 |   0 |   6
-    ///    5 | W -> U  |   1 |   0 |   0 |   4
-    ///    4 | V -> U  |   1 |   0 |   1 |   5
-    ///    3 | V -> W  |   0 |   0 |   1 |   1
-    ///    2 | U -> W  |   0 |   1 |   1 |   3
-    ///    1 | U -> V  |   0 |   1 |   0 |   2
+    /// Step | A | B | C | H1 | H2 | H3 
+    ///    1 | 0 | - | + |  0 |  0 |  1
+    ///    2 | + | - | 0 |  1 |  0 |  1
+    ///    3 | + | 0 | - |  1 |  0 |  0
+    ///    4 | 0 | + | - |  1 |  1 |  0
+    ///    5 | - | + | 0 |  0 |  1 |  0
+    ///    6 | - | 0 | + |  0 |  1 |  1
     async fn move_motors(ctx: move_motors::Context) {
         // Spin Clockwise for 5 seconds
         let start_time = Mono::now();
         while Mono::now() - start_time < fugit::Duration::<u64, 1, 1_000_000>::secs(5) {
             let (h1, h2, h3) = (ctx.local.hs1.is_high().unwrap(), ctx.local.hs2.is_high().unwrap(), ctx.local.hs3.is_high().unwrap());
-            match (h1, h2, h3) {
-                (true, false, true) => {
-                    ctx.local.ch1.set_duty(0);
-                    ctx.local.ch1n.set_duty(0);
-                    ctx.local.ch2.set_duty(0);
-                    ctx.local.ch2n.set_duty(MAX_DUTY);
-                    ctx.local.ch3.set_duty(255);
-                    ctx.local.ch3n.set_duty(0);
-                },
-                (true, false, false) => {
-                    
-                },
-                (true, true, false) => todo!(),
-                (false, true, false) => todo!(),
-                (false, true, true) => todo!(),
-                (false, false, true) => todo!(),
-                _ => defmt::error!("Unknown Hal Sensor Configuration"),
-            }
-
+            let phases = hall_to_phases(h1, h2, h3, true);
+            set_pwm_output(ctx.local.ch1, ctx.local.ch1n, phases[0], MAX_DUTY);
+            set_pwm_output(ctx.local.ch2, ctx.local.ch2n, phases[1], MAX_DUTY);
+            set_pwm_output(ctx.local.ch3, ctx.local.ch3n, phases[2], MAX_DUTY);
             Mono::delay(CHECK_DELAY_US.millis()).await;
         }
 
@@ -193,16 +168,10 @@ mod app {
         let start_time = Mono::now();
         while Mono::now() - start_time < fugit::Duration::<u64, 1, 1_000_000>::secs(5) {
             let (h1, h2, h3) = (ctx.local.hs1.is_high().unwrap(), ctx.local.hs2.is_high().unwrap(), ctx.local.hs3.is_high().unwrap());
-            match (h1, h2, h3) {
-                (true, true, false) => todo!(),
-                (true, false, false) => todo!(),
-                (true, false, true) => todo!(),
-                (false, false, true) => todo!(),
-                (false, true, true) => todo!(),
-                (false, true, false) => todo!(),
-                _ => defmt::error!("Unknown Hal Sensor Configuration"),
-            }
-
+            let phases = hall_to_phases(h1, h2, h3, false);
+            set_pwm_output(ctx.local.ch1, ctx.local.ch1n, phases[0], MAX_DUTY);
+            set_pwm_output(ctx.local.ch2, ctx.local.ch2n, phases[1], MAX_DUTY);
+            set_pwm_output(ctx.local.ch3, ctx.local.ch3n, phases[2], MAX_DUTY);
             Mono::delay(CHECK_DELAY_US.millis()).await;
         }
     }
