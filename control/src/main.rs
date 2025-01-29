@@ -468,6 +468,7 @@ mod app {
                                 Err(err) => {
                                     log::error!("Unable to Service Kicker: {:?}", err);
                                     *kicker_service_error = Some(err);
+                                    robot_status.kick_healthy = false;
                                 }
                             }
 
@@ -475,6 +476,7 @@ mod app {
                         }
                         Err(err) => {
                             log::error!("Unable to program kicker: {:?}", err);
+                            robot_status.kick_healthy = false;
                             *kicker_program_error = Some(err);
                         }
                     }
@@ -491,8 +493,6 @@ mod app {
             fpga_init_error,
             fpga_prog_error,
             radio_init_error,
-            kicker_program_error,
-            kicker_service_error,
         ],
         priority = 1
     )]
@@ -501,23 +501,17 @@ mod app {
             ctx.shared.imu_init_error,
             ctx.shared.fpga_init_error,
             ctx.shared.fpga_prog_error,
-            ctx.shared.radio_init_error,
-            ctx.shared.kicker_program_error,
-            ctx.shared.kicker_service_error,
+            ctx.shared.radio_init_error
         )
             .lock(
                 |imu_init_error,
                  fpga_init_error,
                  fpga_prog_error,
-                 radio_init_error,
-                 kicker_program_error,
-                 kicker_service_error| {
+                 radio_init_error| {
                     imu_init_error.is_some()
                         || fpga_init_error.is_some()
                         || fpga_prog_error.is_some()
                         || radio_init_error.is_some()
-                        || kicker_program_error.is_some()
-                        || kicker_service_error.is_some()
                 },
             )
         {
@@ -828,7 +822,8 @@ mod app {
         );
 
         // Service the kicker
-        if *ctx.local.iteration % KICKER_SERVICE_DELAY_TICKS == 0 {
+        let kicker_healthy = ctx.shared.robot_status.lock(|status| status.kick_healthy);
+        if *ctx.local.iteration % KICKER_SERVICE_DELAY_TICKS == 0 && kicker_healthy {
             let kicker_command = ctx.shared.control_message.lock(|control_message| {
                 if let Some(control_message) = control_message {
                     (*control_message).into()
