@@ -42,7 +42,7 @@ static HEAP: Heap = Heap::empty();
 mod app {
     use fpga::error::FpgaError;
 
-    use main::{Fpga, GPT_CLOCK_SOURCE, GPT_DIVIDER, GPT_FREQUENCY};
+    use robojackets_robocup_control::{Delay1, Fpga, GPT_CLOCK_SOURCE, GPT_DIVIDER, GPT_FREQUENCY};
 
     // this allows us to define our packages outside the app module
     // we're essetially "bringing them all in"
@@ -67,6 +67,7 @@ mod app {
     #[local]
     struct Local {
         fpga: Fpga,
+        delay: Delay1,
     }
 
     // struct that holds shared resources which can be accessed via the context
@@ -136,7 +137,7 @@ mod app {
 
         let done = gpio3.input(pins.p30);
 
-        let fpga = match FPGA::new(spi, cs, init_b, prog_b, done, delay) {
+        let fpga = match FPGA::new(spi, cs, init_b, prog_b, done) {
             Ok(instance) => instance,
             Err(_) => panic!("Couldn't initialize instance of FPGA"),
         };
@@ -145,7 +146,7 @@ mod app {
         init_fpga::spawn().unwrap();
 
         // return the local, and shared resources to be used from the context
-        (Shared {}, Local { fpga })
+        (Shared {}, Local { fpga, delay })
     }
 
     // (optional) lowest priority tasks that runs only while no other task is running
@@ -158,17 +159,17 @@ mod app {
     }
 
     // init fpga task
-    #[task(local = [fpga], priority = 1)]
-    async fn init_fpga(cx: init_fpga::Context) {
+    #[task(local = [fpga, delay], priority = 1)]
+    async fn init_fpga(ctx: init_fpga::Context) {
         // acquire fpga instance from local resources
-        let fpga = cx.local.fpga;
+        let fpga = ctx.local.fpga;
 
         // start the test :)
         log::info!("[INIT] FPGA ENCODER DEMO");
         Systick::delay(3 * SECOND_DELAY.millis()).await;
 
         // attempt to configure the fpga :)
-        match fpga.configure() {
+        match fpga.configure(ctx.local.delay) {
             Ok(_) => log::info!("Configuration worked???"),
             Err(e) => match e {
                 FpgaError::SPI(spi_e) => panic!("SPI error with info: {:?}", spi_e),
@@ -178,7 +179,7 @@ mod app {
         Systick::delay(TEN_MS_DELAY.millis()).await;
 
         // enable motors
-        match fpga.motors_en(true) {
+        match fpga.motors_en(true, ctx.local.delay) {
             Ok(status) => log::info!(" enabled motors fpga status: {:b}", status),
             Err(e) => panic!("error enabling motors... {:?}", e),
         };
@@ -193,7 +194,7 @@ mod app {
                 // forward direction duty cycles
                 let duty_cycles = [SPEED, SPEED, SPEED, SPEED]; // dribbler
                                                                 // write duty cycle
-                match fpga.set_duty_get_encoders(duty_cycles, 0.0) {
+                match fpga.set_duty_get_encoders(duty_cycles, 0.0, ctx.local.delay) {
                     Ok(encoders) => {
                         log::info!("Encoder Values: {:?}", encoders);
                         log::info!("Status: {:#010b}", fpga.status());
@@ -209,7 +210,7 @@ mod app {
             for _ in 0..500 {
                 let duty_cycles = [SLOW_SPEED, SLOW_SPEED, SLOW_SPEED, SLOW_SPEED]; // dribbler
                                                                                     // write duty cycle
-                match fpga.set_duty_get_encoders(duty_cycles, 0.0) {
+                match fpga.set_duty_get_encoders(duty_cycles, 0.0, ctx.local.delay) {
                     Ok(encoders) => {
                         log::info!("Encoder Values: {:?}", encoders);
                         log::info!("Status: {:#010b}", fpga.status());
@@ -225,7 +226,7 @@ mod app {
             for _ in 0..100 {
                 let duty_cycles = [FAST_SPEED, FAST_SPEED, FAST_SPEED, FAST_SPEED];
                 // write duty cycle
-                match fpga.set_duty_get_encoders(duty_cycles, 0.0) {
+                match fpga.set_duty_get_encoders(duty_cycles, 0.0, ctx.local.delay) {
                     Ok(encoders) => {
                         log::info!("Encoder Values: {:?}", encoders);
                         log::info!("Status: {:#010b}", fpga.status());
@@ -241,7 +242,7 @@ mod app {
             for _ in 0..100 {
                 let duty_cycles = [0.0, 0.0, 0.0, 0.0];
                 // write duty cycle
-                match fpga.set_duty_get_encoders(duty_cycles, 0.0) {
+                match fpga.set_duty_get_encoders(duty_cycles, 0.0, ctx.local.delay) {
                     Ok(encoders) => {
                         log::info!("Encoder Values: {:?}", encoders);
                         log::info!("Status: {:#010b}", fpga.status());

@@ -39,7 +39,7 @@ mod app {
 
     use rtic_monotonics::systick::*;
 
-    use main::{Imu, PitDelay};
+    use robojackets_robocup_control::{Imu, PitDelay};
 
     #[local]
     struct Local {}
@@ -57,6 +57,7 @@ mod app {
     fn init(ctx: init::Context) -> (Shared, Local) {
         // Initialize the Heap
         unsafe {
+            #[allow(static_mut_refs)]
             HEAP.init(HEAP_MEM.as_ptr() as usize, HEAP_SIZE);
         }
 

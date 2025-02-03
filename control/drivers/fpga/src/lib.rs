@@ -120,12 +120,11 @@ pub fn buffer_to_i16s(buffer: &[u8]) -> [i16; 5] {
 ///    define it using the Input struct and the Pin Number instead -> Input<PinNum>
 ///  - The PROG_B pin must be set in the OPEN_DRAIN configuration
 ///
-pub struct FPGA<SPI, CS, INIT, PROG, DONE, DELAY, SPIE, GPIOE>
+pub struct FPGA<SPI, CS, INIT, PROG, DONE, SPIE, GPIOE>
 where
     SPI: Write<u8, Error = SPIE> + Transfer<u8, Error = SPIE>,
     PROG: OutputPin<Error = GPIOE>,
     CS: OutputPin<Error = GPIOE>,
-    DELAY: DelayMs<u32> + DelayUs<u32>,
     SPIE: Debug,
     GPIOE: Debug,
 {
@@ -139,8 +138,6 @@ where
     prog_b: PROG, // prog_b output pin "MUST" BE on OPEN_DRAIN configuration!!
     /// An input pin to read when programming is complete
     done: Input<DONE>,
-    /// A delay held by the FPGA
-    delay: DELAY,
     /// The status of the FPGA
     pub status: u8,
     /// When Done is pulled true, this is set true
@@ -152,13 +149,11 @@ where
 /// used different names from our custom FpgaError enum defined in the error.rs
 /// to outline how we are using our custom error to wrap embedded trait error types
 ///
-impl<SPI, CS, INIT, PROG, DONE, DELAY, SPIE, GPIOE>
-    FPGA<SPI, CS, INIT, PROG, DONE, DELAY, SPIE, GPIOE>
+impl<SPI, CS, INIT, PROG, DONE, SPIE, GPIOE> FPGA<SPI, CS, INIT, PROG, DONE, SPIE, GPIOE>
 where
     SPI: Write<u8, Error = SPIE> + Transfer<u8, Error = SPIE>,
     PROG: OutputPin<Error = GPIOE>,
     CS: OutputPin<Error = GPIOE>,
-    DELAY: DelayMs<u32> + DelayUs<u32>,
     SPIE: Debug,
     GPIOE: Debug,
 {
@@ -169,7 +164,6 @@ where
         init_b: Input<INIT>,
         prog_b: PROG,
         done: Input<DONE>,
-        delay: DELAY,
     ) -> Result<Self, FpgaError<SPIE, GPIOE>> {
         // create new instance of FPGA and pass in appropriate pins
         let mut fpga = FPGA {
@@ -178,7 +172,6 @@ where
             init_b,
             prog_b,
             done,
-            delay,
             status: 0u8,
             initialized: false,
         };
@@ -199,19 +192,22 @@ where
     ///    3. Sends config
     ///    4. Awaits for the FPGA done pin
     ///    5. Returns Ok if no errors or timeout
-    pub fn configure(&mut self) -> Result<(), FpgaError<SPIE, GPIOE>> {
+    pub fn configure(
+        &mut self,
+        delay: &mut (impl DelayMs<u32> + DelayUs<u32>),
+    ) -> Result<(), FpgaError<SPIE, GPIOE>> {
         // toggle the prog_b pin
         self.prog_b
             .set_low()
             .map_err(FpgaError::<SPIE, GPIOE>::ProgPin)?;
-        self.delay.delay_ms(1); // allow for hardware to latch properly
+        delay.delay_ms(1); // allow for hardware to latch properly
         self.prog_b.set_high().map_err(FpgaError::ProgPin)?;
 
         // delay until init_b is ready
         let mut timeout = 100;
         while timeout > 0 {
             // wait for 10 ms on each cycle
-            self.delay.delay_ms(10);
+            delay.delay_ms(10);
 
             // if the init_b pin is high => FPGA is ready to be programmed
             if self.init_b.is_set() {
@@ -229,13 +225,13 @@ where
         }
 
         // send configuration array after init_b pin is asserted
-        self.spi_write(&FPGA_BYTES)?;
+        self.spi_write(&FPGA_BYTES, delay)?;
 
         timeout = 100;
         // delay until done pin is ready
         while timeout > 0 {
             // wait for 100 ms on each cycle
-            self.delay.delay_ms(100);
+            delay.delay_ms(100);
 
             // if done pin is high => FPGA is done configuring
             // update status to Standby
@@ -270,11 +266,14 @@ where
     }
 
     /// Read Hall Sensor values from the FPGA
-    pub fn read_halls(&mut self) -> Result<[u8; 5], FpgaError<SPIE, GPIOE>> {
+    pub fn read_halls(
+        &mut self,
+        delay: &mut impl DelayUs<u32>,
+    ) -> Result<[u8; 5], FpgaError<SPIE, GPIOE>> {
         let mut write_buffer = [0u8; 7];
         write_buffer[0] = Instruction::R_HALLS.opcode();
 
-        self.spi_transfer(&mut write_buffer)?;
+        self.spi_transfer(&mut write_buffer, delay)?;
 
         let mut halls = [0u8; 5];
         halls[..].copy_from_slice(&write_buffer[1..6]);
@@ -283,11 +282,14 @@ where
     }
 
     /// Read the encoder values for the motors connected to the FPGA.
-    pub fn read_encoders(&mut self) -> Result<[i16; 5], FpgaError<SPIE, GPIOE>> {
+    pub fn read_encoders(
+        &mut self,
+        delay: &mut impl DelayUs<u32>,
+    ) -> Result<[i16; 5], FpgaError<SPIE, GPIOE>> {
         let mut write_buffer = [0u8; 12];
         write_buffer[0] = Instruction::R_ENC.opcode();
 
-        self.spi_transfer(&mut write_buffer)?;
+        self.spi_transfer(&mut write_buffer, delay)?;
 
         Ok(buffer_to_i16s(&write_buffer[1..11]))
     }
@@ -328,11 +330,14 @@ where
     // float dt = static_cast<float>(encDeltas[4]) * (1 / 18.432e6) * 2 * 128;
 
     /// Read the duty cycles the FPGA is currently running at
-    pub fn read_duty_cycles(&mut self) -> Result<[i16; 5], FpgaError<SPIE, GPIOE>> {
+    pub fn read_duty_cycles(
+        &mut self,
+        delay: &mut impl DelayUs<u32>,
+    ) -> Result<[i16; 5], FpgaError<SPIE, GPIOE>> {
         let mut write_buffer = [0u8; 12];
         write_buffer[0] = Instruction::R_DUTY.opcode();
 
-        self.spi_transfer(&mut write_buffer)?;
+        self.spi_transfer(&mut write_buffer, delay)?;
 
         Ok(buffer_to_i16s(&write_buffer[1..11]))
     }
@@ -342,6 +347,7 @@ where
         &mut self,
         duty_cycles: [f32; 4],
         _dribbler_duty_cycle: f32,
+        delay: &mut impl DelayUs<u32>,
     ) -> Result<(), FpgaError<SPIE, GPIOE>> {
         let mut write_buffer = [0u8; 12];
         write_buffer[0] = Instruction::R_ENC_W_VEL.opcode();
@@ -353,7 +359,7 @@ where
         write_buffer[10] = 0x00;
         write_buffer[11] = 0x01;
 
-        self.spi_transfer(&mut write_buffer)?;
+        self.spi_transfer(&mut write_buffer, delay)?;
 
         Ok(())
     }
@@ -422,6 +428,7 @@ where
         &mut self,
         mut wheel_velocities: [f32; 4],
         dribble: bool,
+        delay: &mut impl DelayUs<u32>,
     ) -> Result<[f32; 4], FpgaError<SPIE, GPIOE>> {
         let mut write_buffer = [0u8; 12];
         write_buffer[0] = Instruction::R_ENC_W_VEL.opcode();
@@ -442,7 +449,7 @@ where
         // write_buffer[10] = 0b1111_1111;
         write_buffer[11] = 0x00;
 
-        self.spi_transfer(&mut write_buffer[..])?;
+        self.spi_transfer(&mut write_buffer[..], delay)?;
 
         let delta = (i16::from_be_bytes(write_buffer[9..11].try_into().unwrap()) as f32)
             * (1.0 / 18.432)
@@ -466,6 +473,7 @@ where
         &mut self,
         wheel_duty_cycles: [f32; 4],
         _dribbler_duty_cycle: f32,
+        delay: &mut impl DelayUs<u32>,
     ) -> Result<([f32; 4], f32), FpgaError<SPIE, GPIOE>> {
         let mut write_buffer = [0u8; 12];
         write_buffer[0] = Instruction::R_ENC_W_VEL.opcode();
@@ -477,7 +485,7 @@ where
         write_buffer[10] = 0x01;
         write_buffer[11] = 0x00;
 
-        self.spi_transfer(&mut write_buffer[..])?;
+        self.spi_transfer(&mut write_buffer[..], delay)?;
 
         let delta = (i16::from_be_bytes(write_buffer[9..11].try_into().unwrap()) as f32)
             * (1.0 / 18.432)
@@ -499,9 +507,12 @@ where
     /// Nib2 = [GVDD_OV, FAULT, GVDD_UV, PVDD_UV, 0, 0, 0, 0]
     /// Nib1 = [OTSD, OTW, FETHA_OC, FETLA_OC, 0, 0, 0, 0]
     /// Nib0 = [FETHB_OC, FETLB_OC, FETHC_OC, FETLC_OC, 0, 0, 0, 0]
-    pub fn check_drv(&mut self) -> Result<[u8; 3], FpgaError<SPIE, GPIOE>> {
+    pub fn check_drv(
+        &mut self,
+        delay: &mut impl DelayUs<u32>,
+    ) -> Result<[u8; 3], FpgaError<SPIE, GPIOE>> {
         let mut write_buffer = [0x96, 0x00, 0x00, 0x00, 0x00];
-        self.spi_transfer(&mut write_buffer)?;
+        self.spi_transfer(&mut write_buffer, delay)?;
 
         self.status = write_buffer[0];
 
@@ -584,7 +595,11 @@ where
     // }
 
     /// Enable the motors connected to the FPGA
-    pub fn motors_en(&mut self, enable: bool) -> Result<u8, FpgaError<SPIE, GPIOE>> {
+    pub fn motors_en(
+        &mut self,
+        enable: bool,
+        delay: &mut impl DelayUs<u32>,
+    ) -> Result<u8, FpgaError<SPIE, GPIOE>> {
         let mut write_buffer: [u8; 1] = [0x00];
         write_buffer[0] = if enable {
             Instruction::EN_MOTORS.opcode()
@@ -592,34 +607,44 @@ where
             Instruction::DIS_MOTORS.opcode()
         };
 
-        self.spi_transfer(&mut write_buffer)?;
+        self.spi_transfer(&mut write_buffer, delay)?;
         Ok(self.status)
     }
 
     /// Toggle the motors enable on and off to reset the motors
-    pub fn reset_motors(&mut self) -> Result<u8, FpgaError<SPIE, GPIOE>> {
+    pub fn reset_motors(
+        &mut self,
+        delay: &mut impl DelayUs<u32>,
+    ) -> Result<u8, FpgaError<SPIE, GPIOE>> {
         // Set Motors High -> Low -> High
         let mut buffer = [0x30 | 1 << 7];
-        self.spi_write(&buffer)?;
+        self.spi_write(&buffer, delay)?;
         buffer[0] = 0x30;
-        self.spi_write(&buffer)?;
+        self.spi_write(&buffer, delay)?;
         buffer[0] = 0x30 | 1 << 7;
-        self.spi_transfer(&mut buffer)?;
+        self.spi_transfer(&mut buffer, delay)?;
         Ok(buffer[0])
     }
 
     /// Reset the watchdog on the FPGA.
-    pub fn watchdog_reset(&mut self) -> Result<(), FpgaError<SPIE, GPIOE>> {
-        let _ = self.motors_en(true)?;
-        self.delay.delay_us(1);
-        let _ = self.motors_en(true)?;
-        self.delay.delay_us(1);
+    pub fn watchdog_reset(
+        &mut self,
+        delay: &mut impl DelayUs<u32>,
+    ) -> Result<(), FpgaError<SPIE, GPIOE>> {
+        let _ = self.motors_en(true, delay)?;
+        delay.delay_us(1);
+        let _ = self.motors_en(true, delay)?;
+        delay.delay_us(1);
 
         Ok(())
     }
 
     // Private helper method to abstract the SPI write transaction
-    fn spi_write(&mut self, buffer: &[u8]) -> Result<(), FpgaError<SPIE, GPIOE>> {
+    fn spi_write(
+        &mut self,
+        buffer: &[u8],
+        delay: &mut impl DelayUs<u32>,
+    ) -> Result<(), FpgaError<SPIE, GPIOE>> {
         // pull cs pin low
         self.cs.set_low().map_err(FpgaError::CSPin)?;
         // write buffer contents
@@ -627,13 +652,18 @@ where
         // pull cs pin back to high (default satate)
         self.cs.set_high().map_err(FpgaError::CSPin)?;
 
-        self.delay.delay_us(1);
+        delay.delay_us(1);
+
         Ok(())
     }
 
     // Private helper method to abstract the SPI transfer transaction
     // NOTE: SPI transfer function uses a Full-Duplex protocol
-    fn spi_transfer(&mut self, buffer: &mut [u8]) -> Result<(), FpgaError<SPIE, GPIOE>> {
+    fn spi_transfer(
+        &mut self,
+        buffer: &mut [u8],
+        delay: &mut impl DelayUs<u32>,
+    ) -> Result<(), FpgaError<SPIE, GPIOE>> {
         // pull cs pin high
         self.cs.set_low().map_err(FpgaError::CSPin)?;
         // write buffer contents and read from spi
@@ -641,7 +671,7 @@ where
         // pull cs pin back to low (default state)
         self.cs.set_high().map_err(FpgaError::CSPin)?;
 
-        self.delay.delay_us(1);
+        delay.delay_us(1);
 
         // Set status from buffer[0]
         self.status = buffer[0];

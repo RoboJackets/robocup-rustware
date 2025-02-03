@@ -22,6 +22,7 @@ mod app {
     use core::mem::MaybeUninit;
 
     use bsp::board;
+    use imxrt_hal::gpt::Gpt;
     use teensy4_bsp as bsp;
 
     use hal::pit::Chained01;
@@ -30,7 +31,7 @@ mod app {
 
     use rtic_monotonics::systick::*;
 
-    use main::{Delay2, GPT_CLOCK_SOURCE, GPT_DIVIDER, GPT_FREQUENCY};
+    use robojackets_robocup_control::{Delay2, GPT_CLOCK_SOURCE, GPT_DIVIDER, GPT_FREQUENCY};
 
     const HEAP_SIZE: usize = 8192;
     static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
@@ -39,6 +40,7 @@ mod app {
     struct Local {
         delay: Delay2,
         pit: Chained01,
+        gpt1: Gpt<1>,
     }
 
     #[shared]
@@ -47,12 +49,14 @@ mod app {
     #[init]
     fn init(ctx: init::Context) -> (Shared, Local) {
         unsafe {
+            #[allow(static_mut_refs)]
             HEAP.init(HEAP_MEM.as_ptr() as usize, HEAP_SIZE);
         }
 
         // Grab the board peripherals
         let board::Resources {
             usb,
+            mut gpt1,
             mut gpt2,
             pit: (pit0, pit1, _pit3, _pit4),
             ..
@@ -68,6 +72,11 @@ mod app {
         let systick_token = rtic_monotonics::create_systick_token!();
         Systick::start(ctx.core.SYST, 600_000_000, systick_token);
 
+        gpt1.disable();
+        gpt1.set_divider(GPT_DIVIDER);
+        gpt1.set_clock_source(GPT_CLOCK_SOURCE);
+        gpt1.enable();
+
         gpt2.disable();
         gpt2.set_divider(GPT_DIVIDER);
         gpt2.set_clock_source(GPT_CLOCK_SOURCE);
@@ -80,6 +89,7 @@ mod app {
             Local {
                 pit: chained,
                 delay: delay2,
+                gpt1,
             },
         )
     }
@@ -91,14 +101,17 @@ mod app {
         }
     }
 
-    #[task(local = [delay, pit], priority=1)]
+    #[task(local = [delay, pit, gpt1], priority=1)]
     async fn motion_control_update(ctx: motion_control_update::Context) {
         Systick::delay(1000u32.millis()).await;
 
+        let start_gpt = ctx.local.gpt1.count();
         let start_pit = ctx.local.pit.current_timer_value();
         ctx.local.delay.block_ms(1_000);
         let end_pit = ctx.local.pit.current_timer_value();
+        let end_gpt = ctx.local.gpt1.count();
 
         log::info!("Elapsed PIT: {}", start_pit - end_pit);
+        log::info!("Elapsed GPT: {}", end_gpt - start_gpt);
     }
 }

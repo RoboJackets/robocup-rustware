@@ -27,8 +27,8 @@ mod app {
 
     use bsp::board::{self, PERCLK_FREQUENCY};
     use imxrt_iomuxc::{configure, Config, PullKeeper};
-    use main::spi::FakeSpi;
-    use main::KickerCSn;
+    use robojackets_robocup_control::spi::FakeSpi;
+    use robojackets_robocup_control::KickerCSn;
     use teensy4_bsp as bsp;
 
     use bsp::hal::timer::Blocking;
@@ -52,6 +52,7 @@ mod app {
     #[init]
     fn init(ctx: init::Context) -> (Shared, Local) {
         unsafe {
+            #[allow(static_mut_refs)]
             HEAP.init(HEAP_MEM.as_ptr() as usize, HEAP_SIZE);
         }
 
