@@ -34,6 +34,8 @@ use embedded_hal::blocking::i2c::*;//{I2C, I2CError, SevenBitAddress};
 pub mod error;
 use error::IOExpanderError;
 
+// GENERATE DOCS:
+// cargo doc --target thumbv7em-none-eabihf --open 
 
 const GPPUA_ADDR : u8 = 0x0C;
 const GPPUB_ADDR : u8 = 0x0D;
