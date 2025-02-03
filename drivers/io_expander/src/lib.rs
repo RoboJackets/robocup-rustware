@@ -10,7 +10,7 @@
 #![crate_type = "lib"]
 
 // FIGURE OUT HOW THIS WORKS
-//#![deny(missing_docs)]
+#![deny(missing_docs)]
 
 
 
@@ -45,26 +45,42 @@ const GPINTENA_ADDR : u8 = 0x04;
 const GPINTENB_ADDR : u8 = 0x05;
 const IOCON_ADDR : u8 = 0x0A;
 const INTRFA_ADDR : u8 = 0x0E;
-const INTRFB_ADDR : u8 = 0x0F;
+//const INTRFB_ADDR : u8 = 0x0F;
 
 
-// enum for the output pins on the io expander
+/// enum for the output pins on the io expander
 pub enum GpioPin {
+    /// Bank A, pin 0
     GPIOA0,
+    /// Bank A, pin 1
     GPIOA1,
+    /// Bank A, pin 2
     GPIOA2,
+    /// Bank A, pin 3
     GPIOA3,
+    /// Bank A, pin 4
     GPIOA4,
+    /// Bank A, pin 5
     GPIOA5,
+    /// Bank A, pin 6
     GPIOA6,
+    /// Bank A, pin 7
     GPIOA7,
+    /// Bank B, pin 0
     GPIOB0,
+    /// Bank B, pin 1
     GPIOB1,
+    /// Bank B, pin 2
     GPIOB2,
+    /// Bank B, pin 3
     GPIOB3,
+    /// Bank B, pin 4
     GPIOB4,
+    /// Bank B, pin 5
     GPIOB5,
+    /// Bank B, pin 6
     GPIOB6,
+    /// Bank B, pin 7
     GPIOB7,
 }
 
@@ -74,17 +90,26 @@ pub enum GpioPin {
 // A2 = 0
 const DEVICE_ADDR: u8 = 0b00100001; // 0 & 0100 & A2A1A0
 
+
+/// High or low status for GPIO logic 
 pub enum GpioStatus {
+    /// High logic
     HIGH,
+    /// Low logic
     LOW
 }
 
+/// Enum for the direciton of a GPIO pin
 pub enum GpioDir {
+    /// Takes inputs
     INPUT,
+    /// Gives an output
     OUTPUT
 }
 
 impl GpioPin {
+
+    /// gets the address and bank of the IO pin
     pub fn get_addr(self) -> (u8, u8) { // returns (bit, bank_num)
         match self {
             GpioPin::GPIOA0 => return (0, 0),
@@ -107,25 +132,33 @@ impl GpioPin {
     }
 }
 
-//  Read operations are done to specific registers in the io expander by first doing a valid write with the address,
-//  then doing a read with a restart condition. This is done using i2c::write_read
-//   
-//  Write operations are done by putting the register address as the first thing written in the buffer
+///  Read operations are done to specific registers in the io expander by first doing a valid write with the address,
+///  then doing a read with a restart condition. This is done using i2c::write_read
+///   
+///  Write operations are done by putting the register address as the first thing written in the buffer
 pub enum OperationAddr<'a> {
+    /// Contains the read buffer and the internal target address
     Read(&'a mut [u8], u8),    // read operation along with address
+    /// Contains the write buffer, which should have the address as the first byte
     Write(&'a [u8])            // write operation. No address extra, because the address should be included in the buffer
 }
 
 
-// takes ownership of the I2C line
-// if we need anything else, put it in the generics and define what it uses here as well
+/// takes ownership of the I2C line
+/// 
+/// Also holds the statuses of io expander registers to allow writes for individual bits
 pub struct IoExpander<I2C, I2CE> where
     I2C: i2c::Write<Error=I2CE> + i2c::Read<Error = I2CE>
 {
+    /// The I2C line for the io expander. Can't bus share if we take ownership like this
     i2c : I2C,
+    /// Bank A GPIO output register
     bank_a_out : u8, // keeping track of the most recently written data output allows for a function to write one bit without changing the rest
+    /// Bank B GPIO output register
     bank_b_out : u8,
+    /// Bank A GPIO direction register (0: output, 1: input)
     bank_a_dir : u8,
+    /// Bank B GPIO direction register (0: output, 1: input)
     bank_b_dir : u8
 }
 
@@ -141,6 +174,7 @@ impl<I2C, I2CE> IoExpander<I2C, I2CE>
     
     // need to give it access to I2C for the io expander
     // This allows us to actually use it to communicate with the io expander
+    /// Takes in i2c line and returns an IoExpander instance
     pub fn new(i2c: I2C) -> Result<IoExpander<I2C, I2CE>, IOExpanderError<I2CE>> {
         let io_expander_instance = Self {  
             i2c:i2c,
@@ -155,8 +189,9 @@ impl<I2C, I2CE> IoExpander<I2C, I2CE>
     }
 
 
-    // lets us carry out a string of operations at once
-    // use this to initialize the IO Expander with a constant array of OperationAddr
+    /// Carries out an operation
+    /// 
+    /// Always writes the DEVICE_ADDR first, then the internal address, then data is transmitted
     pub fn transaction(&mut self, operation: OperationAddr) -> Result<(), IOExpanderError<I2CE>> {
         let res;
 
@@ -185,8 +220,8 @@ impl<I2C, I2CE> IoExpander<I2C, I2CE>
 
 
 
-    // actually does the initialization of the io expander
-    // uses the constant init_regs_operations with a single transaction
+    /// initializes the the io expander
+    /// Isn't actually necessary, initialization can be done with whatever is using the device
     pub fn init(&mut self) -> Result<(), IOExpanderError<I2CE>> {
         // Nothing is really necessary to initialize in this driver
         // unless we want the default to be something different
@@ -201,8 +236,10 @@ impl<I2C, I2CE> IoExpander<I2C, I2CE>
     }
 
 
-    // 0 means output
-    // 1 means input
+    /// Sets the GPIO directions for bank A
+    /// 
+    /// 0 means output
+    /// 1 means input
     pub fn set_bank_a_dirs(&mut self, dirs: u8) -> Result<(), IOExpanderError<I2CE>> {
         let arr_dirs = [IODIRA_ADDR, dirs];
         let operation = OperationAddr::Write(&arr_dirs);
@@ -210,7 +247,10 @@ impl<I2C, I2CE> IoExpander<I2C, I2CE>
         return self.transaction(operation);
     }
 
-    
+    /// Sets the GPIO directions for bank B
+    /// 
+    /// 0 means output
+    /// 1 means input
     pub fn set_bank_b_dirs(&mut self, dirs: u8) -> Result<(), IOExpanderError<I2CE>> {
         let arr_dirs = [IODIRB_ADDR, dirs];
         let operations = OperationAddr::Write(&arr_dirs);
@@ -218,6 +258,10 @@ impl<I2C, I2CE> IoExpander<I2C, I2CE>
         return self.transaction(operations);
     }
 
+    /// Sets the directions for both banks
+    /// 
+    /// Does not work as of right now since it is done in two separate transactions, which is too fast
+    /// Need to enable address increment, then do one transaction sending both bytes
     pub fn set_all_dirs(&mut self, dirs: u16) -> Result<(), IOExpanderError<I2CE>> {
         let bank_a_dirs = (dirs & 0xFF00 >> 8) as u8;
         let bank_b_dirs = (dirs & 0xFF) as u8;
@@ -237,7 +281,9 @@ impl<I2C, I2CE> IoExpander<I2C, I2CE>
     }
 
 
-    // set the direction of a single pin, keeping the rest the same
+    /// set the direction of a single pin, keeping the rest the same
+    /// 
+    /// takes a GpioPin enum, which allows us to get the bank number and offset
     pub fn set_dir(&mut self, pin: GpioPin, value: GpioDir) -> Result<(), IOExpanderError<I2CE>> {
         let (bit, banknum) = pin.get_addr(); // holds (addr, bit, banknum)
         let mask: u8;
@@ -289,12 +335,24 @@ impl<I2C, I2CE> IoExpander<I2C, I2CE>
         }
     }    
 
+    /// Writes to the IOCON register
+    /// bit:
+    /// 7  BANK: address config;
+    /// 6  MIRROR: connect int pins;
+    /// 5  SEQOP:  Address increment;
+    /// 4  DISSLW: disable slew;
+    /// 3  HAEN: en address pins;
+    /// 2  ODR: open drain;
+    /// 1  IOPOL: 1(active high int), 0(active low int)  ;
+    /// 0  Nothing;
     pub fn set_iocon_reg(&mut self, value: u8) -> Result<(), IOExpanderError<I2CE>> {
         let bytes = [IOCON_ADDR, value];
         let operation = OperationAddr::Write(&bytes);
         return self.transaction(operation);
     }
 
+    /// reads the bank a interrupt register, clearing the interrupt.
+    /// Need to do this after an interrupts to prevent retriggering
     pub fn read_intf_a(&mut self) -> Result<u8, IOExpanderError<I2CE>> {
         let mut read = [0];
         let operation = OperationAddr::Read(&mut read, INTRFA_ADDR);
@@ -302,31 +360,36 @@ impl<I2C, I2CE> IoExpander<I2C, I2CE>
         return Ok(read[0]);
     }
 
+    /// Set the interrupts for bank A
     pub fn set_bank_a_ints(&mut self, ints: u8) -> Result<(), IOExpanderError<I2CE>> {
         let ints = [GPINTENA_ADDR, ints];
         let operation = OperationAddr::Write(&ints);
         return self.transaction(operation);
     }
 
+    /// set the interrupts for bank b
     pub fn set_bank_b_ints(&mut self, ints: u8) -> Result<(), IOExpanderError<I2CE>> {
         let ints = [GPINTENB_ADDR, ints];
         let operation = OperationAddr::Write(&ints);
         return self.transaction(operation);
     }
     
-
+    /// set the pullups for bank A
     pub fn set_bank_a_pus(&mut self, pus: u8) -> Result<(), IOExpanderError<I2CE>> {
         let pus = [GPPUA_ADDR, pus];
         let operations = OperationAddr::Write(&pus);
         return self.transaction(operations);
     }
 
+    /// Set the pullups for bank B
     pub fn set_bank_b_pus(&mut self, pus: u8) -> Result<(), IOExpanderError<I2CE>> {
         let pus = [GPPUB_ADDR, pus];
         let operations = OperationAddr::Write(&pus);
         return self.transaction(operations);
     }
 
+    /// Set all pullups.doesn't work right now because it is in two transactions
+    /// Need to turn on SEQOP and do in one transaction
     pub fn set_all_pus(&mut self, pus: u16) -> Result<(), IOExpanderError<I2CE>> {
         let bank_a = [GPPUA_ADDR, (pus >> 8) as u8];
         let bank_b = [GPPUB_ADDR, (pus & 0xFF) as u8];
@@ -341,6 +404,7 @@ impl<I2C, I2CE> IoExpander<I2C, I2CE>
         }
     }
 
+    /// Write the outputs for bank a
    pub fn write_gpio_a(&mut self, byte: u8) -> Result<(), IOExpanderError<I2CE>> {
         self.bank_a_out = byte;
         let byte = [GPIOA_ADDR, byte];
@@ -348,6 +412,7 @@ impl<I2C, I2CE> IoExpander<I2C, I2CE>
         return self.transaction(operation);
    }
 
+   /// Write the outputs for bank b
    pub fn write_gpio_b(&mut self, byte: u8) -> Result<(), IOExpanderError<I2CE>> {
         self.bank_b_out = byte;
         let byte = [GPIOB_ADDR, byte];
@@ -355,6 +420,8 @@ impl<I2C, I2CE> IoExpander<I2C, I2CE>
         return self.transaction(operations);
     }
 
+    /// Write to both GPIO bank outputs. Doesn't work because two transactions
+    /// need to turn on seqop and do one transaction
     pub fn write_both_gpio(&mut self, bytes: [u8; 2]) -> Result<(), IOExpanderError<I2CE>> {
         self.bank_a_out = bytes[0];
         self.bank_b_out = bytes[1];
@@ -367,6 +434,7 @@ impl<I2C, I2CE> IoExpander<I2C, I2CE>
         }
     }
 
+    /// read from gpio bank a
     pub fn read_gpio_a(&mut self) -> Result<u8, IOExpanderError<I2CE>> {
         let mut received : [u8; 1] = [0];
         let operation = OperationAddr::Read(&mut received, GPIOA_ADDR);
@@ -377,6 +445,7 @@ impl<I2C, I2CE> IoExpander<I2C, I2CE>
         }
     }
 
+    /// read from gpio bank b
     pub fn read_gpio_b(&mut self) -> Result<u8, IOExpanderError<I2CE>> {
         let mut received : [u8; 1] = [0];
         let operation = OperationAddr::Read(&mut received, GPIOB_ADDR);
@@ -387,6 +456,7 @@ impl<I2C, I2CE> IoExpander<I2C, I2CE>
         }
     }
 
+    /// read a single input from a single bank
     pub fn read_single_input(&mut self, pin: GpioPin) -> Result<u8, IOExpanderError<I2CE>> {
         let (bit, banknum) = pin.get_addr();
         let res;
@@ -404,6 +474,7 @@ impl<I2C, I2CE> IoExpander<I2C, I2CE>
         
     }
 
+    /// read from both banks. Need to enable seqop and do one transaction
     pub fn read_both_banks(&mut self) -> Result<[u8; 2], IOExpanderError<I2CE>> {
         let bank_a = self.read_gpio_a()?;
         let bank_b = self.read_gpio_b()?;
@@ -415,8 +486,8 @@ impl<I2C, I2CE> IoExpander<I2C, I2CE>
         return Ok(res);
     }
 
-    // writes to only one IO pin, either a high or a low.
-    // won't change the other outputs in the bank, as we kept track of them before
+    /// writes to only one IO pin, either a high or a low.
+    /// won't change the other outputs in the bank, as we kept track of them before
     pub fn write_single_output(&mut self, pin: GpioPin, value: GpioStatus) -> Result<(), IOExpanderError<I2CE>> {
         let (bit, banknum) = pin.get_addr(); // holds (addr, bit, banknum)
         let mask: u8;

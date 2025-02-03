@@ -57,7 +57,7 @@ mod app {
 
     use io_expander_rs::error::IOExpanderError;
     use rotary_switch::RotarySwitch;
-    use rotary_switch::error::RotaryError;
+    //use rotary_switch::error::RotaryError;
 
     use io_expander::IoExpander;
     //use io_expander::error::IOExpanderError;

@@ -7,7 +7,7 @@
 #![allow(unused_assignments)]
 #![no_std]
 #![crate_type = "lib"]
-//#![deny(missing_docs)] // DO DOCS
+#![deny(missing_docs)] // DO DOCS
 
 
 
@@ -26,7 +26,7 @@ use embedded_hal::blocking::i2c;
 //use bsp::hal::gpio::Input;
 
 // import Rotary error type
-pub mod error;
+//pub mod error;
 //use error::RotaryError;
 
 
@@ -77,19 +77,21 @@ const DIP2_PIN : GpioPin = GpioPin::GPIOA2;
 const DIP3_PIN : GpioPin = GpioPin::GPIOA3;
 
 const LED_KICK_PIN : GpioPin = GpioPin::GPIOB0;
-const RS_I2C_n_PIN : GpioPin = GpioPin::GPIOB2;
-const LED_M4_PIN : GpioPin = GpioPin::GPIOB3;
-const LED_M3_PIN : GpioPin = GpioPin::GPIOB4;
-const LED_M2_PIN : GpioPin = GpioPin::GPIOB5;
-const LED_M1_PIN : GpioPin = GpioPin::GPIOB6;
-const LED_DD_PIN : GpioPin = GpioPin::GPIOB7; // Was previously B8, but was probably a mistake. double check
+//const RS_I2C_n_PIN : GpioPin = GpioPin::GPIOB2;
+//const LED_M4_PIN : GpioPin = GpioPin::GPIOB3;
+//const LED_M3_PIN : GpioPin = GpioPin::GPIOB4;
+//const LED_M2_PIN : GpioPin = GpioPin::GPIOB5;
+//const LED_M1_PIN : GpioPin = GpioPin::GPIOB6;
+//const LED_DD_PIN : GpioPin = GpioPin::GPIOB7; // Was previously B8, but was probably a mistake. double check
 
 
-
+/// Driver for the Rotary Switch
 pub struct RotarySwitch <I2C, I2CE> where
     I2C: i2c::Write<Error=I2CE> + i2c::Read<Error=I2CE>
     {
+    /// Takes an IO expander object
     io_expander : IoExpander<I2C, I2CE>,
+    /// Holds the current value of the rotary switch
     value : u8
 }
 
@@ -99,6 +101,7 @@ impl <I2C, I2CE> RotarySwitch<I2C, I2CE>
         I2CE: Debug,
     {
         
+    /// Creates a new rotary switch interface, taking in an io expander
     pub fn new (io_expander: IoExpander<I2C, I2CE>) -> Result<Self, IOExpanderError<I2CE>> {
         let rotary_switch = RotarySwitch {
             io_expander: io_expander,
@@ -107,6 +110,8 @@ impl <I2C, I2CE> RotarySwitch<I2C, I2CE>
         Ok(rotary_switch)
     }
 
+    /// initializes the io expander
+    /// needs to take in a gpt for delays. Can't do multiple transactions too quickly
     pub fn init(&mut self, gpt: &mut Blocking<Gpt2, 1_000>) -> Result<u8, IOExpanderError<I2CE>> {
         // set the directions of the pins
 
@@ -148,10 +153,13 @@ impl <I2C, I2CE> RotarySwitch<I2C, I2CE>
         Ok(self.value)
     }
 
+    /// Clears the interrupts by reading the interrupt register
+    /// returns the pins that caused the interrupt
     pub fn clear_interrupts(&mut self) -> Result<u8, IOExpanderError<I2CE>> {
         return self.io_expander.read_intf_a();
     }
 
+    /// read the rotary switch. Reads GPIO bank A and decodes it
     pub fn read(&mut self) -> Result<u8, IOExpanderError<I2CE>> {
         let gpio_a = self.io_expander.read_gpio_a()?;
 
@@ -169,6 +177,7 @@ impl <I2C, I2CE> RotarySwitch<I2C, I2CE>
         return Ok(self.value);
     }
 
+    /// Returns the most recent value of the rotary switch
     pub fn get_value(&mut self) -> u8 {
         self.value
     }
