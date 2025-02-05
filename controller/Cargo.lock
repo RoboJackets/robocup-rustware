@@ -27,6 +27,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ace50bade8e6234aa140d9a2f552bbee1db4d353f69b8217bc503490fc1a9f26"
 
 [[package]]
+name = "az"
+version = "1.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7b7e4c2464d97fe331d41de9d5db0def0a96f4d823b8b32a2efd503578988973"
+
+[[package]]
 name = "bare-metal"
 version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -60,10 +66,37 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bef38d45163c2f1dde094a7dfd33ccf595c92905c8f8f4fdc18d06fb1037718a"
 
 [[package]]
+name = "bitflags"
+version = "2.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8f68f53c83ab957f72c32642f3868eec03eb974d1fb82e453128456482613d36"
+
+[[package]]
+name = "byte-slice-cast"
+version = "0.3.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b0a5e3906bcbf133e33c1d4d95afc664ad37fbdb9f6568d8043e7ea8c27d93d3"
+
+[[package]]
+name = "byteorder"
+version = "1.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1fd0f2584146f6f2ef48085050886acf353beff7305ebd1ae69500e27c67f64b"
+
+[[package]]
 name = "cfg-if"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
+
+[[package]]
+name = "controller"
+version = "0.1.0"
+dependencies = [
+ "embedded-hal 0.2.7",
+ "nalgebra 0.32.6",
+ "teensy4-bsp",
+]
 
 [[package]]
 name = "cortex-m"
@@ -110,7 +143,7 @@ version = "0.3.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a99dd22262668b887121d4672af5a64b238f026099f1a2a1b322066c9ecfe9e0"
 dependencies = [
- "bitflags",
+ "bitflags 1.3.2",
  "defmt-macros",
 ]
 
@@ -137,6 +170,33 @@ dependencies = [
 ]
 
 [[package]]
+name = "display-interface"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7517c040926d7b02b111884aa089177db80878533127f7c1b480d852c5fb4112"
+
+[[package]]
+name = "display-interface-i2c"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4895cd4e54e5536ef370d7f1eec787aad8275dd8ad15815aebfa71dd847b4ebf"
+dependencies = [
+ "display-interface",
+ "embedded-hal 0.2.7",
+]
+
+[[package]]
+name = "display-interface-spi"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "489378ad054862146fbd1f09f51d585ccbe4bd1e2feadcda2a13ac33f840e1a5"
+dependencies = [
+ "byte-slice-cast",
+ "display-interface",
+ "embedded-hal 0.2.7",
+]
+
+[[package]]
 name = "embedded-alloc"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -144,6 +204,29 @@ checksum = "ddae17915accbac2cfbc64ea0ae6e3b330e6ea124ba108dada63646fd3c6f815"
 dependencies = [
  "critical-section",
  "linked_list_allocator",
+]
+
+[[package]]
+name = "embedded-graphics"
+version = "0.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "750082c65094fbcc4baf9ba31583ce9a8bb7f52cadfb96f6164b1bc7f922f32b"
+dependencies = [
+ "az",
+ "byteorder",
+ "embedded-graphics-core",
+ "float-cmp",
+ "micromath",
+]
+
+[[package]]
+name = "embedded-graphics-core"
+version = "0.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b8b1239db5f3eeb7e33e35bd10bd014e7b2537b17e071f726a09351431337cfa"
+dependencies = [
+ "az",
+ "byteorder",
 ]
 
 [[package]]
@@ -173,6 +256,23 @@ name = "fixed-queue"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "22a5ad4f3e664b2be6d2b4acee67464bd11987faba2b85aff60d25f722bfa1be"
+
+[[package]]
+name = "float-cmp"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e1267f4ac4f343772758f7b1bdcbe767c218bbab93bb432acbf5162bbf85a6c4"
+dependencies = [
+ "num-traits",
+]
+
+[[package]]
+name = "fpga-rs"
+version = "0.1.0"
+dependencies = [
+ "embedded-hal 0.2.7",
+ "teensy4-bsp",
+]
 
 [[package]]
 name = "fugit"
@@ -220,6 +320,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1e087f84d4f86bf4b218b927129862374b72199ae7d8657835f1e89000eea4fb"
 
 [[package]]
+name = "icm42605-driver"
+version = "0.1.0"
+dependencies = [
+ "bitflags 2.8.0",
+ "embedded-hal 0.2.7",
+ "log",
+]
+
+[[package]]
 name = "imxrt-boot-gen"
 version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -241,7 +350,7 @@ version = "0.5.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4e7acd49f01f14f251d92688a032ed8636776e67c4e39d171bb1da2731245128"
 dependencies = [
- "bitflags",
+ "bitflags 1.3.2",
  "cfg-if",
  "embedded-hal 0.2.7",
  "fugit",
@@ -300,7 +409,7 @@ version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c1212c31e391faaad032fdc248427e0cfb000c59ddeb00b3f95ca16a63942b83"
 dependencies = [
- "bitflags",
+ "bitflags 1.3.2",
  "cortex-m",
  "ral-registers",
  "usb-device",
@@ -314,6 +423,22 @@ checksum = "707907fe3c25f5424cce2cb7e1cbcafee6bdbe735ca90ef77c29e84591e5b9da"
 dependencies = [
  "equivalent",
  "hashbrown",
+]
+
+[[package]]
+name = "kicker-controller"
+version = "0.1.0"
+dependencies = [
+ "embedded-hal 0.2.7",
+ "robojackets-robocup-rtp",
+]
+
+[[package]]
+name = "kicker-programmer"
+version = "0.1.0"
+dependencies = [
+ "embedded-hal 0.2.7",
+ "log",
 ]
 
 [[package]]
@@ -341,21 +466,53 @@ dependencies = [
  "cortex-m",
  "defmt",
  "embedded-alloc",
+ "embedded-graphics",
  "embedded-hal 0.2.7",
  "fixed-queue",
  "imxrt-hal",
  "imxrt-iomuxc",
  "libm",
  "log",
- "nalgebra",
+ "nalgebra 0.33.1",
  "ncomm-utils",
+ "robojackets-robocup-control",
  "robojackets-robocup-rtp",
  "rtic",
  "rtic-monotonics",
  "rtic-nrf24l01",
+ "ssd1306",
  "teensy4-bsp",
  "teensy4-panic",
  "teensy4-pins",
+]
+
+[[package]]
+name = "micromath"
+version = "1.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bc4010833aea396656c2f91ee704d51a6f1329ec2ab56ffd00bfd56f7481ea94"
+
+[[package]]
+name = "motion"
+version = "0.1.0"
+dependencies = [
+ "libm",
+ "nalgebra 0.33.1",
+]
+
+[[package]]
+name = "nalgebra"
+version = "0.32.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7b5c17de023a86f59ed79891b2e5d5a94c705dbe904a5b5c9c952ea6221b03e4"
+dependencies = [
+ "approx",
+ "nalgebra-macros",
+ "num-complex",
+ "num-rational",
+ "num-traits",
+ "simba 0.8.1",
+ "typenum",
 ]
 
 [[package]]
@@ -369,7 +526,7 @@ dependencies = [
  "num-complex",
  "num-rational",
  "num-traits",
- "simba",
+ "simba 0.9.0",
  "typenum",
 ]
 
@@ -510,12 +667,42 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "46b71a9d9206e8b46714c74255adcaea8b11e0350c1d8456165073c3f75fc81a"
 
 [[package]]
-name = "robojackets-robocup-rtp"
-version = "0.5.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "17e4b0312afe8bdceaaa82d9a16e06eeda622b49c02fde184156b044fb729076"
+name = "robojackets-robocup-control"
+version = "0.2.0"
 dependencies = [
- "nalgebra",
+ "controller",
+ "cortex-m",
+ "defmt",
+ "embedded-alloc",
+ "embedded-hal 0.2.7",
+ "fixed-queue",
+ "fpga-rs",
+ "icm42605-driver",
+ "imxrt-hal",
+ "imxrt-iomuxc",
+ "kicker-controller",
+ "kicker-programmer",
+ "libm",
+ "log",
+ "motion",
+ "nalgebra 0.33.1",
+ "ncomm-utils",
+ "robojackets-robocup-rtp",
+ "rtic",
+ "rtic-monotonics",
+ "rtic-nrf24l01",
+ "teensy4-bsp",
+ "teensy4-panic",
+ "teensy4-pins",
+]
+
+[[package]]
+name = "robojackets-robocup-rtp"
+version = "0.6.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "af73f4a8d21a5cf02a425bf26126d28f8f5cf61af7dd9761d8e29f921c112689"
+dependencies = [
+ "nalgebra 0.33.1",
  "ncomm-utils",
 ]
 
@@ -581,7 +768,7 @@ version = "0.2.0"
 source = "git+https://github.com/N8BWert/rtic-nrf24l01.git#c1bff671aef54f510569771cf45935d300a25e5b"
 dependencies = [
  "defmt",
- "embedded-hal 1.0.0",
+ "embedded-hal 0.2.7",
 ]
 
 [[package]]
@@ -621,6 +808,18 @@ checksum = "388a1df253eca08550bef6c72392cfe7c30914bf41df5269b68cbd6ff8f570a3"
 
 [[package]]
 name = "simba"
+version = "0.8.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "061507c94fc6ab4ba1c9a0305018408e312e17c041eb63bef8aa726fa33aceae"
+dependencies = [
+ "approx",
+ "num-complex",
+ "num-traits",
+ "paste",
+]
+
+[[package]]
+name = "simba"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b3a386a501cd104797982c15ae17aafe8b9261315b5d07e3ec803f2ea26be0fa"
@@ -629,6 +828,19 @@ dependencies = [
  "num-complex",
  "num-traits",
  "paste",
+]
+
+[[package]]
+name = "ssd1306"
+version = "0.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f066d5458b0a27d938dd2b71a8b397d88c5776cb316b8a39f19ef49b6d290709"
+dependencies = [
+ "display-interface",
+ "display-interface-i2c",
+ "display-interface-spi",
+ "embedded-graphics-core",
+ "embedded-hal 0.2.7",
 ]
 
 [[package]]
