@@ -8,6 +8,9 @@ edition = "2021"
 [dependencies.embedded-hal]
 version = "~0.2"
 
-# we use the imxrt::gpio::Input struct from this dependency
 [dependencies.teensy4-bsp]
 version = "0.4"
+
+[dependencies.imxrt-hal]
+version = "=0.5.4"
+features = ["eh02-unproven"]

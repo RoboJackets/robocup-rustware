@@ -13,6 +13,7 @@ teensy4-pins = "0.3.1"
 icm42605-driver = { path = "./drivers/icm42605-driver" }
 rotary_switch_rs = { path = "drivers/rotary_switch" }
 io_expander_rs = { path = "drivers/io_expander" }
+battery_sense_rs = { path = "drivers/battery_sense" }
 imxrt-iomuxc = "0.2.2"
 rtic-nrf24l01 = { git = "https://github.com/N8BWert/rtic-nrf24l01.git" }
 embedded-alloc = "0.5.0"
