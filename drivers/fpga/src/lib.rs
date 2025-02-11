@@ -224,8 +224,7 @@ impl<SPI, CS, INIT, PROG, DONE, DELAY, SPIE, GPIOE> FPGA<SPI, CS, INIT, PROG, DO
         }
 
         // send configuration array after init_b pin is asserted
-        //self.spi_write(&FPGA_BYTES)?;
-        self.spi_write(include_bytes!("../../../../robocup/robocup-firmware/fpga/perm-bin/robocupReturnPhasesCommand.bin"))?;
+        self.spi_write(&FPGA_BYTES)?;
         
         timeout = 100;
         // delay until done pin is ready
@@ -455,50 +454,6 @@ impl<SPI, CS, INIT, PROG, DONE, DELAY, SPIE, GPIOE> FPGA<SPI, CS, INIT, PROG, DO
         self.status = write_buffer[0];
         Ok(delta_encoders)
     }
-
-
-    /// Set the velocities for each motor and receive the current duty cycle for the motor
-    /// The current duty cycle should be what is actually used in the motor
-    /// This allows us to test lag between receiving a command and actually driving at that duty cycle
-    pub fn set_velocities_rcv_duty (
-        &mut self,
-        mut wheel_velocities: [f32; 4],
-        dribble: bool,
-    ) -> Result<[f32; 4], FpgaError<SPIE, GPIOE>> {
-        let mut write_buffer = [0u8; 12];
-        write_buffer[0] = Instruction::R_DTY_W_VEL.opcode();
-
-        for i in 0..wheel_velocities.len() {
-            wheel_velocities[i] *= VELOCITY_TO_DUTY_CYCLES;
-        }
-
-        duty_cycles_to_fpga(wheel_velocities, &mut write_buffer[1..9]);
-
-        // If the last bit is 1 the dribbler goes (however this byte
-        // seems to need to be not zero)
-        if dribble {
-            write_buffer[10] = 0b1111_1111;
-        } else {
-            write_buffer[10] = 0b1111_1110;
-        }
-        //write_buffer[10] = 0b1111_1111;
-        write_buffer[11] = 0x00;
-
-        self.spi_transfer(&mut write_buffer[..])?;
-
-        // NEED TO FIGURE OUT HOW TO TRANSLATE THE BYTES INTO PHASES FOR EACH MOTOR
-        let phases = [
-            (i16::from_le_bytes(write_buffer[1..3].try_into().unwrap()) as f32),
-            (i16::from_le_bytes(write_buffer[3..5].try_into().unwrap()) as f32),
-            (i16::from_le_bytes(write_buffer[5..7].try_into().unwrap()) as f32),
-            (i16::from_le_bytes(write_buffer[7..9].try_into().unwrap()) as f32),
-        ];
-
-
-        Ok(phases)
-    }
-
-
 
     /// Set the raw duty cycles for each wheel and return the encoder velocities from each wheel
     pub fn set_duty_get_encoders(

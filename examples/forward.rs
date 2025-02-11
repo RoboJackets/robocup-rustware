@@ -280,8 +280,6 @@ mod app {
         let delta = *ctx.local.last_time - now;
         *ctx.local.last_time = now;
 
-        
-
         let wheel_velocities = ctx.local.motion_controller.control_update(
             Vector3::new(-accel_y, accel_x, gyro),
             *ctx.local.last_encoders,
@@ -341,7 +339,7 @@ mod app {
             )
         });
 
-        for _ in 0..100 {
+        for _ in 0..5 {
             log::error!("IMU-INIT: {:?}\nFPGA-PROG: {:?}\nFPGA-INIT: {:?}", imu_initialization_error, fpga_programming_error, fpga_initialization_error);
             Systick::delay(1_000u32.millis()).await;
         }
