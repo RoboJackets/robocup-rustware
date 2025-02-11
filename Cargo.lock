@@ -619,7 +619,6 @@ version = "0.1.0"
 dependencies = [
  "embedded-hal 0.2.7",
  "io_expander_rs",
- "rtic-monotonics",
  "teensy4-bsp",
 ]
 

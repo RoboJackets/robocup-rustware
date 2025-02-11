@@ -84,29 +84,6 @@ pub enum GpioPin {
     GPIOB7,
 }
 
-
-// A0 = 1
-// A1 = 0
-// A2 = 0
-const DEVICE_ADDR: u8 = 0b00100001; // 0 & 0100 & A2A1A0
-
-
-/// High or low status for GPIO logic 
-pub enum GpioStatus {
-    /// High logic
-    HIGH,
-    /// Low logic
-    LOW
-}
-
-/// Enum for the direciton of a GPIO pin
-pub enum GpioDir {
-    /// Takes inputs
-    INPUT,
-    /// Gives an output
-    OUTPUT
-}
-
 impl GpioPin {
 
     /// gets the address and bank of the IO pin
@@ -131,6 +108,32 @@ impl GpioPin {
         }
     }
 }
+
+
+
+// Address for the expander is 0010 & A2 & A1 & A0
+// A0 = 1
+// A1 = 0
+// A2 = 0
+const DEVICE_ADDR: u8 = 0b00100001; // 0 & 0100 & A2A1A0
+
+
+/// High or low status for GPIO logic 
+pub enum GpioStatus {
+    /// High logic
+    HIGH,
+    /// Low logic
+    LOW
+}
+
+/// Enum for the direciton of a GPIO pin
+pub enum GpioDir {
+    /// Takes inputs
+    INPUT,
+    /// Gives an output
+    OUTPUT
+}
+
 
 ///  Read operations are done to specific registers in the io expander by first doing a valid write with the address,
 ///  then doing a read with a restart condition. This is done using i2c::write_read
@@ -189,10 +192,10 @@ impl<I2C, I2CE> IoExpander<I2C, I2CE>
     }
 
 
-    /// Carries out an operation
+    /// Carries out an operation.
     /// 
     /// Always writes the DEVICE_ADDR first, then the internal address, then data is transmitted
-    pub fn transaction(&mut self, operation: OperationAddr) -> Result<(), IOExpanderError<I2CE>> {
+    fn transaction(&mut self, operation: OperationAddr) -> Result<(), IOExpanderError<I2CE>> {
         let res;
 
         match operation {
@@ -236,10 +239,8 @@ impl<I2C, I2CE> IoExpander<I2C, I2CE>
     }
 
 
-    /// Sets the GPIO directions for bank A
-    /// 
-    /// 0 means output
-    /// 1 means input
+    /// Sets the GPIO directions for bank A.
+    /// Each bit corresponds to one pin, where 0 is an output and 1 is an input.
     pub fn set_bank_a_dirs(&mut self, dirs: u8) -> Result<(), IOExpanderError<I2CE>> {
         let arr_dirs = [IODIRA_ADDR, dirs];
         let operation = OperationAddr::Write(&arr_dirs);
@@ -247,10 +248,8 @@ impl<I2C, I2CE> IoExpander<I2C, I2CE>
         return self.transaction(operation);
     }
 
-    /// Sets the GPIO directions for bank B
-    /// 
-    /// 0 means output
-    /// 1 means input
+    /// Sets the GPIO directions for bank B.
+    /// Each bit corresponds to one pin, where 0 is an output and 1 is an input.
     pub fn set_bank_b_dirs(&mut self, dirs: u8) -> Result<(), IOExpanderError<I2CE>> {
         let arr_dirs = [IODIRB_ADDR, dirs];
         let operations = OperationAddr::Write(&arr_dirs);

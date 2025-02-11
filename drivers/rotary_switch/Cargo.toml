@@ -13,7 +13,3 @@ version = "0.4"
 
 [dependencies]
 io_expander_rs = { path = "../io_expander" }
-
-[dependencies.rtic-monotonics]
-version = "1.0.0"
-features = ["cortex-m-systick"]
