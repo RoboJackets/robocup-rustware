@@ -15,6 +15,11 @@ use imxrt_hal as hal;
 use hal::adc::{Adc,AnalogInput};
 use hal::adc::*;
 use embedded_hal::adc::{OneShot, Channel};
+use core::convert::Infallible;
+
+// import fpga error type
+pub mod error;
+use error::BatteryError;
 
 /// Taken from the C++ firmware
 /// 5-cell lipo * 4.2 v per cell = 21 battery vols
@@ -28,36 +33,45 @@ const MIN_SAFE_BATT_VOLTAGE_READ: f32 = 1.923;
 /// total range for good batter voltage
 const BATT_VOLTAGE_READ_RANGE: f32 = (MAX_SAFE_BATT_VOLTAGE_READ - MIN_SAFE_BATT_VOLTAGE_READ);
 
-pub struct BatterySense <AnalogInputT, AdcT, WordT, PinT> where 
+pub struct BatterySense <AdcT, WordT, PinT, AdcE> where 
         PinT: Channel<AdcT>,
-        AnalogInputT: OneShot<AdcT, WordT, PinT>
+        WordT: From<u16> + core::ops::Mul<Output = WordT>,
+        AdcT: OneShot<AdcT, WordT, PinT>,
+        AdcE: Debug
 {
-    adc: AnalogInputT,
+    adc: AdcT,
+    pin: PinT,
     percent_capacity: f32,
     raw_voltage: f32
 }
 
 
-impl<P, AdcE> BatterySense <P, AdcE> where 
+impl<AdcT, WordT, PinT, AdcE> BatterySense <AdcT, WordT, PinT, AdcE> where 
     PinT: Channel<AdcT>,
-    AnalogInputT: OneShot<AdcT, WordT, PinT>
+    WordT: From<u16> + core::ops::Mul<Output = WordT>,
+    AdcT: OneShot<AdcT, WordT, PinT>,
+    AdcE: Debug
      {
-    pub fn new(&mut self, analog_input: AnalogInput<P, 0>, adc: Adc<0>) -> Self {
-        let instance = BatterySense <P, Adc> {
-            pin: analog_input,
+    pub fn new(&mut self, adc: AdcT, pin: PinT) -> Self {
+
+        let instance = Self {
             adc: adc,
+            pin: pin,
             percent_capacity: 0.,
             raw_voltage: 0.
         };
-        return Ok(instance);
+        return instance;
     }
 
-    pub fn read_voltage(&mut self) -> Result<f32, AdcE> {
-        let voltage_in = self.adc.read_blocking(&mut self.pin);
-        Ok(f32::from(voltage_in) * 78. / 10.)
+    pub fn read_voltage(&mut self) -> Result<WordT,BatteryError> {
+        let voltage_in = self.adc.read(&mut self.pin);
+        match voltage_in {
+            Ok(word) => Ok(word * WordT::from(78/10)),
+            Err(_) => Err(BatteryError::ADC)
+            }
     }
 
-    pub fn get_percent_capacity(&mut self) -> Result<u8, AdcE> {
+    pub fn get_percent_capacity(&mut self) -> Result<u8, BatteryError> {
         let voltage = self.read_voltage()?;
         Ok(voltage * 26 - 450)
     }
