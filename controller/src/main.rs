@@ -17,9 +17,8 @@ static HEAP: Heap = Heap::empty();
 
 use teensy4_panic as _;
 
-#[rtic::app(device = teensy4_bsp, peripherals = true, dispatchers = [GPT2])]
+#[rtic::app(device = teensy4_bsp, peripherals = true, dispatchers = [GPT2,GPT1])]
 mod app {
-    use crate::drive_mod::InputState;
 
     use super::*;
 
@@ -220,15 +219,15 @@ mod app {
             },
         );
 
-        //spawn the actual task
-        send_tests::spawn().ok();
+        //start a timer to update the display
+        update_display::spawn().ok();
     }
 
     #[task(
         binds = GPIO4_COMBINED_0_15,
         priority = 1, shared=[inputs,drive_mod])]
-    fn btn_changed(ctx: btn_changed::Context) {
-        let mut btns = 0u8;
+    fn btn_changed_int(ctx: btn_changed_int::Context) {
+        log::info!("Button Interrupt");
         (ctx.shared.inputs, ctx.shared.drive_mod).lock(|inputs, drive_mod| {
             //clear what was pressed
             inputs.btn_left.clear_triggered();
@@ -261,15 +260,12 @@ mod app {
                 btn |= 1 << 3;
             }
 
-            let input_state = InputState { btn };
-            btns = input_state.btn;
-
-            drive_mod.update_inputs(input_state);
+            drive_mod.update_buttons(btn);
         });
-
-        log::info!("Button Changed");
-        log::info!("Buttons: {}", btns);
     }
+
+    #[task(priority = 1, shared=[inputs,drive_mod])]
+    async fn update_btn_status(ctx: update_btn_status::Context) {}
 
     #[idle]
     fn idle(_: idle::Context) -> ! {
@@ -279,51 +275,19 @@ mod app {
     }
 
     #[task(priority = 1)]
-    async fn delay(_ctx: delay::Context) {
-        Systick::delay(100u32.millis()).await;
-
-        send_tests::spawn().ok();
+    async fn delay_display(ctx: delay_display::Context) {
+        Systick::delay(200u32.millis()).await;
+        update_display::spawn().ok();
     }
 
-    #[task(priority = 1,shared=[inputs,delay,shared_spi,radio,display, drive_mod])]
-    async fn send_tests(mut ctx: send_tests::Context) {
-        log::info!("Tick!");
-        let mut readingX: u16 = 0;
-        let mut readingY: u16 = 0;
-        (ctx.shared.inputs).lock(|inputs| {
-            readingX = inputs.adc.read_blocking(&mut inputs.joy_lx);
-            readingY = inputs.adc.read_blocking(&mut inputs.joy_ly);
-        });
-
-        let mut got_ack = false;
-
-        (ctx.shared.shared_spi, ctx.shared.delay, ctx.shared.radio).lock(|spi, delay, radio| {
-            let control_message = ControlMessageBuilder::new()
-                .body_x(readingX as f32 / 1024.0)
-                .body_y(readingY as f32 / 1024.0)
-                .robot_id(1)
-                .build();
-
-            let mut packed_data = [0u8; CONTROL_MESSAGE_SIZE];
-            control_message.pack(&mut packed_data).unwrap();
-
-            let report = radio.write(&packed_data, spi, delay);
-            radio.flush_tx(spi, delay);
-
-            if report {
-                log::info!("Received Acknowledgement From Transmission");
-                got_ack = true;
-            } else {
-                log::info!("No Ack Received");
-            }
-        });
-
-        (ctx.shared.display, ctx.shared.drive_mod).lock(|display, drive_mod| {
+    #[task(priority = 1,shared=[display, drive_mod])]
+    async fn update_display(ctx: update_display::Context) {
+        (ctx.shared.drive_mod, ctx.shared.display).lock(|drive_mod, display| {
             display.clear();
             drive_mod.render(display);
             display.flush().unwrap();
         });
 
-        delay::spawn().ok();
+        delay_display::spawn().ok();
     }
 }

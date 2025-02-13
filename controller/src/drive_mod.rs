@@ -40,12 +40,8 @@ struct InternalState {
     conn_acks: [bool; 10],
     conn_acks_attempts: u32,
     current_screen: Screen,
-    options_selected_entry: u8,
+    options_selected_entry: i8,
     btn_last: u8,
-}
-
-pub struct InputState {
-    pub btn: u8, //each button is a bit [left, right, up, down, ?, ?, ?, ?]
 }
 
 pub enum Button {
@@ -65,10 +61,14 @@ fn button_rising(old_state: u8, new_state: u8, button: u8) -> bool {
     (old_state & mask) == 0 && (new_state & mask) != 0
 }
 
-fn button_pressed(state: u8, button: u8) -> bool {
+fn button_pressed(old_state: u8, new_state: u8, button: u8) -> bool {
     let mask = 1 << button;
-    (state & mask) != 0
+    (old_state & mask) != 0 && (new_state & mask) != 0
 }
+
+const TEAM_NAME_MAP: [&str; 2] = ["BLU", "YLW"];
+const SHOOT_MODE_MAP: [&str; 2] = ["KICK", "CHIP"];
+const TRIGGER_MODE_MAP: [&str; 3] = ["DISB", "IMM ", "BRKB"];
 
 impl DriveMod {
     pub fn new() -> DriveMod {
@@ -97,8 +97,8 @@ impl DriveMod {
         self.render_common_header(display);
         match self.state.current_screen {
             Screen::Main => self.render_main_screen(display),
-            Screen::MainReceiv => self.render_settings(display),
-            Screen::Options => self.render_options(display),
+            Screen::MainReceiv => self.render_main_receiv(display),
+            Screen::Options => self.render_settings(display),
         }
     }
 
@@ -117,11 +117,7 @@ impl DriveMod {
             .background_color(BinaryColor::On)
             .build();
 
-        let team_name = if self.settings.team == 0 {
-            "BLU"
-        } else {
-            "YLW"
-        };
+        let team_name = TEAM_NAME_MAP[self.settings.team as usize].to_string();
         let team_name = alloc::fmt::format(format_args!("{}{}", team_name, self.settings.robot_id));
 
         Text::with_baseline(
@@ -175,10 +171,9 @@ impl DriveMod {
     }
 
     fn render_main_screen(&self, display: Display) {
-        let btn_state = alloc::fmt::format(format_args!("Buttons: {:08b}", self.state.btn_last));
         Text::with_baseline(
-            btn_state.as_str(),
-            Point::new(2, 10),
+            "This is the send screen!",
+            Point::new(2, 14),
             MonoTextStyle::new(&FONT_6X10, BinaryColor::On),
             Baseline::Top,
         )
@@ -186,9 +181,88 @@ impl DriveMod {
         .unwrap();
     }
 
-    fn render_settings(&self, display: Display) {}
+    fn render_main_receiv(&self, display: Display) {
+        Text::with_baseline(
+            "This is the receive screen!",
+            Point::new(2, 14),
+            MonoTextStyle::new(&FONT_6X10, BinaryColor::On),
+            Baseline::Top,
+        )
+        .draw(display)
+        .unwrap();
+    }
 
-    fn render_options(&self, display: Display) {}
+    fn render_settings(&self, display: Display) {
+        //text styles
+        //TODO: figure out a way to only do these once
+        let default_text_style = MonoTextStyleBuilder::new()
+            .font(&FONT_6X10)
+            .text_color(BinaryColor::On)
+            .background_color(BinaryColor::Off)
+            .build();
+
+        let selected_text_style = MonoTextStyleBuilder::new()
+            .font(&FONT_6X10)
+            .text_color(BinaryColor::Off)
+            .background_color(BinaryColor::On)
+            .build();
+
+        let entry_names = [
+            "Back",
+            "Robot ID",
+            "Team",
+            "Shoot Mode",
+            "Trigger Mode",
+            "Dribbler Speed",
+            "Kick Strength",
+        ];
+        let entry_values = [
+            "",
+            &self.settings.robot_id.to_string(),
+            &TEAM_NAME_MAP[self.settings.team as usize],
+            &SHOOT_MODE_MAP[self.settings.shoot_mode as usize],
+            &TRIGGER_MODE_MAP[self.settings.trigger_mode as usize],
+            &alloc::fmt::format(format_args!("{}%", self.settings.dribbler_speed)),
+            &alloc::fmt::format(format_args!("{}%", self.settings.kick_strength)),
+        ];
+
+        let page_size: i32 = 5;
+        let start: i32 = cmp::min(
+            entry_names.len() as i32 - page_size,
+            self.state.options_selected_entry as i32,
+        );
+
+        for i in 0..page_size {
+            let entry_name = entry_names[(start + i) as usize];
+            let entry_value = entry_values[(start + i) as usize];
+            let y: i32 = 14 + i * 10;
+            let is_selected = start + i == self.state.options_selected_entry as i32;
+            Text::with_baseline(
+                entry_name,
+                Point::new(2, y),
+                if is_selected {
+                    selected_text_style
+                } else {
+                    default_text_style
+                },
+                Baseline::Top,
+            )
+            .draw(display)
+            .unwrap();
+            Text::with_baseline(
+                entry_value,
+                Point::new(104, y),
+                if is_selected {
+                    selected_text_style
+                } else {
+                    default_text_style
+                },
+                Baseline::Top,
+            )
+            .draw(display)
+            .unwrap();
+        }
+    }
 
     fn handle_entry_modify(&mut self, increment: bool) {
         match self.state.options_selected_entry {
@@ -198,80 +272,92 @@ impl DriveMod {
                 }
             }
             1 => {
-                if increment {
-                    self.settings.robot_id = cmp::min(self.settings.robot_id + 1, 9);
-                } else {
-                    self.settings.robot_id = cmp::max(self.settings.robot_id - 1, 0);
+                if increment && self.settings.robot_id < 9 {
+                    self.settings.robot_id += 1;
+                } else if !increment && self.settings.robot_id > 0 {
+                    self.settings.robot_id -= 1;
                 }
             }
             2 => {
-                if increment {
-                    self.settings.team = cmp::min(self.settings.team + 1, 1);
-                } else {
-                    self.settings.team = cmp::max(self.settings.team - 1, 0);
-                }
+                self.settings.team = if self.settings.team == 0 { 1 } else { 0 };
             }
             3 => {
-                if increment {
-                    self.settings.shoot_mode = cmp::min(self.settings.shoot_mode + 1, 1);
-                } else {
-                    self.settings.shoot_mode = cmp::max(self.settings.shoot_mode - 1, 0);
-                }
+                self.settings.shoot_mode = if self.settings.shoot_mode == 0 { 1 } else { 0 };
             }
             4 => {
                 if increment {
-                    self.settings.trigger_mode = cmp::min(self.settings.trigger_mode + 1, 1);
-                } else {
-                    self.settings.trigger_mode = cmp::max(self.settings.trigger_mode - 1, 0);
+                    if self.settings.trigger_mode == 2 {
+                        self.settings.trigger_mode = 0;
+                    } else {
+                        self.settings.trigger_mode += 1;
+                    }
+                } else if !increment {
+                    if self.settings.trigger_mode == 0 {
+                        self.settings.trigger_mode = 2;
+                    } else {
+                        self.settings.trigger_mode -= 1;
+                    }
                 }
             }
             5 => {
-                if increment {
-                    self.settings.dribbler_speed = cmp::min(self.settings.dribbler_speed + 1, 255);
-                } else {
-                    self.settings.dribbler_speed = cmp::max(self.settings.dribbler_speed - 1, 0);
+                if increment && self.settings.dribbler_speed <= 95 {
+                    self.settings.dribbler_speed += 5;
+                } else if !increment && self.settings.dribbler_speed >= 5 {
+                    self.settings.dribbler_speed -= 5;
                 }
             }
             6 => {
-                if increment {
-                    self.settings.kick_strength = cmp::min(self.settings.kick_strength + 1, 255);
-                } else {
-                    self.settings.kick_strength = cmp::max(self.settings.kick_strength - 1, 0);
+                if increment && self.settings.kick_strength <= 95 {
+                    self.settings.kick_strength += 5;
+                } else if !increment && self.settings.kick_strength >= 5 {
+                    self.settings.kick_strength -= 5;
                 }
             }
             _ => {}
         }
     }
 
-    pub fn update_inputs(&mut self, input: InputState) {
+    pub fn update_buttons(&mut self, buttons: u8) {
         //get the buttons difference
         let old_state = self.state.btn_last;
-        self.state.btn_last = input.btn;
+        self.state.btn_last = buttons;
 
         match self.state.current_screen {
             Screen::Main => {
-                if button_rising(old_state, input.btn, Button::Right as u8) {
+                if button_rising(old_state, buttons, Button::Right as u8) {
                     self.state.current_screen = Screen::MainReceiv;
+                } else if button_rising(old_state, buttons, Button::Up as u8) {
+                    self.state.current_screen = Screen::Options;
                 }
             }
             Screen::MainReceiv => {
-                if button_rising(old_state, input.btn, Button::Right as u8) {
+                if button_rising(old_state, buttons, Button::Right as u8) {
                     self.state.current_screen = Screen::Main;
+                } else if button_rising(old_state, buttons, Button::Up as u8) {
+                    self.state.current_screen = Screen::Options;
                 }
             }
             Screen::Options => {
-                if button_rising(old_state, input.btn, Button::Up as u8) {
+                if button_rising(old_state, buttons, Button::Up as u8) {
                     self.state.options_selected_entry =
                         cmp::max(self.state.options_selected_entry - 1, 0);
                 }
-                if button_rising(old_state, input.btn, Button::Down as u8) {
+                if button_rising(old_state, buttons, Button::Down as u8) {
                     self.state.options_selected_entry =
                         cmp::min(self.state.options_selected_entry + 1, 6);
                 }
-                if button_rising(old_state, input.btn, Button::Right as u8) {
+                if button_rising(old_state, buttons, Button::Right as u8) {
                     self.handle_entry_modify(true);
                 }
-                if button_rising(old_state, input.btn, Button::Left as u8) {
+                if button_rising(old_state, buttons, Button::Left as u8) {
+                    self.handle_entry_modify(false);
+                }
+
+                //also for button holds
+                if button_pressed(old_state, buttons, Button::Right as u8) {
+                    self.handle_entry_modify(true);
+                }
+                if button_pressed(old_state, buttons, Button::Left as u8) {
                     self.handle_entry_modify(false);
                 }
             }
