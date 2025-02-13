@@ -7,12 +7,10 @@
 #![no_main]
 #![feature(type_alias_impl_trait)]
 
-///
-/// This is a demo example file that turns on and off the onboard led.
-///
-/// Please follow this example for future examples and sanity tests
-///
+extern crate alloc;
 use embedded_alloc::Heap;
+
+mod drive_mod;
 
 #[global_allocator]
 static HEAP: Heap = Heap::empty();
@@ -21,13 +19,22 @@ use teensy4_panic as _;
 
 #[rtic::app(device = teensy4_bsp, peripherals = true, dispatchers = [GPT2])]
 mod app {
+    use crate::drive_mod::InputState;
+
+    use super::*;
+
+    use drive_mod::DriveMod;
+    use imxrt_hal::gpio::Input;
+
+    use core::mem::MaybeUninit;
+
     use embedded_hal::spi::MODE_0;
+    use rtic_nrf24l01::config::power_amplifier::PowerAmplifier;
     use rtic_nrf24l01::Radio;
 
     use bsp::board::{self, LPSPI_FREQUENCY};
     use teensy4_bsp as bsp;
 
-    use teensy4_bsp::hal::gpio::{Input, Output};
     use teensy4_pins::t41::*;
 
     use rtic_monotonics::systick::*;
@@ -36,6 +43,7 @@ mod app {
 
     use bsp::hal;
     use bsp::hal::adc::{Adc, AnalogInput};
+    use hal::gpio::Trigger;
     use hal::timer::Blocking;
 
     use bsp::ral;
@@ -45,40 +53,56 @@ mod app {
     use robojackets_robocup_rtp::{ControlMessageBuilder, CONTROL_MESSAGE_SIZE};
 
     use robojackets_robocup_control::{
-        Delay2, RFRadio, SharedSPI, BASE_AMPLIFICATION_LEVEL, CHANNEL, GPT_CLOCK_SOURCE,
-        GPT_DIVIDER, GPT_FREQUENCY, RADIO_ADDRESS,
+        Delay2, RFRadio, SharedSPI, CHANNEL, GPT_CLOCK_SOURCE, GPT_DIVIDER, GPT_FREQUENCY,
+        RADIO_ADDRESS,
     };
 
-    use core::fmt::Write;
-    use embedded_graphics::draw_target::DrawTargetExt;
-    use embedded_graphics::{
-        mono_font::{ascii::FONT_6X10, MonoTextStyleBuilder},
-        pixelcolor::BinaryColor,
-        prelude::*,
-        text::{Baseline, Text},
-    };
-    use ssd1306::{mode::BufferedGraphicsMode, prelude::*, I2CDisplayInterface, Ssd1306};
+    use ssd1306::{prelude::*, I2CDisplayInterface, Ssd1306};
+
+    const HEAP_SIZE: usize = 1024;
+    static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
 
     #[local]
-    struct Local {
-        radio: RFRadio,
+    struct Local {}
+
+    pub struct IOInputs {
+        adc: Adc<1>,
+        joy_lx: AnalogInput<P24, 1>,
+        joy_ly: AnalogInput<P25, 1>,
+        joy_rx: AnalogInput<P16, 1>,
+        joy_ry: AnalogInput<P17, 1>,
+
+        btn_up: Input<P2>,
+        btn_down: Input<P5>,
+        btn_left: Input<P3>,
+        btn_right: Input<P4>,
     }
 
     #[shared]
     struct Shared {
         shared_spi: SharedSPI,
         delay: Delay2,
-        adc: Adc<1>,
-        joyLX: AnalogInput<P16, 1>,
-        joyLY: AnalogInput<P17, 1>,
+        inputs: IOInputs,
+        radio: RFRadio,
+        display: Ssd1306<
+            I2CInterface<imxrt_hal::lpi2c::Lpi2c<imxrt_hal::lpi2c::Pins<P19, P18>, 1>>,
+            DisplaySize128x64,
+            ssd1306::mode::BufferedGraphicsMode<DisplaySize128x64>,
+        >,
+        drive_mod: DriveMod,
     }
 
     #[init]
     fn init(ctx: init::Context) -> (Shared, Local) {
+        unsafe {
+            HEAP.init(HEAP_MEM.as_ptr() as usize, HEAP_SIZE);
+        }
+
         let board::Resources {
             usb,
             pins,
             mut gpio1,
+            mut gpio4,
             mut gpt2,
             adc1,
             lpi2c1,
@@ -94,7 +118,7 @@ mod app {
         gpt2.disable();
         gpt2.set_divider(GPT_DIVIDER);
         gpt2.set_clock_source(GPT_CLOCK_SOURCE);
-        let mut delay = Blocking::<_, GPT_FREQUENCY>::from_gpt(gpt2);
+        let delay = Blocking::<_, GPT_FREQUENCY>::from_gpt(gpt2);
 
         let spi_pins = hal::lpspi::Pins {
             pcs0: pins.p38,
@@ -114,50 +138,137 @@ mod app {
         let csn = gpio1.output(pins.p14);
 
         // Initialize the Radio
-        let mut radio = Radio::new(ce, csn);
-        if radio.begin(&mut shared_spi, &mut delay).is_err() {
-            panic!("Unable to Initialize the Radio");
-        }
-        radio.set_pa_level(PowerAmplifier::PALow, &mut shared_spi, &mut delay);
-        radio.set_channel(CHANNEL, &mut shared_spi, &mut delay);
-        radio.set_payload_size(CONTROL_MESSAGE_SIZE as u8, &mut shared_spi, &mut delay);
-        radio.open_writing_pipe(RADIO_ADDRESS, &mut shared_spi, &mut delay);
-        radio.open_reading_pipe(1, BASE_STATION_ADDRESSES[0], &mut shared_spi, &mut delay);
-        radio.stop_listening(&mut shared_spi, &mut delay);
+        let radio = Radio::new(ce, csn);
 
         //set screen
         //set i2c
-        let i2c = board::lpi2c(lpi2c1, pins.p19, pins.p18, board::Lpi2cClockSpeed::KHz400);
+        let i2c = board::lpi2c(lpi2c1, pins.p19, pins.p18, board::Lpi2cClockSpeed::MHz1);
         let interface = I2CDisplayInterface::new(i2c);
-        let mut display = Ssd1306::new(interface, DisplaySize128x64, DisplayRotation::Rotate0)
+        let display = Ssd1306::new(interface, DisplaySize128x64, DisplayRotation::Rotate0)
             .into_buffered_graphics_mode();
-        display.init().unwrap();
-        let text_style = MonoTextStyleBuilder::new()
-            .font(&FONT_6X10)
-            .text_color(BinaryColor::On)
-            .build();
-        Text::with_baseline("Hello world!", Point::zero(), text_style, Baseline::Top)
-            .draw(&mut display)
-            .unwrap();
-        display.flush().unwrap();
 
         //start ADC
-        let joyLX = bsp::hal::adc::AnalogInput::new(pins.p16);
-        let joyLY = bsp::hal::adc::AnalogInput::new(pins.p17);
+        let joy_lx = bsp::hal::adc::AnalogInput::new(pins.p24);
+        let joy_ly = bsp::hal::adc::AnalogInput::new(pins.p25);
+        let joy_rx = bsp::hal::adc::AnalogInput::new(pins.p16);
+        let joy_ry = bsp::hal::adc::AnalogInput::new(pins.p17);
 
-        log::info!("logging");
-        send_tests::spawn().ok();
+        //buttons
+        let btn_up = gpio4.input(pins.p2);
+        let btn_down = gpio4.input(pins.p5);
+        let btn_left = gpio4.input(pins.p3);
+        let btn_right = gpio4.input(pins.p4);
+
+        //set interrupt for buttons
+        gpio4.set_interrupt(&btn_up, Some(Trigger::EitherEdge));
+        gpio4.set_interrupt(&btn_down, Some(Trigger::EitherEdge));
+        gpio4.set_interrupt(&btn_left, Some(Trigger::EitherEdge));
+        gpio4.set_interrupt(&btn_right, Some(Trigger::EitherEdge));
+
+        let inputs = IOInputs {
+            adc: adc1,
+            joy_lx,
+            joy_ly,
+            joy_rx,
+            joy_ry,
+            btn_up,
+            btn_down,
+            btn_left,
+            btn_right,
+        };
+
+        let drive_mod = DriveMod::new();
+
+        //init devices
+        init_devices::spawn().ok();
 
         (
             Shared {
                 shared_spi,
                 delay,
-                joyLX,
-                joyLY,
-                adc: adc1,
+                inputs,
+                radio,
+                display,
+                drive_mod,
             },
-            Local { radio },
+            Local {},
         )
+    }
+
+    #[task(priority = 1, shared=[display,radio, shared_spi,delay])]
+    async fn init_devices(mut ctx: init_devices::Context) {
+        //wait 1s to allow debugging to capture output
+        Systick::delay(1000u32.millis()).await;
+
+        //init the display
+        ctx.shared.display.lock(|display| {
+            display.init().unwrap();
+        });
+
+        //init the radio
+        (ctx.shared.radio, ctx.shared.shared_spi, ctx.shared.delay).lock(
+            |radio, shared_spi, delay| {
+                if radio.begin(shared_spi, delay).is_err() {
+                    panic!("Unable to Initialize the Radio");
+                }
+                radio.set_pa_level(PowerAmplifier::PALow, shared_spi, delay);
+                radio.set_channel(CHANNEL, shared_spi, delay);
+                radio.set_payload_size(CONTROL_MESSAGE_SIZE as u8, shared_spi, delay);
+                radio.open_writing_pipe(RADIO_ADDRESS, shared_spi, delay);
+                radio.open_reading_pipe(1, BASE_STATION_ADDRESSES[0], shared_spi, delay);
+                radio.stop_listening(shared_spi, delay);
+            },
+        );
+
+        //spawn the actual task
+        send_tests::spawn().ok();
+    }
+
+    #[task(
+        binds = GPIO4_COMBINED_0_15,
+        priority = 1, shared=[inputs,drive_mod])]
+    fn btn_changed(ctx: btn_changed::Context) {
+        let mut btns = 0u8;
+        (ctx.shared.inputs, ctx.shared.drive_mod).lock(|inputs, drive_mod| {
+            //clear what was pressed
+            inputs.btn_left.clear_triggered();
+            inputs.btn_right.clear_triggered();
+            inputs.btn_up.clear_triggered();
+            inputs.btn_down.clear_triggered();
+
+            //debounce
+
+            //Teensy 4 runs at 600MHz, so this is ~10ms
+            cortex_m::asm::delay(6_000_000);
+
+            let btn_left = inputs.btn_left.is_set();
+            let btn_right = inputs.btn_right.is_set();
+            let btn_up = inputs.btn_up.is_set();
+            let btn_down = inputs.btn_down.is_set();
+
+            //encode this into the u8 that drive_mod expects
+            let mut btn = 0u8;
+            if btn_left {
+                btn |= 1 << 0;
+            }
+            if btn_right {
+                btn |= 1 << 1;
+            }
+            if btn_up {
+                btn |= 1 << 2;
+            }
+            if btn_down {
+                btn |= 1 << 3;
+            }
+
+            let input_state = InputState { btn };
+            btns = input_state.btn;
+
+            drive_mod.update_inputs(input_state);
+        });
+
+        log::info!("Button Changed");
+        log::info!("Buttons: {}", btns);
     }
 
     #[idle]
@@ -168,44 +279,49 @@ mod app {
     }
 
     #[task(priority = 1)]
-    async fn delay(ctx: delay::Context) {
-        Systick::delay(500u32.millis()).await;
+    async fn delay(_ctx: delay::Context) {
+        Systick::delay(100u32.millis()).await;
 
         send_tests::spawn().ok();
     }
 
-    #[task(priority = 1,local=[radio],shared=[adc,joyLX,joyLY,delay,shared_spi])]
-    async fn send_tests(ctx: send_tests::Context) {
+    #[task(priority = 1,shared=[inputs,delay,shared_spi,radio,display, drive_mod])]
+    async fn send_tests(mut ctx: send_tests::Context) {
         log::info!("Tick!");
         let mut readingX: u16 = 0;
         let mut readingY: u16 = 0;
-        (ctx.shared.adc, ctx.shared.joyLX, ctx.shared.joyLY).lock(|adc, joyLX, joyLY| {
-            readingX = adc.read_blocking(joyLX);
-            readingY = adc.read_blocking(joyLY);
+        (ctx.shared.inputs).lock(|inputs| {
+            readingX = inputs.adc.read_blocking(&mut inputs.joy_lx);
+            readingY = inputs.adc.read_blocking(&mut inputs.joy_ly);
         });
 
-        log::info!("ADC X: {}", readingX);
-        log::info!("ADC Y: {}", readingY);
+        let mut got_ack = false;
 
-        (ctx.shared.shared_spi, ctx.shared.delay).lock(|spi, delay| {
+        (ctx.shared.shared_spi, ctx.shared.delay, ctx.shared.radio).lock(|spi, delay, radio| {
             let control_message = ControlMessageBuilder::new()
                 .body_x(readingX as f32 / 1024.0)
                 .body_y(readingY as f32 / 1024.0)
                 .robot_id(1)
                 .build();
 
-            log::info!("Sending {:?}", control_message);
             let mut packed_data = [0u8; CONTROL_MESSAGE_SIZE];
             control_message.pack(&mut packed_data).unwrap();
 
-            let report = ctx.local.radio.write(&packed_data, spi, delay);
-            ctx.local.radio.flush_tx(spi, delay);
+            let report = radio.write(&packed_data, spi, delay);
+            radio.flush_tx(spi, delay);
 
             if report {
                 log::info!("Received Acknowledgement From Transmission");
+                got_ack = true;
             } else {
                 log::info!("No Ack Received");
             }
+        });
+
+        (ctx.shared.display, ctx.shared.drive_mod).lock(|display, drive_mod| {
+            display.clear();
+            drive_mod.render(display);
+            display.flush().unwrap();
         });
 
         delay::spawn().ok();
