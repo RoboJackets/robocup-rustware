@@ -13,11 +13,11 @@ use defmt_rtt as _;
 
 #[rtic::app(device = stm32f0xx_hal::pac, peripherals = true, dispatchers = [TSC])]
 mod app {
-    use motor_controller::TIM2_CLOCK_HZ;
+    use motor_controller::TIM3_CLOCK_HZ;
     use rtic_monotonics::stm32::prelude::*;
     use stm32f0xx_hal::{gpio::{gpioa::{PA2, PA3}, Alternate, AF1}, pac::USART1, prelude::*, serial::{Event, Serial}};
 
-    stm32_tim2_monotonic!(Mono, 1_000_000);
+    stm32_tim3_monotonic!(Mono, 1_000_000);
 
     #[local]
     struct Local {
@@ -31,7 +31,7 @@ mod app {
 
     #[init]
     fn init(mut ctx: init::Context) -> (Shared, Local) {
-        Mono::start(TIM2_CLOCK_HZ);
+        Mono::start(TIM3_CLOCK_HZ);
 
         let mut rcc = ctx.device.RCC.configure().sysclk(48.mhz()).freeze(&mut ctx.device.FLASH);
         let gpioa = ctx.device.GPIOA.split(&mut rcc);
@@ -75,7 +75,7 @@ mod app {
     )]
     fn serial_received(ctx: serial_received::Context) {
         defmt::info!("Reading Command");
-        let mut buffer = [0u8; 2];
+        let mut buffer = [0u8; 6];
         for i in 0..buffer.len() {
             let data = ctx.local.serial.read();
             match data {
@@ -83,9 +83,10 @@ mod app {
                 Err(_err) => defmt::error!("Error Reading from Serial"),
             }
         }
+        defmt::info!("Read: {:?}", buffer);
 
         defmt::info!("Writing Response");
-        let response = [0x00, 0x00];
+        let response = [0x44, 0x55];
         for data in response {
             ctx.local.serial.write(data).unwrap();
         }

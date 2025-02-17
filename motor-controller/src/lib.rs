@@ -14,6 +14,8 @@ use defmt::Format;
 
 /// The frequency of tim2 clock
 pub const TIM2_CLOCK_HZ: u32 = 8_000_000;
+/// The frequency of tim3 clock
+pub const TIM3_CLOCK_HZ: u32 = 8_000_000;
 
 /// The first hal sensor
 pub type HS1 = PA0<Input<PullDown>>;
@@ -108,7 +110,7 @@ impl OvercurrentComparator {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Format)]
 /// The desired phase of a given output
 pub enum Phase {
     /// The output should be high
@@ -126,49 +128,49 @@ pub fn hall_to_phases(h1: bool, h2: bool, h3: bool, clockwise: bool) -> [Phase; 
         (false, false, true) => {
             // Step 1
             if clockwise {
-                [Phase::Positive, Phase::Negative, Phase::Zero]
+                [Phase::Zero, Phase::Negative, Phase::Positive]
             } else {
-                [Phase::Negative, Phase::Zero, Phase::Positive]
+                [Phase::Zero, Phase::Positive, Phase::Negative]
             }
         },
         (true, false, true) => {
             // Step 2
             if clockwise {
-                [Phase::Positive, Phase::Zero, Phase::Negative]
+                [Phase::Positive, Phase::Negative, Phase::Zero]
             } else {
-                [Phase::Zero, Phase::Negative, Phase::Positive]
+                [Phase::Negative, Phase::Positive, Phase::Zero]
             }
         },
         (true, false, false) => {
             // Step 3
             if clockwise {
-                [Phase::Zero, Phase::Positive, Phase::Negative]
+                [Phase::Positive, Phase::Zero, Phase::Negative]
             } else {
-                [Phase::Positive, Phase::Negative, Phase::Zero]
+                [Phase::Negative, Phase::Zero, Phase::Positive]
             }
         },
         (true, true, false) => {
             // Step 4
             if clockwise {
-                [Phase::Negative, Phase::Positive, Phase::Zero]
+                [Phase::Zero, Phase::Positive, Phase::Negative]
             } else {
-                [Phase::Positive, Phase::Zero, Phase::Negative]
+                [Phase::Zero, Phase::Negative, Phase::Positive]
             }
         },
         (false, true, false) => {
             // Step 5
             if clockwise {
-                [Phase::Negative, Phase::Zero, Phase::Positive]
+                [Phase::Negative, Phase::Positive, Phase::Zero]
             } else {
-                [Phase::Zero, Phase::Positive, Phase::Negative]
+                [Phase::Positive, Phase::Negative, Phase::Zero]
             }
         },
         (false, true, true) => {
             // Step 6
             if clockwise {
-                [Phase::Zero, Phase::Negative, Phase::Positive]
+                [Phase::Negative, Phase::Zero, Phase::Positive]
             } else {
-                [Phase::Negative, Phase::Positive, Phase::Zero]
+                [Phase::Positive, Phase::Zero, Phase::Negative]
             }
         },
         _ => [Phase::Zero, Phase::Zero, Phase::Zero]

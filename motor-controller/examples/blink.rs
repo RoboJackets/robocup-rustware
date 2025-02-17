@@ -13,9 +13,9 @@ use defmt_rtt as _;
 #[rtic::app(device = stm32f0xx_hal::pac, peripherals = true, dispatchers = [TSC])]
 mod app {
     use rtic_monotonics::stm32::prelude::*;
-    use motor_controller::TIM2_CLOCK_HZ;
+    use motor_controller::TIM3_CLOCK_HZ;
 
-    stm32_tim2_monotonic!(Mono, 1_000_000);
+    stm32_tim3_monotonic!(Mono, 1_000_000);
 
     #[local]
     struct Local {
@@ -29,7 +29,7 @@ mod app {
 
     #[init]
     fn init(_ctx: init::Context) -> (Shared, Local) {
-        Mono::start(TIM2_CLOCK_HZ);
+        Mono::start(TIM3_CLOCK_HZ);
 
         blink::spawn().ok();
 

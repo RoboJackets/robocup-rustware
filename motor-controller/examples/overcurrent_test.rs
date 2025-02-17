@@ -12,11 +12,11 @@ use defmt_rtt as _;
 
 #[rtic::app(device = stm32f0xx_hal::pac, peripherals = true, dispatchers = [TSC])]
 mod app {
-    use rtic_monotonics::stm32_tim2_monotonic;
-    use motor_controller::{TIM2_CLOCK_HZ, OvercurrentComparator, OvercurrentThreshold};
+    use rtic_monotonics::stm32_tim3_monotonic;
+    use motor_controller::{TIM3_CLOCK_HZ, OvercurrentComparator, OvercurrentThreshold};
     use stm32f0xx_hal::{pac::EXTI, prelude::*};
 
-    stm32_tim2_monotonic!(Mono, 1_000_000);
+    stm32_tim3_monotonic!(Mono, 1_000_000);
 
     #[local]
     struct Local {
@@ -30,7 +30,7 @@ mod app {
 
     #[init]
     fn init(mut ctx: init::Context) -> (Shared, Local) {
-        Mono::start(TIM2_CLOCK_HZ);
+        Mono::start(TIM3_CLOCK_HZ);
 
         let mut rcc = ctx.device.RCC.configure().sysclk(48.mhz()).freeze(&mut ctx.device.FLASH);
         let gpioa = ctx.device.GPIOA.split(&mut rcc);
@@ -47,7 +47,6 @@ mod app {
 
         let mut overcurrent_comparator = OvercurrentComparator::new(pa11, pf6, pf7, pb12);
         overcurrent_comparator.stop_gate_drivers(true);
-        // TODO: Determine what threshold should be used
         overcurrent_comparator.set_threshold(OvercurrentThreshold::T1);
         overcurrent_comparator.set_interrupt(&syscfg, &exti);
 
@@ -74,7 +73,7 @@ mod app {
         binds = EXTI0_1
     )]
     fn overcurrent_interrupt(mut ctx: overcurrent_interrupt::Context) {
-        defmt::info!("Overcurrent Detected");
+        defmt::error!("Overcurrent Detected");
         ctx.shared.exti.lock(|exti| ctx.local.overcurrent_comparator.clear_interrupt(exti));
     }
 }
