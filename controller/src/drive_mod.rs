@@ -9,6 +9,13 @@ use embedded_graphics::{
     text::{Baseline, Text},
     Drawable,
 };
+use rtic_monotonics::{
+    systick::{
+        fugit::{Duration, Instant},
+        Systick,
+    },
+    Monotonic,
+};
 use ssd1306::{prelude::*, Ssd1306};
 use teensy4_pins::t41::*;
 
@@ -37,11 +44,26 @@ pub enum Screen {
 struct InternalState {
     dribbler_enabled: bool,
     kicker_state: u8,
+
+    ball_sense_status: bool,
+    kick_health: bool,
+    battery_voltage: u8,
+    motor_error: u8,
+    fpga_status: bool,
+
     conn_acks: [bool; 10],
     conn_acks_attempts: u32,
+
     current_screen: Screen,
     options_selected_entry: i8,
+
     btn_last: u8,
+    btn_press_timeout: u32,
+
+    joy_lx: u16,
+    joy_ly: u16,
+    joy_rx: u16,
+    joy_ry: u16,
 }
 
 pub enum Button {
@@ -56,14 +78,21 @@ pub struct DriveMod {
     state: InternalState,
 }
 
-fn button_rising(old_state: u8, new_state: u8, button: u8) -> bool {
-    let mask = 1 << button;
-    (old_state & mask) == 0 && (new_state & mask) != 0
-}
-
-fn button_pressed(old_state: u8, new_state: u8, button: u8) -> bool {
-    let mask = 1 << button;
-    (old_state & mask) != 0 && (new_state & mask) != 0
+pub fn encode_btn_state(left: bool, right: bool, up: bool, down: bool) -> u8 {
+    let mut btn = 0u8;
+    if left {
+        btn |= 1 << 0;
+    }
+    if right {
+        btn |= 1 << 1;
+    }
+    if up {
+        btn |= 1 << 2;
+    }
+    if down {
+        btn |= 1 << 3;
+    }
+    return btn;
 }
 
 const TEAM_NAME_MAP: [&str; 2] = ["BLU", "YLW"];
@@ -84,11 +113,25 @@ impl DriveMod {
             state: InternalState {
                 dribbler_enabled: false,
                 kicker_state: 0,
+
+                ball_sense_status: false,
+                kick_health: false,
+                battery_voltage: 0,
+                motor_error: 0,
+                fpga_status: false,
+
                 conn_acks: [false; 10],
                 conn_acks_attempts: 0,
+
                 current_screen: Screen::Main,
                 options_selected_entry: 0,
+
                 btn_last: 0,
+                btn_press_timeout: 0,
+                joy_lx: 512,
+                joy_ly: 512,
+                joy_rx: 512,
+                joy_ry: 512,
             },
         }
     }
@@ -171,9 +214,71 @@ impl DriveMod {
     }
 
     fn render_main_screen(&self, display: Display) {
+        //joysticks
+        let joy_lx_str = alloc::fmt::format(format_args!("LX: {}", self.state.joy_lx));
+        let joy_ly_str = alloc::fmt::format(format_args!("LY: {}", self.state.joy_ly));
+        let joy_rx_str = alloc::fmt::format(format_args!("RX: {}", self.state.joy_rx));
+        let joy_ry_str = alloc::fmt::format(format_args!("RY: {}", self.state.joy_ry));
+
         Text::with_baseline(
-            "This is the send screen!",
+            joy_lx_str.as_str(),
             Point::new(2, 14),
+            MonoTextStyle::new(&FONT_6X10, BinaryColor::On),
+            Baseline::Top,
+        )
+        .draw(display)
+        .unwrap();
+        Text::with_baseline(
+            joy_ly_str.as_str(),
+            Point::new(2, 24),
+            MonoTextStyle::new(&FONT_6X10, BinaryColor::On),
+            Baseline::Top,
+        )
+        .draw(display)
+        .unwrap();
+        Text::with_baseline(
+            joy_rx_str.as_str(),
+            Point::new(64, 14),
+            MonoTextStyle::new(&FONT_6X10, BinaryColor::On),
+            Baseline::Top,
+        )
+        .draw(display)
+        .unwrap();
+        Text::with_baseline(
+            joy_ry_str.as_str(),
+            Point::new(64, 24),
+            MonoTextStyle::new(&FONT_6X10, BinaryColor::On),
+            Baseline::Top,
+        )
+        .draw(display)
+        .unwrap();
+
+        //dribbler and kicker
+        let dribbler_str = if self.state.dribbler_enabled {
+            "Drib ON"
+        } else {
+            "Drib OFF"
+        };
+        let kicker_str = if self.settings.trigger_mode != 0 {
+            match self.state.kicker_state {
+                1 => "Kick ON",
+                0 => "Kick OFF",
+                _ => "Kick ERR",
+            }
+        } else {
+            "Kick DISB"
+        };
+        Text::with_baseline(
+            dribbler_str,
+            Point::new(2, 34),
+            MonoTextStyle::new(&FONT_6X10, BinaryColor::On),
+            Baseline::Top,
+        )
+        .draw(display)
+        .unwrap();
+        Text::with_baseline(
+            kicker_str,
+            Point::new(64, 34),
             MonoTextStyle::new(&FONT_6X10, BinaryColor::On),
             Baseline::Top,
         )
@@ -182,14 +287,60 @@ impl DriveMod {
     }
 
     fn render_main_receiv(&self, display: Display) {
-        Text::with_baseline(
-            "This is the receive screen!",
-            Point::new(2, 14),
-            MonoTextStyle::new(&FONT_6X10, BinaryColor::On),
-            Baseline::Top,
-        )
-        .draw(display)
-        .unwrap();
+        let mut conn_success = 0;
+        for i in 0..self.state.conn_acks.len() {
+            if self.state.conn_acks[i] {
+                conn_success += 1;
+            }
+        }
+
+        //if we've gotten no connections at all, whatever we put on the screen will be lies
+        if conn_success == 0 {
+            Text::with_baseline(
+                "No Status to Display\nNo Connection",
+                Point::new(2, 14),
+                MonoTextStyle::new(&FONT_6X10, BinaryColor::On),
+                Baseline::Top,
+            )
+            .draw(display)
+            .unwrap();
+            return;
+        }
+
+        let entry_names = ["Ball Sense", "Kick Health", "Battery", "Motor Err", "FPGA"];
+        let entry_values = [
+            if self.state.ball_sense_status {
+                "ON"
+            } else {
+                "OFF"
+            },
+            if self.state.kick_health { "OK" } else { "ERR" },
+            &alloc::fmt::format(format_args!("{}", self.state.battery_voltage)),
+            &alloc::fmt::format(format_args!("{}", self.state.motor_error)),
+            if self.state.fpga_status { "OK" } else { "ERR" },
+        ];
+
+        for i in 0..5 {
+            let entry_name = entry_names[i];
+            let entry_value = entry_values[i];
+            let y: i32 = 14 + i as i32 * 10;
+            Text::with_baseline(
+                entry_name,
+                Point::new(2, y),
+                MonoTextStyle::new(&FONT_6X10, BinaryColor::On),
+                Baseline::Top,
+            )
+            .draw(display)
+            .unwrap();
+            Text::with_baseline(
+                entry_value,
+                Point::new(104, y),
+                MonoTextStyle::new(&FONT_6X10, BinaryColor::On),
+                Baseline::Top,
+            )
+            .draw(display)
+            .unwrap();
+        }
     }
 
     fn render_settings(&self, display: Display) {
@@ -277,9 +428,21 @@ impl DriveMod {
                 } else if !increment && self.settings.robot_id > 0 {
                     self.settings.robot_id -= 1;
                 }
+
+                //new robot, wipe the connection status
+                self.state.conn_acks_attempts = 0;
+                for i in 0..self.state.conn_acks.len() {
+                    self.state.conn_acks[i] = false;
+                }
             }
             2 => {
                 self.settings.team = if self.settings.team == 0 { 1 } else { 0 };
+
+                //new team, wipe the connection status
+                self.state.conn_acks_attempts = 0;
+                for i in 0..self.state.conn_acks.len() {
+                    self.state.conn_acks[i] = false;
+                }
             }
             3 => {
                 self.settings.shoot_mode = if self.settings.shoot_mode == 0 { 1 } else { 0 };
@@ -317,6 +480,26 @@ impl DriveMod {
         }
     }
 
+    fn button_rising(&mut self, old_state: u8, new_state: u8, button: u8) -> bool {
+        let mask = 1 << button;
+        //This is ~500 ms
+        if (old_state & mask) == 0 && (new_state & mask) != 0 {
+            self.state.btn_press_timeout = Systick::now().ticks() + 500;
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+    fn button_pressed(&mut self, old_state: u8, new_state: u8, button: u8) -> bool {
+        let mask = 1 << button;
+        if Systick::now().ticks() < self.state.btn_press_timeout {
+            return false;
+        }
+        self.state.btn_press_timeout = 0;
+        (old_state & mask) != 0 && (new_state & mask) != 0
+    }
+
     pub fn update_buttons(&mut self, buttons: u8) {
         //get the buttons difference
         let old_state = self.state.btn_last;
@@ -324,43 +507,49 @@ impl DriveMod {
 
         match self.state.current_screen {
             Screen::Main => {
-                if button_rising(old_state, buttons, Button::Right as u8) {
+                if self.button_rising(old_state, buttons, Button::Right as u8) {
                     self.state.current_screen = Screen::MainReceiv;
-                } else if button_rising(old_state, buttons, Button::Up as u8) {
+                } else if self.button_rising(old_state, buttons, Button::Up as u8) {
                     self.state.current_screen = Screen::Options;
+                } else if self.button_rising(old_state, buttons, Button::Left as u8) {
+                    self.state.dribbler_enabled = !self.state.dribbler_enabled;
                 }
             }
             Screen::MainReceiv => {
-                if button_rising(old_state, buttons, Button::Right as u8) {
+                if self.button_rising(old_state, buttons, Button::Right as u8) {
                     self.state.current_screen = Screen::Main;
-                } else if button_rising(old_state, buttons, Button::Up as u8) {
+                } else if self.button_rising(old_state, buttons, Button::Up as u8) {
                     self.state.current_screen = Screen::Options;
                 }
             }
             Screen::Options => {
-                if button_rising(old_state, buttons, Button::Up as u8) {
+                if self.button_rising(old_state, buttons, Button::Up as u8) {
                     self.state.options_selected_entry =
                         cmp::max(self.state.options_selected_entry - 1, 0);
                 }
-                if button_rising(old_state, buttons, Button::Down as u8) {
+                if self.button_rising(old_state, buttons, Button::Down as u8) {
                     self.state.options_selected_entry =
                         cmp::min(self.state.options_selected_entry + 1, 6);
                 }
-                if button_rising(old_state, buttons, Button::Right as u8) {
+                if self.button_rising(old_state, buttons, Button::Right as u8) {
                     self.handle_entry_modify(true);
-                }
-                if button_rising(old_state, buttons, Button::Left as u8) {
-                    self.handle_entry_modify(false);
+                } else if self.button_pressed(old_state, buttons, Button::Right as u8) {
+                    self.handle_entry_modify(true);
                 }
 
-                //also for button holds
-                if button_pressed(old_state, buttons, Button::Right as u8) {
-                    self.handle_entry_modify(true);
-                }
-                if button_pressed(old_state, buttons, Button::Left as u8) {
+                if self.button_rising(old_state, buttons, Button::Left as u8) {
+                    self.handle_entry_modify(false);
+                } else if self.button_pressed(old_state, buttons, Button::Left as u8) {
                     self.handle_entry_modify(false);
                 }
             }
         }
+    }
+
+    pub fn update_joysticks(&mut self, lx: u16, ly: u16, rx: u16, ry: u16) {
+        self.state.joy_lx = lx;
+        self.state.joy_ly = ly;
+        self.state.joy_rx = rx;
+        self.state.joy_ry = ry;
     }
 }

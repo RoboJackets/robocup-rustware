@@ -22,7 +22,7 @@ mod app {
 
     use super::*;
 
-    use drive_mod::DriveMod;
+    use drive_mod::{encode_btn_state, DriveMod};
     use imxrt_hal::gpio::Input;
 
     use core::mem::MaybeUninit;
@@ -36,7 +36,7 @@ mod app {
 
     use teensy4_pins::t41::*;
 
-    use rtic_monotonics::systick::*;
+    use rtic_monotonics::{systick::*, Monotonic};
 
     use ncomm_utils::packing::Packable;
 
@@ -246,26 +246,37 @@ mod app {
             let btn_down = inputs.btn_down.is_set();
 
             //encode this into the u8 that drive_mod expects
-            let mut btn = 0u8;
-            if btn_left {
-                btn |= 1 << 0;
-            }
-            if btn_right {
-                btn |= 1 << 1;
-            }
-            if btn_up {
-                btn |= 1 << 2;
-            }
-            if btn_down {
-                btn |= 1 << 3;
-            }
-
-            drive_mod.update_buttons(btn);
+            drive_mod.update_buttons(encode_btn_state(btn_left, btn_right, btn_up, btn_down));
         });
     }
 
     #[task(priority = 1, shared=[inputs,drive_mod])]
-    async fn update_btn_status(ctx: update_btn_status::Context) {}
+    async fn poll_input_status(ctx: poll_input_status::Context) {
+        log::info!("Polling Inputs");
+        (ctx.shared.inputs, ctx.shared.drive_mod).lock(|inputs, drive_mod| {
+            //debounce
+
+            //Teensy 4 runs at 600MHz, so this is ~10ms
+            cortex_m::asm::delay(6_000_000);
+
+            let btn_left = inputs.btn_left.is_set();
+            let btn_right = inputs.btn_right.is_set();
+            let btn_up = inputs.btn_up.is_set();
+            let btn_down = inputs.btn_down.is_set();
+
+            //encode this into the u8 that drive_mod expects
+            drive_mod.update_buttons(encode_btn_state(btn_left, btn_right, btn_up, btn_down));
+
+
+            //update joysticks
+            let joy_lx = inputs.adc.read_blocking(&mut inputs.joy_lx);
+            let joy_ly = inputs.adc.read_blocking(&mut inputs.joy_ly);
+            let joy_rx = inputs.adc.read_blocking(&mut inputs.joy_rx);
+            let joy_ry = inputs.adc.read_blocking(&mut inputs.joy_ry);
+
+            drive_mod.update_joysticks(joy_lx, joy_ly, joy_rx, joy_ry);
+        });
+    }
 
     #[idle]
     fn idle(_: idle::Context) -> ! {
@@ -289,5 +300,6 @@ mod app {
         });
 
         delay_display::spawn().ok();
+        poll_input_status::spawn().ok();
     }
 }
