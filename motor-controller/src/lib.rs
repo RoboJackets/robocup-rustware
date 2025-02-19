@@ -1,6 +1,8 @@
 //!
 //! Library for the motor-controller firmware
 //! 
+//! Note: 1 Mono tick is 1 us
+//! 
 
 #![no_std]
 #![feature(type_alias_impl_trait)]
@@ -11,6 +13,8 @@ use stm32f0xx_hal::{gpio::{gpioa::{PA0, PA1, PA11, PA2}, gpiob::PB12, gpiof::{PF
 use stm32f0xx_hal::prelude::*;
 use embedded_hal::PwmPin;
 use defmt::Format;
+
+pub mod encoder;
 
 /// The frequency of tim2 clock
 pub const TIM2_CLOCK_HZ: u32 = 8_000_000;

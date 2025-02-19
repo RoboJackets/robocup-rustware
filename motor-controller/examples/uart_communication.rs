@@ -15,13 +15,13 @@ use defmt_rtt as _;
 mod app {
     use motor_controller::TIM3_CLOCK_HZ;
     use rtic_monotonics::stm32::prelude::*;
-    use stm32f0xx_hal::{gpio::{gpioa::{PA2, PA3}, Alternate, AF1}, pac::USART1, prelude::*, serial::{Event, Serial}};
+    use stm32f0xx_hal::{gpio::{gpiob::{PB6, PB7}, Alternate, AF0}, pac::USART1, prelude::*, serial::{Event, Serial}};
 
     stm32_tim3_monotonic!(Mono, 1_000_000);
 
     #[local]
     struct Local {
-        serial: Serial<USART1, PA2<Alternate<AF1>>, PA3<Alternate<AF1>>>,
+        serial: Serial<USART1, PB6<Alternate<AF0>>, PB7<Alternate<AF0>>>,
     }
 
     #[shared]
@@ -34,12 +34,12 @@ mod app {
         Mono::start(TIM3_CLOCK_HZ);
 
         let mut rcc = ctx.device.RCC.configure().sysclk(48.mhz()).freeze(&mut ctx.device.FLASH);
-        let gpioa = ctx.device.GPIOA.split(&mut rcc);
+        let gpiob = ctx.device.GPIOB.split(&mut rcc);
 
         let (tx, rx) = cortex_m::interrupt::free(move |cs| {
             (
-                gpioa.pa2.into_alternate_af1(cs),
-                gpioa.pa3.into_alternate_af1(cs),
+                gpiob.pb6.into_alternate_af0(cs),
+                gpiob.pb7.into_alternate_af0(cs),
             )
         });
 
