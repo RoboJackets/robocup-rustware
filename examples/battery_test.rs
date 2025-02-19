@@ -75,6 +75,8 @@ mod app {
 
         let mut battery_sensor = BatterySenseT::new(adc1, pins.p41);
         let mut current_capacity: u16 = 0;
+
+        get_battery_capacity::spawn().ok();
         (
             Shared {
                 battery_capacity: current_capacity,
@@ -102,6 +104,14 @@ mod app {
         });
 
         Log::info!("Battreee capacity: {:?}", capacity);
+
+        battery_dly::spawn().ok();
+    }
+
+    #[task(priority = 1)]
+    async fn battery_dly(_cx: battery_dly::Context) {
+        Systick::delay(25000000.micros()).await;
+        get_battery_capacity::spawn().ok();
     }
 
 
