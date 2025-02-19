@@ -63,8 +63,9 @@ pub type Gpio4 = Port<4>;
 /// The IMU
 pub type Imu = IMU<Lpi2c1>;
 
-pub type adcP = P41;
+pub type AdcP = P41;
 
 /// One of two ADCs defined under Teensy 4.1 docs
 pub type Adc1 = Adc<1>;
 
+pub type BatterySenseT = BatterySense<Adc1, u16, AdcP, Error::Infallible>;
