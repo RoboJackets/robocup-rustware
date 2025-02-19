@@ -42,7 +42,7 @@ pub struct BatterySense <AdcT, WordT, PinT, AdcE> where
     adc: AdcT,
     pin: PinT,
     percent_capacity: f32,
-    raw_voltage: WordT
+    raw_voltage: WordT,
 }
 
 
@@ -58,7 +58,7 @@ impl<AdcT, WordT, PinT, AdcE> BatterySense <AdcT, WordT, PinT, AdcE> where
             adc: adc,
             pin: pin,
             percent_capacity: 0.,
-            raw_voltage: WordT::from(0)
+            raw_voltage: WordT::from(0),
         };
         return instance;
     }
