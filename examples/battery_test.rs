@@ -20,7 +20,8 @@ use rtic_monotonics::systick::*;
 use rotary_switch_rs as rotary_switch;
 
 
-use io_expander_rs as io_expander;
+use battery_sense_rs as battery_sense;
+use battery_sense::BatterySense;
 
 
 
@@ -45,9 +46,7 @@ mod app {
     // therefore we multiply our delay time by a factor of 10
     const SYST_MONO_FACTOR: u32 = 10;
 
-    use main::{
-        BatterySenseT
-    };
+    use main::peripherals::BatterySenseT;
 
     #[local]
     struct Local {
@@ -73,6 +72,7 @@ mod app {
         let systick_token = rtic_monotonics::create_systick_token!();
         Systick::start(cx.core.SYST, 36_000_000, systick_token);
 
+        // TODO change the pin input to be an analog input
         let mut battery_sensor = BatterySenseT::new(adc1, pins.p41);
         let mut current_capacity: u16 = 0;
 
@@ -103,7 +103,7 @@ mod app {
             *battery_capacity = capacity;
         });
 
-        Log::info!("Battreee capacity: {:?}", capacity);
+        log::info!("Battreee capacity: {:?}", capacity);
 
         battery_dly::spawn().ok();
     }

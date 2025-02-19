@@ -62,6 +62,7 @@ features = [
 
 [dependencies.imxrt-hal]
 version = "=0.5.4"
+features = ["eh02-unproven"]
 
 # allows for debugging messages when panicking
 [dependencies.teensy4-panic]
@@ -91,6 +92,7 @@ members = [
     "drivers/icm42605-driver",
     "drivers/io_expander",
     "drivers/rotary_switch",
+    "drivers/battery_sense",
     "tools",
 ]
 

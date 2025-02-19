@@ -19,6 +19,7 @@ use teensy4_bsp::hal::{
 
 use fpga_rs::FPGA;
 use rotary_switch_rs::RotarySwitch;
+use battery_sense_rs::BatterySense;
 use io_expander_rs::IoExpander;
 use icm42605_driver::IMU;
 use imxrt_hal::adc::Adc;
@@ -68,4 +69,4 @@ pub type AdcP = P41;
 /// One of two ADCs defined under Teensy 4.1 docs
 pub type Adc1 = Adc<1>;
 
-pub type BatterySenseT = BatterySense<Adc1, u16, AdcP, Error::Infallible>;
+pub type BatterySenseT = BatterySense<Adc1, u16, AdcP, Infallible>;

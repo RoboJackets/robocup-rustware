@@ -33,6 +33,7 @@ const MIN_SAFE_BATT_VOLTAGE_READ: f32 = 1.923;
 /// total range for good batter voltage
 const BATT_VOLTAGE_READ_RANGE: f32 = (MAX_SAFE_BATT_VOLTAGE_READ - MIN_SAFE_BATT_VOLTAGE_READ);
 
+// TODO NEED TO CHANGE PINT TO E AN ANALOG INPUT TYPE
 pub struct BatterySense <AdcT, WordT, PinT, AdcE> where 
         PinT: Channel<AdcT>,
         WordT: Into<u16> + From<u16>,
