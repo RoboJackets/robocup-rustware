@@ -19,6 +19,11 @@ use rtic_monotonics::{
 use ssd1306::{prelude::*, Ssd1306};
 use teensy4_pins::t41::*;
 
+use robojackets_robocup_rtp::{
+    control_message::{ShootMode, TriggerMode},
+    ControlMessage, ControlMessageBuilder, RobotStatusMessage, Team, CONTROL_MESSAGE_SIZE,
+};
+
 pub type Display<'a> = &'a mut Ssd1306<
     I2CInterface<imxrt_hal::lpi2c::Lpi2c<imxrt_hal::lpi2c::Pins<P19, P18>, 1>>,
     DisplaySize128x64,
@@ -180,11 +185,11 @@ impl DriveMod {
             }
         }
         let conn_success_percent =
-            conn_success / (cmp::min(cmp::max(self.state.conn_acks_attempts, 1), 10));
+            conn_success as f32 / (cmp::min(cmp::max(self.state.conn_acks_attempts, 1), 10)) as f32;
         let conn_string = match conn_success_percent {
-            0 => "DISC".to_string(),
-            1 => "100%".to_string(),
-            _ => alloc::fmt::format(format_args!(" {:02}%", conn_success_percent * 100)),
+            0.0 => "DISC".to_string(),
+            1.0 => "100%".to_string(),
+            _ => alloc::fmt::format(format_args!(" {:02}%", conn_success_percent * 100.0)),
         };
         Text::with_baseline(
             conn_string.as_str(),
@@ -513,6 +518,8 @@ impl DriveMod {
                     self.state.current_screen = Screen::Options;
                 } else if self.button_rising(old_state, buttons, Button::Left as u8) {
                     self.state.dribbler_enabled = !self.state.dribbler_enabled;
+                } else if self.button_rising(old_state, buttons, Button::Down as u8) {
+                    self.state.kicker_state = if self.state.kicker_state == 0 { 1 } else { 0 };
                 }
             }
             Screen::MainReceiv => {
@@ -551,5 +558,57 @@ impl DriveMod {
         self.state.joy_ly = ly;
         self.state.joy_rx = rx;
         self.state.joy_ry = ry;
+    }
+
+    pub fn generate_outgoing_packet(&mut self) -> ControlMessage {
+        //this is a *very* basic joystick mapping
+        let lx = self.state.joy_lx;
+        let ly = self.state.joy_ly;
+        let lw = self.state.joy_rx as i16 - 512;
+
+        let msg = ControlMessageBuilder::new()
+            .robot_id(self.settings.robot_id)
+            .team(if self.settings.team == 0 {
+                Team::Blue
+            } else {
+                Team::Yellow
+            })
+            .shoot_mode(match self.settings.shoot_mode {
+                0 => ShootMode::Kick,
+                1 => ShootMode::Chip,
+                _ => ShootMode::Kick,
+            })
+            .trigger_mode(match self.settings.trigger_mode {
+                0 => TriggerMode::StandDown,
+                1 => TriggerMode::Immediate,
+                2 => TriggerMode::OnBreakBeam,
+                _ => TriggerMode::StandDown,
+            })
+            .body_x(lx as f32)
+            .body_y(ly as f32)
+            .body_w(lw as f32)
+            .dribbler_speed(self.settings.dribbler_speed as i8)
+            .kick_strength(self.settings.kick_strength)
+            .build();
+
+        return msg;
+    }
+
+    pub fn report_send_result(&mut self, success: bool) {
+        //shift the array
+        for i in 0..self.state.conn_acks.len() - 1 {
+            self.state.conn_acks[i] = self.state.conn_acks[i + 1];
+        }
+        self.state.conn_acks[9] = success;
+
+        self.state.conn_acks_attempts += 1;
+    }
+
+    pub fn update_incoming_packet(&mut self, msg: RobotStatusMessage) {
+        self.state.ball_sense_status = msg.ball_sense_status;
+        self.state.kick_health = msg.kick_healthy;
+        self.state.battery_voltage = msg.battery_voltage;
+        self.state.motor_error = msg.motor_errors;
+        self.state.fpga_status = msg.fpga_status;
     }
 }

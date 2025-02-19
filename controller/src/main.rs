@@ -48,8 +48,10 @@ mod app {
     use bsp::ral;
     use ral::lpspi::LPSPI3;
 
-    use robojackets_robocup_rtp::BASE_STATION_ADDRESSES;
-    use robojackets_robocup_rtp::{ControlMessageBuilder, CONTROL_MESSAGE_SIZE};
+    use robojackets_robocup_rtp::{
+        ControlMessageBuilder, RobotStatusMessage, CONTROL_MESSAGE_SIZE,
+    };
+    use robojackets_robocup_rtp::{BASE_STATION_ADDRESSES, ROBOT_STATUS_SIZE};
 
     use robojackets_robocup_control::{
         Delay2, RFRadio, SharedSPI, CHANNEL, GPT_CLOCK_SOURCE, GPT_DIVIDER, GPT_FREQUENCY,
@@ -62,7 +64,9 @@ mod app {
     static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
 
     #[local]
-    struct Local {}
+    struct Local {
+        dispatcher_tick: u32,
+    }
 
     pub struct IOInputs {
         adc: Adc<1>,
@@ -181,6 +185,8 @@ mod app {
         //init devices
         init_devices::spawn().ok();
 
+        let dispatcher_tick = 0u32;
+
         (
             Shared {
                 shared_spi,
@@ -190,7 +196,7 @@ mod app {
                 display,
                 drive_mod,
             },
-            Local {},
+            Local { dispatcher_tick },
         )
     }
 
@@ -215,12 +221,12 @@ mod app {
                 radio.set_payload_size(CONTROL_MESSAGE_SIZE as u8, shared_spi, delay);
                 radio.open_writing_pipe(RADIO_ADDRESS, shared_spi, delay);
                 radio.open_reading_pipe(1, BASE_STATION_ADDRESSES[0], shared_spi, delay);
-                radio.stop_listening(shared_spi, delay);
+                radio.start_listening(shared_spi, delay);
             },
         );
 
-        //start a timer to update the display
-        update_display::spawn().ok();
+        //start the main dispatcher
+        dispatcher::spawn().ok();
     }
 
     #[task(
@@ -252,7 +258,6 @@ mod app {
 
     #[task(priority = 1, shared=[inputs,drive_mod])]
     async fn poll_input_status(ctx: poll_input_status::Context) {
-        log::info!("Polling Inputs");
         (ctx.shared.inputs, ctx.shared.drive_mod).lock(|inputs, drive_mod| {
             //debounce
 
@@ -266,7 +271,6 @@ mod app {
 
             //encode this into the u8 that drive_mod expects
             drive_mod.update_buttons(encode_btn_state(btn_left, btn_right, btn_up, btn_down));
-
 
             //update joysticks
             let joy_lx = inputs.adc.read_blocking(&mut inputs.joy_lx);
@@ -286,9 +290,32 @@ mod app {
     }
 
     #[task(priority = 1)]
-    async fn delay_display(ctx: delay_display::Context) {
-        Systick::delay(200u32.millis()).await;
-        update_display::spawn().ok();
+    async fn delay_main(ctx: delay_main::Context) {
+        Systick::delay(10u32.millis()).await;
+        dispatcher::spawn().ok();
+    }
+
+    #[task(priority = 1,local=[dispatcher_tick])]
+    async fn dispatcher(ctx: dispatcher::Context) {
+        *ctx.local.dispatcher_tick += 1;
+
+        //100 ms update
+        if *ctx.local.dispatcher_tick % 10 == 0 {
+            poll_packet::spawn().ok();
+        }
+
+        //200 ms update
+        if *ctx.local.dispatcher_tick % 20 == 0 {
+            update_display::spawn().ok();
+            poll_input_status::spawn().ok();
+        }
+
+        //500 ms update
+        if *ctx.local.dispatcher_tick % 50 == 0 {
+            send_packet::spawn().ok();
+        }
+
+        delay_main::spawn().ok();
     }
 
     #[task(priority = 1,shared=[display, drive_mod])]
@@ -298,8 +325,62 @@ mod app {
             drive_mod.render(display);
             display.flush().unwrap();
         });
+    }
 
-        delay_display::spawn().ok();
-        poll_input_status::spawn().ok();
+    #[task(priority = 1,shared=[drive_mod, radio, shared_spi,delay])]
+    async fn send_packet(ctx: send_packet::Context) {
+        log::info!("Sending Packet");
+        (
+            ctx.shared.shared_spi,
+            ctx.shared.delay,
+            ctx.shared.radio,
+            ctx.shared.drive_mod,
+        )
+            .lock(|spi, delay, radio, drive_mod| {
+                let control_message = drive_mod.generate_outgoing_packet();
+
+                let mut packed_data = [0u8; CONTROL_MESSAGE_SIZE];
+                control_message.pack(&mut packed_data).unwrap();
+
+                radio.stop_listening(spi, delay);
+
+                let report = radio.write(&packed_data, spi, delay);
+                radio.flush_tx(spi, delay);
+
+                drive_mod.report_send_result(report);
+                if report {
+                    log::info!("Ack Received");
+                } else {
+                    log::info!("No Ack Received");
+                }
+
+                radio.start_listening(spi, delay);
+            });
+    }
+
+    #[task(priority = 1,shared=[drive_mod, radio, shared_spi,delay])]
+    async fn poll_packet(ctx: poll_packet::Context) {
+        (
+            ctx.shared.shared_spi,
+            ctx.shared.delay,
+            ctx.shared.radio,
+            ctx.shared.drive_mod,
+        )
+            .lock(|spi, delay, radio, drive_mod| {
+                if radio.packet_ready(spi, delay) {
+                    let mut data = [0u8; ROBOT_STATUS_SIZE];
+                    radio.read(&mut data, spi, delay);
+
+                    match RobotStatusMessage::unpack(&data[..]) {
+                        Ok(data) => {
+                            log::info!("Data Received: {:?}", data);
+                            drive_mod.update_incoming_packet(data);
+                        }
+                        Err(err) => {
+                            log::info!("Unable to Unpack Data: {:?}", err)
+                        }
+                    }
+                }
+            });
     }
 }
