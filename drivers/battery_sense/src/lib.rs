@@ -36,20 +36,20 @@ const BATT_VOLTAGE_READ_RANGE: f32 = (MAX_SAFE_BATT_VOLTAGE_READ - MIN_SAFE_BATT
 pub struct BatterySense <AdcT, WordT, PinT, AdcE> where 
         PinT: Channel<AdcT>,
         WordT: Into<u16> + From<u16>,
-        AdcT: OneShot<AdcT, WordT, PinT>,
+        AdcT: OneShot<AdcT, WordT, PinT, Error=AdcE>,
         AdcE: Debug
 {
     adc: AdcT,
     pin: PinT,
     percent_capacity: f32,
-    raw_voltage: WordT
+    raw_voltage: WordT,
 }
 
 
 impl<AdcT, WordT, PinT, AdcE> BatterySense <AdcT, WordT, PinT, AdcE> where 
     PinT: Channel<AdcT>,
     WordT: Into<u16> + From<u16>,
-    AdcT: OneShot<AdcT, WordT, PinT>,
+    AdcT: OneShot<AdcT, WordT, PinT, Error=AdcE>,
     AdcE: Debug
      {
     pub fn new(&mut self, adc: AdcT, pin: PinT) -> Self {
@@ -73,7 +73,7 @@ impl<AdcT, WordT, PinT, AdcE> BatterySense <AdcT, WordT, PinT, AdcE> where
 
     pub fn get_percent_capacity(&mut self) -> Result<u16, BatteryError> {
         let voltage = self.read_voltage()?;
-        Ok(WordT::from(voltage.into() * 26 - 450))
+        Ok(voltage.into() * 26 - 450)
     }
 
 }

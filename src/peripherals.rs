@@ -21,6 +21,7 @@ use fpga_rs::FPGA;
 use rotary_switch_rs::RotarySwitch;
 use io_expander_rs::IoExpander;
 use icm42605_driver::IMU;
+use imxrt_hal::adc::Adc;
 
 use super::GPT_FREQUENCY;
 
@@ -61,3 +62,5 @@ pub type Gpio3 = Port<3>;
 pub type Gpio4 = Port<4>;
 /// The IMU
 pub type Imu = IMU<Lpi2c1>;
+/// One of two ADCs defined under Teensy 4.1 docs
+pub type Adc1 = Adc<1>;
