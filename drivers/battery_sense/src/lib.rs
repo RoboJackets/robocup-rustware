@@ -58,7 +58,7 @@ impl<AdcT, WordT, PinT, AdcE> BatterySense <AdcT, WordT, PinT, AdcE> where
             adc: adc,
             pin: pin,
             percent_capacity: 0.,
-            raw_voltage: 0.
+            raw_voltage: WordT::from(0),
         };
         return instance;
     }
