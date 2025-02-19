@@ -61,3 +61,5 @@ pub type Gpio3 = Port<3>;
 pub type Gpio4 = Port<4>;
 /// The IMU
 pub type Imu = IMU<Lpi2c1>;
+
+pub type adcP = P41;
