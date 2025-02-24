@@ -24,6 +24,7 @@ mod app {
 
     use super::*;
 
+    use embedded_hal::blocking::delay;
     use imxrt_hal::gpio::Input;
     use module_drive::DriveMod;
 
@@ -68,6 +69,7 @@ mod app {
     #[local]
     struct Local {
         dispatcher_tick: u32,
+        last_tick_ms: u32,
     }
 
     pub struct IOInputs {
@@ -188,6 +190,7 @@ mod app {
         init_devices::spawn().ok();
 
         let dispatcher_tick = 0u32;
+        let last_tick_ms = Systick::now().ticks();
 
         (
             Shared {
@@ -198,7 +201,10 @@ mod app {
                 display,
                 module_drive,
             },
-            Local { dispatcher_tick },
+            Local {
+                dispatcher_tick,
+                last_tick_ms,
+            },
         )
     }
 
@@ -309,9 +315,19 @@ mod app {
         }
     }
 
-    #[task(priority = 1)]
+    #[task(priority = 1,local=[last_tick_ms])]
     async fn delay_main(ctx: delay_main::Context) {
-        Systick::delay(10u32.millis()).await;
+        let delay_ms: u32 = 50;
+
+        let now = Systick::now().ticks();
+        let diff: i32 = *ctx.local.last_tick_ms as i32 + delay_ms as i32 - now as i32;
+        *ctx.local.last_tick_ms = now;
+
+        let await_time: u32 = if diff > 0 { diff as u32 } else { 0 };
+
+        if await_time > 0 {
+            Systick::delay(await_time.millis()).await;
+        }
         dispatcher::spawn().ok();
     }
 
@@ -319,20 +335,15 @@ mod app {
     async fn dispatcher(ctx: dispatcher::Context) {
         *ctx.local.dispatcher_tick += 1;
 
-        //100 ms update
-        if *ctx.local.dispatcher_tick % 10 == 0 {
-            poll_packet::spawn().ok();
-        }
-
         //200 ms update
-        if *ctx.local.dispatcher_tick % 20 == 0 {
+        if *ctx.local.dispatcher_tick % 4 == 0 {
             update_display::spawn().ok();
             poll_input_status::spawn().ok();
         }
 
-        //500 ms update
-        if *ctx.local.dispatcher_tick % 15 == 0 {
-            send_packet::spawn().ok();
+        //100 ms update
+        if *ctx.local.dispatcher_tick % 2 == 0 {
+            update_radio::spawn().ok();
         }
 
         delay_main::spawn().ok();
@@ -348,20 +359,9 @@ mod app {
     }
 
     #[task(priority = 1,shared=[module_drive, radio, shared_spi,delay])]
-    async fn send_packet(ctx: send_packet::Context) {
-        (
-            ctx.shared.shared_spi,
-            ctx.shared.delay,
-            ctx.shared.radio,
-            ctx.shared.module_drive,
-        )
-            .lock(|spi, delay, radio, module_drive| {
-                module_drive.radio_send(radio, spi, delay);
-            });
-    }
+    async fn update_radio(ctx: update_radio::Context) {
+        log::info!("Time (ms): {}", Systick::now().ticks());
 
-    #[task(priority = 1,shared=[module_drive, radio, shared_spi,delay])]
-    async fn poll_packet(ctx: poll_packet::Context) {
         (
             ctx.shared.shared_spi,
             ctx.shared.delay,
@@ -369,7 +369,7 @@ mod app {
             ctx.shared.module_drive,
         )
             .lock(|spi, delay, radio, module_drive| {
-                module_drive.radio_poll(radio, spi, delay);
+                module_drive.radio_update(radio, spi, delay);
             });
     }
 }
