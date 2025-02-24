@@ -541,7 +541,27 @@ impl DriveMod {
         return msg;
     }
 
-    pub fn configure_radio(
+    fn enable_radio_listen(
+        &mut self,
+        radio: &mut RFRadio,
+        spi: &mut SharedSPI,
+        delay: &mut Delay2,
+    ) {
+        radio.set_payload_size(ROBOT_STATUS_SIZE as u8, spi, delay);
+        radio.start_listening(spi, delay);
+    }
+
+    fn disable_radio_listen(
+        &mut self,
+        radio: &mut RFRadio,
+        spi: &mut SharedSPI,
+        delay: &mut Delay2,
+    ) {
+        radio.set_payload_size(CONTROL_MESSAGE_SIZE as u8, spi, delay);
+        radio.stop_listening(spi, delay);
+    }
+
+    fn configure_radio(
         &mut self,
         radio: &mut RFRadio,
         spi: &mut SharedSPI,
@@ -551,25 +571,22 @@ impl DriveMod {
 
         radio.set_pa_level(PowerAmplifier::PALow, spi, delay);
         radio.set_channel(CHANNEL, spi, delay);
-        radio.set_payload_size(CONTROL_MESSAGE_SIZE as u8, spi, delay);
         radio.open_writing_pipe(
             ROBOT_RADIO_ADDRESSES[self.settings.team as usize][self.settings.robot_id as usize],
             spi,
             delay,
         );
-        radio.open_reading_pipe(
-            1,
-            BASE_STATION_ADDRESSES[self.settings.team as usize],
-            spi,
-            delay,
-        );
-        radio.start_listening(spi, delay);
+        radio.open_reading_pipe(1, BASE_STATION_ADDRESSES[0], spi, delay);
+        self.enable_radio_listen(radio, spi, delay);
     }
 
-    pub fn radio_send(&mut self, radio: &mut RFRadio, spi: &mut SharedSPI, delay: &mut Delay2) {
+    pub fn radio_update(&mut self, radio: &mut RFRadio, spi: &mut SharedSPI, delay: &mut Delay2) {
         if self.state.current_screen == Screen::Options {
             return;
         }
+
+        //poll for messages we got in the meantime
+        self.radio_poll(radio, spi, delay);
 
         //update radio config if needed
         if self.state.pend_radio_config_update {
@@ -577,7 +594,7 @@ impl DriveMod {
             self.state.pend_radio_config_update = false;
         }
 
-        radio.stop_listening(spi, delay);
+        self.disable_radio_listen(radio, spi, delay);
 
         let control_message = self.generate_outgoing_packet();
 
@@ -587,7 +604,7 @@ impl DriveMod {
         let report = radio.write(&packed_data, spi, delay);
         radio.flush_tx(spi, delay);
 
-        radio.start_listening(spi, delay);
+        self.enable_radio_listen(radio, spi, delay);
 
         match report {
             true => {
@@ -616,19 +633,18 @@ impl DriveMod {
         self.state.fpga_status = msg.fpga_status;
     }
 
-    pub fn radio_poll(&mut self, radio: &mut RFRadio, spi: &mut SharedSPI, delay: &mut Delay2) {
+    fn radio_poll(&mut self, radio: &mut RFRadio, spi: &mut SharedSPI, delay: &mut Delay2) {
         if self.state.current_screen == Screen::Options {
             return;
         }
 
-        log::info!("Polling Radio");
         if radio.packet_ready(spi, delay) {
             let mut data = [0u8; ROBOT_STATUS_SIZE];
             radio.read(&mut data, spi, delay);
 
             match RobotStatusMessage::unpack(&data[..]) {
                 Ok(data) => {
-                    log::info!("Data Received: {:?}", data);
+                    log::info!("Data Received!");
                     self.update_incoming_packet(data);
                 }
                 Err(err) => {
