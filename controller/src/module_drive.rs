@@ -509,9 +509,13 @@ impl DriveMod {
 
     fn generate_outgoing_packet(&mut self) -> ControlMessage {
         //this is a *very* basic joystick mapping
-        let lx = self.state.input_state.joy_lx;
-        let ly = self.state.input_state.joy_ly;
-        let lw = self.state.input_state.joy_rx as f32 / 1024.0 - 0.5;
+        let lx = self.state.input_state.joy_lx as i32 - 512;
+        let ly = self.state.input_state.joy_ly as i32 - 512;
+        let lw = self.state.input_state.joy_rx as i32 - 512;
+
+        let body_x = (lx as f32 / 512.0) * 2.0;
+        let body_y = (ly as f32 / 512.0) * 2.0;
+        let body_w = (lw as f32 / 512.0) * 3.0;
 
         let msg = ControlMessageBuilder::new()
             .robot_id(self.settings.robot_id)
@@ -531,9 +535,9 @@ impl DriveMod {
                 2 => TriggerMode::OnBreakBeam,
                 _ => TriggerMode::StandDown,
             })
-            .body_x(lx as f32)
-            .body_y(ly as f32)
-            .body_w(lw as f32)
+            .body_x(body_x)
+            .body_y(body_y)
+            .body_w(body_w)
             .dribbler_speed(self.settings.dribbler_speed as i8)
             .kick_strength(self.settings.kick_strength)
             .build();
@@ -561,12 +565,7 @@ impl DriveMod {
         radio.stop_listening(spi, delay);
     }
 
-    fn configure_radio(
-        &mut self,
-        radio: &mut RFRadio,
-        spi: &mut SharedSPI,
-        delay: &mut Delay2,
-    ) {
+    fn configure_radio(&mut self, radio: &mut RFRadio, spi: &mut SharedSPI, delay: &mut Delay2) {
         log::info!("Configuring Radio");
 
         radio.set_pa_level(PowerAmplifier::PALow, spi, delay);
