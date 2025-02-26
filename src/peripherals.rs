@@ -15,6 +15,7 @@ use teensy4_bsp::hal::{
     gpt::{Gpt1, Gpt2},
     timer::Blocking,
     pit::Pit2,
+    adc::AnalogInput,
 };
 
 use fpga_rs::FPGA;
@@ -64,7 +65,7 @@ pub type Gpio4 = Port<4>;
 /// The IMU
 pub type Imu = IMU<Lpi2c1>;
 
-pub type AdcP = P41;
+pub type AdcP = AnalogInput<P41, 1>;
 
 /// One of two ADCs defined under Teensy 4.1 docs
 pub type Adc1 = Adc<1>;

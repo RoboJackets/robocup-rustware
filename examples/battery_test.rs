@@ -27,6 +27,8 @@ use battery_sense::BatterySense;
 
 
 use embedded_alloc::Heap;
+use teensy4_pins::t41::*;
+use bsp::hal::adc::AnalogInput;
 
 #[global_allocator]
 static HEAP: Heap = Heap::empty();
@@ -73,7 +75,8 @@ mod app {
         Systick::start(cx.core.SYST, 36_000_000, systick_token);
 
         // TODO change the pin input to be an analog input
-        let mut battery_sensor = BatterySenseT::new(adc1, pins.p41);
+        let mut p41_input = bsp::hal::adc::AnalogInput::new(pins.p41);
+        let mut battery_sensor = BatterySenseT::new( adc1, p41_input);
         let mut current_capacity: u16 = 0;
 
         get_battery_capacity::spawn().ok();
@@ -97,8 +100,8 @@ mod app {
     }
 
     #[task(priority=1, shared = [battery_capacity], local = [battery_sensor])]
-    async fn get_battery_capacity(cx: get_battery_capacity::Context) {
-        let capacity: u16 = cx.local.battery_sensor.get_percent_capacity();
+    async fn get_battery_capacity(mut cx: get_battery_capacity::Context) {
+        let mut capacity: u16 = cx.local.battery_sensor.get_percent_capacity().expect("Invalid response for get_percent_capacity");
         cx.shared.battery_capacity.lock(| battery_capacity | {
             *battery_capacity = capacity;
         });

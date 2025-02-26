@@ -53,7 +53,7 @@ impl<AdcT, WordT, PinT, AdcE> BatterySense <AdcT, WordT, PinT, AdcE> where
     AdcT: OneShot<AdcT, WordT, PinT, Error=AdcE>,
     AdcE: Debug
      {
-    pub fn new(&mut self, adc: AdcT, pin: PinT) -> Self {
+    pub fn new( adc: AdcT, pin: PinT) -> Self {
 
         let instance = Self {
             adc: adc,
