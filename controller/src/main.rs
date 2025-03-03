@@ -12,6 +12,7 @@ use embedded_alloc::Heap;
 
 mod module_drive;
 mod module_types;
+mod module_util;
 
 #[global_allocator]
 static HEAP: Heap = Heap::empty();
@@ -21,7 +22,7 @@ use teensy4_panic as _;
 #[rtic::app(device = teensy4_bsp, peripherals = true, dispatchers = [GPT2,GPT1])]
 mod app {
 
-    use crate::module_types::{ControllerModule, InputStateUpdate};
+    use crate::module_types::{ControllerModule, InputStateUpdate, RadioSettings};
 
     use super::*;
 
@@ -53,7 +54,7 @@ mod app {
     use robojackets_robocup_rtp::{CONTROL_MESSAGE_SIZE, ROBOT_RADIO_ADDRESSES};
 
     use robojackets_robocup_control::{
-        Delay2, RFRadio, SharedSPI, CHANNEL, GPT_CLOCK_SOURCE, GPT_DIVIDER, GPT_FREQUENCY,
+        radio, Delay2, RFRadio, SharedSPI, CHANNEL, GPT_CLOCK_SOURCE, GPT_DIVIDER, GPT_FREQUENCY,
     };
 
     use ssd1306::{prelude::*, I2CDisplayInterface, Ssd1306};
@@ -91,6 +92,7 @@ mod app {
             DisplaySize128x64,
             ssd1306::mode::BufferedGraphicsMode<DisplaySize128x64>,
         >,
+        radio_settings: RadioSettings,
         module_drive: DriveMod,
     }
 
@@ -187,6 +189,12 @@ mod app {
         let dispatcher_tick = 0u32;
         let last_tick_ms = Systick::now().ticks();
 
+        //set radio settings
+        let radio_settings = RadioSettings {
+            team: 0,
+            robot_id: 0,
+        };
+
         (
             Shared {
                 shared_spi,
@@ -195,6 +203,7 @@ mod app {
                 radio,
                 display,
                 module_drive,
+                radio_settings,
             },
             Local {
                 dispatcher_tick,
@@ -353,7 +362,7 @@ mod app {
         });
     }
 
-    #[task(priority = 1,shared=[module_drive, radio, shared_spi,delay])]
+    #[task(priority = 1,shared=[module_drive, radio, shared_spi,delay,radio_settings])]
     async fn update_radio(ctx: update_radio::Context) {
         log::info!("Time (ms): {}", Systick::now().ticks());
 
@@ -362,9 +371,10 @@ mod app {
             ctx.shared.delay,
             ctx.shared.radio,
             ctx.shared.module_drive,
+            ctx.shared.radio_settings,
         )
-            .lock(|spi, delay, radio, module_drive| {
-                module_drive.radio_update(radio, spi, delay);
+            .lock(|spi, delay, radio, module_drive, radio_settings| {
+                module_drive.radio_update(radio, spi, delay, radio_settings);
             });
     }
 }
