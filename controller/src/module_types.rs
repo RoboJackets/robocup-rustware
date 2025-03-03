@@ -27,10 +27,21 @@ pub enum NextModule {
     Drive_Mode = 2, //directly go to drive mode
 }
 
+pub struct RadioSettings {
+    pub team: u8,
+    pub robot_id: u8,
+}
+
 pub trait ControllerModule {
     fn new() -> Self;
     fn update_display(&self, display: Display);
     fn update_inputs(&mut self, input: InputStateUpdate);
-    fn radio_update(&mut self, radio: &mut RFRadio, spi: &mut SharedSPI, delay: &mut Delay2);
+    fn radio_update(
+        &mut self,
+        radio: &mut RFRadio,
+        spi: &mut SharedSPI,
+        delay: &mut Delay2,
+        settings: RadioSettings,
+    );
     fn next_module(&self) -> NextModule;
 }
