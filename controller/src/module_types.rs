@@ -22,9 +22,9 @@ pub struct InputStateUpdate {
 use robojackets_robocup_control::{Delay2, RFRadio, SharedSPI};
 
 pub enum NextModule {
-    None = 0,       //don't change
-    Menu = 1,       //send back to menu
-    Drive_Mode = 2, //directly go to drive mode
+    None = 0,      //don't change
+    Menu = 1,      //send back to menu
+    DriveMode = 2, //directly go to drive mode
 }
 
 pub struct RadioSettings {
@@ -32,8 +32,7 @@ pub struct RadioSettings {
     pub robot_id: u8,
 }
 
-pub trait ControllerModule {
-    fn new() -> Self;
+pub trait ControllerModule: Send + Sync {
     fn update_display(&self, display: Display);
     fn update_inputs(&mut self, input: InputStateUpdate);
     fn radio_update(&mut self, radio: &mut RFRadio, spi: &mut SharedSPI, delay: &mut Delay2);
