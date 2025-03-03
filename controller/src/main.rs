@@ -351,9 +351,16 @@ mod app {
         dispatcher::spawn().ok();
     }
 
-    #[task(priority = 1,local=[dispatcher_tick])]
+    #[task(priority = 1,local=[dispatcher_tick],shared=[modules,active_module])]
     async fn dispatcher(ctx: dispatcher::Context) {
         *ctx.local.dispatcher_tick += 1;
+
+        (ctx.shared.modules, ctx.shared.active_module).lock(|modules, active_module| {
+            let next_module = modules[*active_module].next_module();
+            if next_module != module_types::NextModule::None {
+                *active_module = next_module as usize;
+            }
+        });
 
         //200 ms update
         if *ctx.local.dispatcher_tick % 4 == 0 {

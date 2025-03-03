@@ -21,6 +21,7 @@ pub struct InputStateUpdate {
 
 use robojackets_robocup_control::{Delay2, RFRadio, SharedSPI};
 
+#[derive(PartialEq)]
 pub enum NextModule {
     None = -1,     //don't change
     Menu = 0,      //send back to menu
