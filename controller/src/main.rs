@@ -11,6 +11,7 @@ extern crate alloc;
 use embedded_alloc::Heap;
 
 mod module_drive;
+mod module_types;
 
 #[global_allocator]
 static HEAP: Heap = Heap::empty();
@@ -20,11 +21,10 @@ use teensy4_panic as _;
 #[rtic::app(device = teensy4_bsp, peripherals = true, dispatchers = [GPT2,GPT1])]
 mod app {
 
-    use crate::module_drive::InputStateUpdate;
+    use crate::module_types::{ControllerModule, InputStateUpdate};
 
     use super::*;
 
-    use embedded_hal::blocking::delay;
     use imxrt_hal::gpio::Input;
     use module_drive::DriveMod;
 
@@ -41,8 +41,6 @@ mod app {
 
     use rtic_monotonics::{systick::*, Monotonic};
 
-    use ncomm_utils::packing::Packable;
-
     use bsp::hal;
     use bsp::hal::adc::{Adc, AnalogInput};
     use hal::gpio::Trigger;
@@ -51,14 +49,11 @@ mod app {
     use bsp::ral;
     use ral::lpspi::LPSPI3;
 
-    use robojackets_robocup_rtp::{
-        ControlMessageBuilder, RobotStatusMessage, CONTROL_MESSAGE_SIZE, ROBOT_RADIO_ADDRESSES,
-    };
-    use robojackets_robocup_rtp::{BASE_STATION_ADDRESSES, ROBOT_STATUS_SIZE};
+    use robojackets_robocup_rtp::BASE_STATION_ADDRESSES;
+    use robojackets_robocup_rtp::{CONTROL_MESSAGE_SIZE, ROBOT_RADIO_ADDRESSES};
 
     use robojackets_robocup_control::{
         Delay2, RFRadio, SharedSPI, CHANNEL, GPT_CLOCK_SOURCE, GPT_DIVIDER, GPT_FREQUENCY,
-        RADIO_ADDRESS,
     };
 
     use ssd1306::{prelude::*, I2CDisplayInterface, Ssd1306};

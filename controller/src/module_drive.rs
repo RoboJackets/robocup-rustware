@@ -3,7 +3,7 @@ extern crate alloc;
 use alloc::string::ToString;
 use core::cmp;
 use embedded_graphics::{
-    mono_font::{ascii::FONT_6X10, MonoTextStyle, MonoTextStyleBuilder},
+    mono_font::{ascii::FONT_6X10, MonoTextStyleBuilder},
     pixelcolor::BinaryColor,
     prelude::Point,
     text::{Baseline, Text},
@@ -12,8 +12,6 @@ use embedded_graphics::{
 use robojackets_robocup_control::{Delay2, RFRadio, SharedSPI, CHANNEL};
 use rtic_monotonics::{systick::Systick, Monotonic};
 use rtic_nrf24l01::config::power_amplifier::PowerAmplifier;
-use ssd1306::{prelude::*, Ssd1306};
-use teensy4_pins::t41::*;
 
 use robojackets_robocup_rtp::{
     control_message::{ShootMode, TriggerMode},
@@ -21,13 +19,11 @@ use robojackets_robocup_rtp::{
     CONTROL_MESSAGE_SIZE, ROBOT_RADIO_ADDRESSES, ROBOT_STATUS_SIZE,
 };
 
-use ncomm_utils::packing::Packable;
+use crate::module_types::ControllerModule;
+use crate::module_types::Display;
+use crate::module_types::InputStateUpdate;
 
-pub type Display<'a> = &'a mut Ssd1306<
-    I2CInterface<imxrt_hal::lpi2c::Lpi2c<imxrt_hal::lpi2c::Pins<P19, P18>, 1>>,
-    DisplaySize128x64,
-    ssd1306::mode::BufferedGraphicsMode<DisplaySize128x64>,
->;
+use ncomm_utils::packing::Packable;
 
 pub struct InternalSettngs {
     robot_id: u8,
@@ -54,18 +50,6 @@ struct InputState {
     joy_ly: u16,
     joy_rx: u16,
     joy_ry: u16,
-}
-
-pub struct InputStateUpdate {
-    pub btn_left: Option<bool>,
-    pub btn_right: Option<bool>,
-    pub btn_up: Option<bool>,
-    pub btn_down: Option<bool>,
-
-    pub joy_lx: Option<u16>,
-    pub joy_ly: Option<u16>,
-    pub joy_rx: Option<u16>,
-    pub joy_ry: Option<u16>,
 }
 
 struct InternalState {
@@ -149,48 +133,14 @@ fn render_text(display: Display, text: &str, x: u8, y: u8, highlight: bool) {
     .unwrap();
 }
 
-impl DriveMod {
-    pub fn new() -> DriveMod {
-        DriveMod {
-            settings: InternalSettngs {
-                robot_id: 0,
-                team: 0,
-                shoot_mode: 0,
-                trigger_mode: 0,
-                dribbler_speed: 0,
-                kick_strength: 0,
-            },
-            state: InternalState {
-                dribbler_enabled: false,
-                kicker_state: 0,
-
-                ball_sense_status: false,
-                kick_health: false,
-                battery_voltage: 0,
-                motor_error: 0,
-                fpga_status: false,
-
-                conn_acks_last: [false; 100],
-                conn_acks_attempts: 0,
-
-                current_screen: Screen::Main,
-                options_selected_entry: 0,
-
-                input_state: InputState {
-                    btn_last: 0,
-                    btn_press_timeout: 0,
-
-                    joy_lx: 0,
-                    joy_ly: 0,
-                    joy_rx: 0,
-                    joy_ry: 0,
-                },
-
-                pend_radio_config_update: false,
-            },
-        }
+fn joy_map(val: i32, deadzone: i32) -> i32 {
+    if val.abs() < deadzone {
+        return 0;
     }
+    return val;
+}
 
+impl DriveMod {
     fn get_successful_ack_count(&self) -> u32 {
         let mut count = 0;
         for i in 0..cmp::min(100, self.state.conn_acks_attempts) {
@@ -323,15 +273,6 @@ impl DriveMod {
             let is_selected = start + i == self.state.options_selected_entry as i32;
             render_text(display, entry_name, 2, y as u8, is_selected);
             render_text(display, entry_value, 104, y as u8, is_selected);
-        }
-    }
-
-    pub fn update_display(&self, display: Display) {
-        self.render_header(display);
-        match self.state.current_screen {
-            Screen::Main => self.render_main_screen(display),
-            Screen::MainReceiv => self.render_main_receiv(display),
-            Screen::Options => self.render_settings(display),
         }
     }
 
@@ -476,45 +417,14 @@ impl DriveMod {
         }
     }
 
-    pub fn update_inputs(&mut self, inputs: InputStateUpdate) {
-        //only update joysticks if all are present
-        if inputs.joy_lx.is_some()
-            && inputs.joy_ly.is_some()
-            && inputs.joy_rx.is_some()
-            && inputs.joy_ry.is_some()
-        {
-            self.update_joysticks(
-                inputs.joy_lx.unwrap(),
-                inputs.joy_ly.unwrap(),
-                inputs.joy_rx.unwrap(),
-                inputs.joy_ry.unwrap(),
-            );
-        }
-
-        //only update buttons if all are present
-        if inputs.btn_left.is_some()
-            && inputs.btn_right.is_some()
-            && inputs.btn_up.is_some()
-            && inputs.btn_down.is_some()
-        {
-            let new_state = encode_btn_state(
-                inputs.btn_left.unwrap(),
-                inputs.btn_right.unwrap(),
-                inputs.btn_up.unwrap(),
-                inputs.btn_down.unwrap(),
-            );
-            self.update_buttons(new_state);
-        }
-    }
-
     fn generate_outgoing_packet(&mut self) -> ControlMessage {
         //this is a *very* basic joystick mapping
-        let lx = self.state.input_state.joy_lx as i32 - 512;
-        let ly = self.state.input_state.joy_ly as i32 - 512;
-        let lw = self.state.input_state.joy_rx as i32 - 512;
+        let lx = joy_map(self.state.input_state.joy_lx as i32 - 512, 10);
+        let ly = joy_map(self.state.input_state.joy_ly as i32 - 512, 10);
+        let lw = joy_map(self.state.input_state.joy_rx as i32 - 512, 10);
 
-        let body_x = (lx as f32 / 512.0) * 2.0;
-        let body_y = (ly as f32 / 512.0) * 2.0;
+        let body_x = (lx as f32 / 512.0) * 1.0;
+        let body_y = (ly as f32 / 512.0) * 1.0;
         let body_w = (lw as f32 / 512.0) * 3.0;
 
         let msg = ControlMessageBuilder::new()
@@ -538,7 +448,11 @@ impl DriveMod {
             .body_x(body_x)
             .body_y(body_y)
             .body_w(body_w)
-            .dribbler_speed(self.settings.dribbler_speed as i8)
+            .dribbler_speed(if self.state.dribbler_enabled {
+                self.settings.dribbler_speed as i8
+            } else {
+                0
+            })
             .kick_strength(self.settings.kick_strength)
             .build();
 
@@ -579,7 +493,119 @@ impl DriveMod {
         self.enable_radio_listen(radio, spi, delay);
     }
 
-    pub fn radio_update(&mut self, radio: &mut RFRadio, spi: &mut SharedSPI, delay: &mut Delay2) {
+    fn update_incoming_packet(&mut self, msg: RobotStatusMessage) {
+        self.state.ball_sense_status = msg.ball_sense_status;
+        self.state.kick_health = msg.kick_healthy;
+        self.state.battery_voltage = msg.battery_voltage;
+        self.state.motor_error = msg.motor_errors;
+        self.state.fpga_status = msg.fpga_status;
+    }
+
+    fn radio_poll(&mut self, radio: &mut RFRadio, spi: &mut SharedSPI, delay: &mut Delay2) {
+        if self.state.current_screen == Screen::Options {
+            return;
+        }
+
+        if radio.packet_ready(spi, delay) {
+            let mut data = [0u8; ROBOT_STATUS_SIZE];
+            radio.read(&mut data, spi, delay);
+
+            match RobotStatusMessage::unpack(&data[..]) {
+                Ok(data) => {
+                    log::info!("Data Received!");
+                    self.update_incoming_packet(data);
+                }
+                Err(err) => {
+                    log::info!("Unable to Unpack Data: {:?}", err)
+                }
+            }
+        }
+    }
+}
+
+impl ControllerModule for DriveMod {
+    fn new() -> DriveMod {
+        DriveMod {
+            settings: InternalSettngs {
+                robot_id: 0,
+                team: 0,
+                shoot_mode: 0,
+                trigger_mode: 0,
+                dribbler_speed: 0,
+                kick_strength: 0,
+            },
+            state: InternalState {
+                dribbler_enabled: false,
+                kicker_state: 0,
+
+                ball_sense_status: false,
+                kick_health: false,
+                battery_voltage: 0,
+                motor_error: 0,
+                fpga_status: false,
+
+                conn_acks_last: [false; 100],
+                conn_acks_attempts: 0,
+
+                current_screen: Screen::Main,
+                options_selected_entry: 0,
+
+                input_state: InputState {
+                    btn_last: 0,
+                    btn_press_timeout: 0,
+
+                    joy_lx: 0,
+                    joy_ly: 0,
+                    joy_rx: 0,
+                    joy_ry: 0,
+                },
+
+                pend_radio_config_update: false,
+            },
+        }
+    }
+
+    fn update_display(&self, display: Display) {
+        self.render_header(display);
+        match self.state.current_screen {
+            Screen::Main => self.render_main_screen(display),
+            Screen::MainReceiv => self.render_main_receiv(display),
+            Screen::Options => self.render_settings(display),
+        }
+    }
+
+    fn update_inputs(&mut self, inputs: InputStateUpdate) {
+        //only update joysticks if all are present
+        if inputs.joy_lx.is_some()
+            && inputs.joy_ly.is_some()
+            && inputs.joy_rx.is_some()
+            && inputs.joy_ry.is_some()
+        {
+            self.update_joysticks(
+                inputs.joy_lx.unwrap(),
+                inputs.joy_ly.unwrap(),
+                inputs.joy_rx.unwrap(),
+                inputs.joy_ry.unwrap(),
+            );
+        }
+
+        //only update buttons if all are present
+        if inputs.btn_left.is_some()
+            && inputs.btn_right.is_some()
+            && inputs.btn_up.is_some()
+            && inputs.btn_down.is_some()
+        {
+            let new_state = encode_btn_state(
+                inputs.btn_left.unwrap(),
+                inputs.btn_right.unwrap(),
+                inputs.btn_up.unwrap(),
+                inputs.btn_down.unwrap(),
+            );
+            self.update_buttons(new_state);
+        }
+    }
+
+    fn radio_update(&mut self, radio: &mut RFRadio, spi: &mut SharedSPI, delay: &mut Delay2) {
         if self.state.current_screen == Screen::Options {
             return;
         }
@@ -623,33 +649,7 @@ impl DriveMod {
 
         self.state.conn_acks_attempts += 1;
     }
-
-    fn update_incoming_packet(&mut self, msg: RobotStatusMessage) {
-        self.state.ball_sense_status = msg.ball_sense_status;
-        self.state.kick_health = msg.kick_healthy;
-        self.state.battery_voltage = msg.battery_voltage;
-        self.state.motor_error = msg.motor_errors;
-        self.state.fpga_status = msg.fpga_status;
-    }
-
-    fn radio_poll(&mut self, radio: &mut RFRadio, spi: &mut SharedSPI, delay: &mut Delay2) {
-        if self.state.current_screen == Screen::Options {
-            return;
-        }
-
-        if radio.packet_ready(spi, delay) {
-            let mut data = [0u8; ROBOT_STATUS_SIZE];
-            radio.read(&mut data, spi, delay);
-
-            match RobotStatusMessage::unpack(&data[..]) {
-                Ok(data) => {
-                    log::info!("Data Received!");
-                    self.update_incoming_packet(data);
-                }
-                Err(err) => {
-                    log::info!("Unable to Unpack Data: {:?}", err)
-                }
-            }
-        }
+    fn next_module(&self) -> crate::module_types::NextModule {
+        crate::module_types::NextModule::None
     }
 }
