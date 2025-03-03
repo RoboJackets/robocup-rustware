@@ -2,13 +2,7 @@ extern crate alloc;
 
 use alloc::string::ToString;
 use core::cmp;
-use embedded_graphics::{
-    mono_font::{ascii::FONT_6X10, MonoTextStyleBuilder},
-    pixelcolor::BinaryColor,
-    prelude::Point,
-    text::{Baseline, Text},
-    Drawable,
-};
+
 use robojackets_robocup_control::{Delay2, RFRadio, SharedSPI, CHANNEL};
 use rtic_monotonics::{systick::Systick, Monotonic};
 use rtic_nrf24l01::config::power_amplifier::PowerAmplifier;
@@ -19,9 +13,11 @@ use robojackets_robocup_rtp::{
     CONTROL_MESSAGE_SIZE, ROBOT_RADIO_ADDRESSES, ROBOT_STATUS_SIZE,
 };
 
-use crate::module_types::ControllerModule;
 use crate::module_types::Display;
 use crate::module_types::InputStateUpdate;
+use crate::module_types::{ControllerModule, RadioSettings};
+
+use crate::module_util::{encode_btn_state, render_text};
 
 use ncomm_utils::packing::Packable;
 
@@ -88,50 +84,6 @@ pub struct DriveMod {
 const TEAM_NAME_MAP: [&str; 2] = ["BLU", "YLW"];
 const SHOOT_MODE_MAP: [&str; 2] = ["KICK", "CHIP"];
 const TRIGGER_MODE_MAP: [&str; 3] = ["DISB", "IMM ", "BRKB"];
-
-fn encode_btn_state(left: bool, right: bool, up: bool, down: bool) -> u8 {
-    let mut btn = 0u8;
-    if left {
-        btn |= 1 << 0;
-    }
-    if right {
-        btn |= 1 << 1;
-    }
-    if up {
-        btn |= 1 << 2;
-    }
-    if down {
-        btn |= 1 << 3;
-    }
-    return btn;
-}
-
-fn render_text(display: Display, text: &str, x: u8, y: u8, highlight: bool) {
-    let default_text_style = MonoTextStyleBuilder::new()
-        .font(&FONT_6X10)
-        .text_color(BinaryColor::On)
-        .background_color(BinaryColor::Off)
-        .build();
-
-    let selected_text_style = MonoTextStyleBuilder::new()
-        .font(&FONT_6X10)
-        .text_color(BinaryColor::Off)
-        .background_color(BinaryColor::On)
-        .build();
-
-    Text::with_baseline(
-        text,
-        Point::new(x as i32, y as i32),
-        if highlight {
-            selected_text_style
-        } else {
-            default_text_style
-        },
-        Baseline::Top,
-    )
-    .draw(display)
-    .unwrap();
-}
 
 fn joy_map(val: i32, deadzone: i32) -> i32 {
     if val.abs() < deadzone {
@@ -605,13 +557,26 @@ impl ControllerModule for DriveMod {
         }
     }
 
-    fn radio_update(&mut self, radio: &mut RFRadio, spi: &mut SharedSPI, delay: &mut Delay2) {
+    fn radio_update(
+        &mut self,
+        radio: &mut RFRadio,
+        spi: &mut SharedSPI,
+        delay: &mut Delay2,
+        settings: &mut RadioSettings,
+    ) {
         if self.state.current_screen == Screen::Options {
             return;
         }
 
         //poll for messages we got in the meantime
         self.radio_poll(radio, spi, delay);
+
+        //update team and robot id
+        if self.settings.team != settings.team || self.settings.robot_id != settings.robot_id {
+            self.settings.team = settings.team;
+            self.settings.robot_id = settings.robot_id;
+            self.state.pend_radio_config_update = true;
+        }
 
         //update radio config if needed
         if self.state.pend_radio_config_update {
@@ -649,6 +614,7 @@ impl ControllerModule for DriveMod {
 
         self.state.conn_acks_attempts += 1;
     }
+
     fn next_module(&self) -> crate::module_types::NextModule {
         crate::module_types::NextModule::None
     }

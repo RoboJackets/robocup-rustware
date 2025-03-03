@@ -41,7 +41,7 @@ pub trait ControllerModule {
         radio: &mut RFRadio,
         spi: &mut SharedSPI,
         delay: &mut Delay2,
-        settings: RadioSettings,
+        settings: &mut RadioSettings,
     );
     fn next_module(&self) -> NextModule;
 }
