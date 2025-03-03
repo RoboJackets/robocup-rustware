@@ -22,9 +22,9 @@ pub struct InputStateUpdate {
 use robojackets_robocup_control::{Delay2, RFRadio, SharedSPI};
 
 pub enum NextModule {
-    None = 0,      //don't change
-    Menu = 1,      //send back to menu
-    DriveMode = 2, //directly go to drive mode
+    None = -1,     //don't change
+    Menu = 0,      //send back to menu
+    DriveMode = 1, //directly go to drive mode
 }
 
 pub struct RadioSettings {
