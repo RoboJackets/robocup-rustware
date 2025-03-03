@@ -26,6 +26,7 @@ mod app {
 
     use super::*;
 
+    use alloc::boxed::Box;
     use imxrt_hal::gpio::Input;
     use module_drive::DriveMod;
     use module_types::{ControllerModule, RadioSettings};
@@ -248,47 +249,54 @@ mod app {
 
     #[task(
         binds = GPIO4_COMBINED_0_15,
-        priority = 1, shared=[inputs,activeModule])]
+        priority = 1, shared=[inputs,modules,active_module])]
     fn btn_changed_int(ctx: btn_changed_int::Context) {
         log::info!("Button Interrupt");
-        (ctx.shared.inputs, ctx.shared.activeModule).lock(|inputs, module| {
-            //clear what was pressed
-            inputs.btn_left.clear_triggered();
-            inputs.btn_right.clear_triggered();
-            inputs.btn_up.clear_triggered();
-            inputs.btn_down.clear_triggered();
+        (
+            ctx.shared.inputs,
+            ctx.shared.modules,
+            ctx.shared.active_module,
+        )
+            .lock(|inputs, module, active_module| {
+                //clear what was pressed
+                inputs.btn_left.clear_triggered();
+                inputs.btn_right.clear_triggered();
+                inputs.btn_up.clear_triggered();
+                inputs.btn_down.clear_triggered();
 
-            //debounce
+                //debounce
 
-            //Teensy 4 runs at 600MHz, so this is ~10ms
-            cortex_m::asm::delay(6_000_000);
+                //Teensy 4 runs at 600MHz, so this is ~10ms
+                cortex_m::asm::delay(6_000_000);
 
-            let btn_left = inputs.btn_left.is_set();
-            let btn_right = inputs.btn_right.is_set();
-            let btn_up = inputs.btn_up.is_set();
-            let btn_down = inputs.btn_down.is_set();
+                let btn_left = inputs.btn_left.is_set();
+                let btn_right = inputs.btn_right.is_set();
+                let btn_up = inputs.btn_up.is_set();
+                let btn_down = inputs.btn_down.is_set();
 
-            let state_update = InputStateUpdate {
-                btn_left: Some(btn_left),
-                btn_right: Some(btn_right),
-                btn_up: Some(btn_up),
-                btn_down: Some(btn_down),
-                joy_lx: None,
-                joy_ly: None,
-                joy_rx: None,
-                joy_ry: None,
-            };
-        });
+                let state_update = InputStateUpdate {
+                    btn_left: Some(btn_left),
+                    btn_right: Some(btn_right),
+                    btn_up: Some(btn_up),
+                    btn_down: Some(btn_down),
+                    joy_lx: None,
+                    joy_ly: None,
+                    joy_rx: None,
+                    joy_ry: None,
+                };
+
+                module[*active_module].update_inputs(state_update);
+            });
     }
 
-    #[task(priority = 1, shared=[inputs,modules,activeModule])]
+    #[task(priority = 1, shared=[inputs,modules,active_module])]
     async fn poll_input_status(ctx: poll_input_status::Context) {
         (
             ctx.shared.inputs,
             ctx.shared.modules,
-            ctx.shared.activeModule,
+            ctx.shared.active_module,
         )
-            .lock(|inputs, modules, activeModule| {
+            .lock(|inputs, modules, active_module| {
                 //debounce
 
                 //Teensy 4 runs at 600MHz, so this is ~10ms
@@ -316,7 +324,7 @@ mod app {
                     joy_ry: Some(joy_ry),
                 };
 
-                modules[*activeModule].update_inputs(state_update);
+                modules[*active_module].update_inputs(state_update);
             });
     }
 
@@ -361,21 +369,21 @@ mod app {
         delay_main::spawn().ok();
     }
 
-    #[task(priority = 1,shared=[display, modules,activeModule])]
+    #[task(priority = 1,shared=[display, modules,active_module])]
     async fn update_display(ctx: update_display::Context) {
         (
             ctx.shared.modules,
             ctx.shared.display,
-            ctx.shared.activeModule,
+            ctx.shared.active_module,
         )
-            .lock(|modules, display, activeModule| {
+            .lock(|modules, display, active_module| {
                 display.clear();
-                modules[*activeModule].update_display(display);
+                modules[*active_module].update_display(display);
                 display.flush().unwrap();
             });
     }
 
-    #[task(priority = 1,shared=[modules, radio, shared_spi,delay,radio_settings,activeModule])]
+    #[task(priority = 1,shared=[modules, radio, shared_spi,delay,radio_settings,active_module])]
     async fn update_radio(ctx: update_radio::Context) {
         log::info!("Time (ms): {}", Systick::now().ticks());
 
@@ -385,11 +393,13 @@ mod app {
             ctx.shared.radio,
             ctx.shared.modules,
             ctx.shared.radio_settings,
-            ctx.shared.activeModule,
+            ctx.shared.active_module,
         )
-            .lock(|spi, delay, radio, modules, radio_settings, activeModule| {
-                modules[*activeModule].update_settings(radio_settings);
-                modules[*activeModule].radio_update(radio, spi, delay);
-            });
+            .lock(
+                |spi, delay, radio, modules, radio_settings, active_module| {
+                    modules[*active_module].update_settings(radio_settings);
+                    modules[*active_module].radio_update(radio, spi, delay);
+                },
+            );
     }
 }
