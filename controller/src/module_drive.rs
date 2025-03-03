@@ -557,26 +557,13 @@ impl ControllerModule for DriveMod {
         }
     }
 
-    fn radio_update(
-        &mut self,
-        radio: &mut RFRadio,
-        spi: &mut SharedSPI,
-        delay: &mut Delay2,
-        settings: &mut RadioSettings,
-    ) {
+    fn radio_update(&mut self, radio: &mut RFRadio, spi: &mut SharedSPI, delay: &mut Delay2) {
         if self.state.current_screen == Screen::Options {
             return;
         }
 
         //poll for messages we got in the meantime
         self.radio_poll(radio, spi, delay);
-
-        //update team and robot id
-        if self.settings.team != settings.team || self.settings.robot_id != settings.robot_id {
-            self.settings.team = settings.team;
-            self.settings.robot_id = settings.robot_id;
-            self.state.pend_radio_config_update = true;
-        }
 
         //update radio config if needed
         if self.state.pend_radio_config_update {
@@ -613,6 +600,11 @@ impl ControllerModule for DriveMod {
         self.state.conn_acks_last[0] = report;
 
         self.state.conn_acks_attempts += 1;
+    }
+
+    fn update_settings(&mut self, settings: &mut RadioSettings) {
+        self.settings.robot_id = settings.robot_id;
+        self.settings.team = settings.team;
     }
 
     fn next_module(&self) -> crate::module_types::NextModule {

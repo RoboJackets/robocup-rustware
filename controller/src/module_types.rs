@@ -36,12 +36,7 @@ pub trait ControllerModule {
     fn new() -> Self;
     fn update_display(&self, display: Display);
     fn update_inputs(&mut self, input: InputStateUpdate);
-    fn radio_update(
-        &mut self,
-        radio: &mut RFRadio,
-        spi: &mut SharedSPI,
-        delay: &mut Delay2,
-        settings: &mut RadioSettings,
-    );
+    fn radio_update(&mut self, radio: &mut RFRadio, spi: &mut SharedSPI, delay: &mut Delay2);
+    fn update_settings(&mut self, settings: &mut RadioSettings);
     fn next_module(&self) -> NextModule;
 }

@@ -374,7 +374,8 @@ mod app {
             ctx.shared.radio_settings,
         )
             .lock(|spi, delay, radio, module_drive, radio_settings| {
-                module_drive.radio_update(radio, spi, delay, radio_settings);
+                module_drive.update_settings(radio_settings);
+                module_drive.radio_update(radio, spi, delay);
             });
     }
 }
