@@ -6,34 +6,20 @@
 #![allow(unused_assignments)]
 #![no_std]
 #![crate_type = "lib"]
-//#![deny(missing_docs)]
+#![deny(missing_docs)]
 
 
 
 use core::fmt::Debug;
-use imxrt_hal as hal;
-use hal::adc::{Adc,AnalogInput};
-use hal::adc::*;
 use embedded_hal::adc::{OneShot, Channel};
-use core::convert::Infallible;
 
 // import fpga error type
 pub mod error;
 use error::BatteryError;
 
-/// Taken from the C++ firmware
-/// 5-cell lipo * 4.2 v per cell = 21 battery vols
-/// 68k and 10k ohm voltage divider, analog in read voltage 2.756
-const MAX_SAFE_BATT_VOLTAGE_READ: f32 = 2.692;
 
-/// 5-cell lip * 3 v per cell = 15 battery volts
-/// 68k and 10k ohm voltage divider, analog in read voltage 1.923
-const MIN_SAFE_BATT_VOLTAGE_READ: f32 = 1.923;
 
-/// total range for good batter voltage
-const BATT_VOLTAGE_READ_RANGE: f32 = (MAX_SAFE_BATT_VOLTAGE_READ - MIN_SAFE_BATT_VOLTAGE_READ);
-
-// TODO NEED TO CHANGE PINT TO E AN ANALOG INPUT TYPE
+/// Driver for reading Rattery Capacity, returns capacity as a u16
 pub struct BatterySense <AdcT, WordT, PinT, AdcE> where 
         PinT: Channel<AdcT>,
         WordT: Into<u16> + From<u16>,
@@ -42,8 +28,8 @@ pub struct BatterySense <AdcT, WordT, PinT, AdcE> where
 {
     adc: AdcT,
     pin: PinT,
-    percent_capacity: f32,
-    raw_voltage: WordT,
+    percent_capacity: u16,
+    word: WordT
 }
 
 
@@ -53,28 +39,36 @@ impl<AdcT, WordT, PinT, AdcE> BatterySense <AdcT, WordT, PinT, AdcE> where
     AdcT: OneShot<AdcT, WordT, PinT, Error=AdcE>,
     AdcE: Debug
      {
+
+    /// creates a new instance of the driver
     pub fn new( adc: AdcT, pin: PinT) -> Self {
 
         let instance = Self {
             adc: adc,
             pin: pin,
-            percent_capacity: 0.,
-            raw_voltage: WordT::from(0),
+            percent_capacity: 0,
+            word: 0.into()
         };
         return instance;
     }
 
-    pub fn read_voltage(&mut self) -> Result<WordT,BatteryError> {
-        let voltage_in = self.adc.read(&mut self.pin);
-        match voltage_in {
-            Ok(word) => Ok(WordT::from(word.into() * 78/10)),
+    /// Reads the voltage straight from the ADC, converts into real voltage of battery
+    fn read_voltage(&mut self) -> Result<f32,BatteryError> {
+        let raw_in = self.adc.read(&mut self.pin);
+        match raw_in {
+            // Voltage is given as a range from 0 to 1024, representing 0 to 3V3
+            Ok(word) => Ok(((word.into() as f32) * 78. / 10.) / 1024. * 3.3),
             Err(_) => Err(BatteryError::ADC)
             }
     }
 
+    /// Gets the percent capacity using a model we created
     pub fn get_percent_capacity(&mut self) -> Result<u16, BatteryError> {
         let voltage = self.read_voltage()?;
-        Ok(voltage.into() * 26 - 450)
+        //Ok(voltage)
+        //Ok((-2530. + 232. * voltage - 5.09 * voltage * voltage))
+        self.percent_capacity = (voltage * 16.37124 - 450.39) as u16;
+        Ok(self.percent_capacity)
     }
 
 }

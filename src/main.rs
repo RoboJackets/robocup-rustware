@@ -58,10 +58,13 @@ mod app {
     use fpga::FPGA_SPI_MODE;
     use fpga::FPGA;
 
+    use battery_sense_rs as battery_sense;
+    use battery_sense::BatterySense;
+
     use icm42605_driver::IMU;
 
     use main::{
-        Delay2, Fpga, Gpio1, Imu, PitDelay, RFRadio, RadioInterrupt, SharedSPI, BASE_AMPLIFICATION_LEVEL,
+        Delay2, Fpga, BatterySenseT, Gpio1, Imu, PitDelay, RFRadio, RadioInterrupt, SharedSPI, BASE_AMPLIFICATION_LEVEL,
         CHANNEL, GPT_CLOCK_SOURCE, GPT_DIVIDER, GPT_FREQUENCY, RADIO_ADDRESS, ROBOT_ID, ImuInitError,
         FPGAInitError, FPGAProgError, RadioInitError,
     };
@@ -77,6 +80,7 @@ mod app {
         motion_controller: MotionControl,
         last_encoders: Vector4<f32>,
         chain_timer: Chained01,
+        battery_sense: BatterySenseT
     }
 
     #[shared]
@@ -87,6 +91,7 @@ mod app {
         rx_int: RadioInterrupt,
         gpio1: Gpio1,
         pit_delay: PitDelay,
+        battery_capacity: u16,
 
         // Drivers
         fpga: Fpga,
@@ -124,6 +129,7 @@ mod app {
             mut gpt1,
             mut gpt2,
             pit: (pit0, pit1, pit2, _pit3),
+            mut adc1,
             ..
         } = board::t41(ctx.device);
 
@@ -171,6 +177,10 @@ mod app {
         let i2c = board::lpi2c(lpi2c1, pins.p19, pins.p18, board::Lpi2cClockSpeed::KHz400);
         let pit_delay = Blocking::<_, PERCLK_FREQUENCY>::from_pit(pit2);
         let imu = IMU::new(i2c);
+
+        // Initialize Battery Sense
+        let p41_input = bsp::hal::adc::AnalogInput::new(pins.p41);
+        let battery_sense = BatterySenseT::new( adc1, p41_input);
 
         // Initialize Shared SPI
         let shared_spi_pins = Pins {
@@ -229,6 +239,7 @@ mod app {
                 radio,
                 imu,
                 pit_delay,
+                battery_capacity: 0,
 
                 // Errors
                 imu_init_error: None,
@@ -240,6 +251,7 @@ mod app {
                 motion_controller: MotionControl::new(),
                 last_encoders: Vector4::zeros(),
                 chain_timer: chained_timer,
+                battery_sense: battery_sense
             }
         )
     }
@@ -357,10 +369,24 @@ mod app {
     }
 
     #[task(
-        shared = [radio, rx_int, gpio1, shared_spi, delay2, control_message, robot_status, counter],
+        shared = [radio, rx_int, gpio1, shared_spi, delay2, control_message, robot_status, counter], local = [battery_sense],
         priority = 2
     )]
     async fn receive_command(ctx: receive_command::Context) {
+
+        let battery_capacity = match ctx.local.battery_sense.get_percent_capacity() {
+            Ok(cap) => cap,
+            Err(_err) => {
+                #[cfg(feature = "debug")]
+                log::info!("Error unpacking battery capacity read: {:?}", _err);
+                return;
+            }
+        };
+
+        if (battery_capacity < 60) {
+            log::info!("BATTERY CAPACITY OF ROBOT ID: GET ROBOT ID STUFF AT {battery_capacity} PERCENT");
+        }
+
         (
             ctx.shared.shared_spi,
             ctx.shared.delay2,

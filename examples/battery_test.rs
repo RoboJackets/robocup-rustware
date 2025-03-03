@@ -17,9 +17,6 @@ use bsp::hal::timer::Blocking;
 use rtic::app;
 use rtic_monotonics::systick::*;
 
-use rotary_switch_rs as rotary_switch;
-
-
 use battery_sense_rs as battery_sense;
 use battery_sense::BatterySense;
 
@@ -75,9 +72,9 @@ mod app {
         Systick::start(cx.core.SYST, 36_000_000, systick_token);
 
         // TODO change the pin input to be an analog input
-        let mut p41_input = bsp::hal::adc::AnalogInput::new(pins.p41);
-        let mut battery_sensor = BatterySenseT::new( adc1, p41_input);
-        let mut current_capacity: u16 = 0;
+        let p41_input = bsp::hal::adc::AnalogInput::new(pins.p41);
+        let battery_sensor = BatterySenseT::new( adc1, p41_input);
+        let current_capacity = 0;
 
         get_battery_capacity::spawn().ok();
         (
@@ -101,7 +98,7 @@ mod app {
 
     #[task(priority=1, shared = [battery_capacity], local = [battery_sensor])]
     async fn get_battery_capacity(mut cx: get_battery_capacity::Context) {
-        let mut capacity: u16 = cx.local.battery_sensor.get_percent_capacity().expect("Invalid response for get_percent_capacity");
+        let mut capacity = cx.local.battery_sensor.get_percent_capacity().expect("Invalid response for get_percent_capacity");
         cx.shared.battery_capacity.lock(| battery_capacity | {
             *battery_capacity = capacity;
         });
