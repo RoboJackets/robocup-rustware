@@ -22,12 +22,13 @@ use teensy4_panic as _;
 #[rtic::app(device = teensy4_bsp, peripherals = true, dispatchers = [GPT2,GPT1])]
 mod app {
 
-    use crate::module_types::{ControllerModule, InputStateUpdate, RadioSettings};
+    use crate::module_types::InputStateUpdate;
 
     use super::*;
 
     use imxrt_hal::gpio::Input;
     use module_drive::DriveMod;
+    use module_types::{ControllerModule, RadioSettings};
 
     use core::mem::MaybeUninit;
 
@@ -54,7 +55,7 @@ mod app {
     use robojackets_robocup_rtp::{CONTROL_MESSAGE_SIZE, ROBOT_RADIO_ADDRESSES};
 
     use robojackets_robocup_control::{
-        radio, Delay2, RFRadio, SharedSPI, CHANNEL, GPT_CLOCK_SOURCE, GPT_DIVIDER, GPT_FREQUENCY,
+        Delay2, RFRadio, SharedSPI, CHANNEL, GPT_CLOCK_SOURCE, GPT_DIVIDER, GPT_FREQUENCY,
     };
 
     use ssd1306::{prelude::*, I2CDisplayInterface, Ssd1306};
@@ -93,7 +94,8 @@ mod app {
             ssd1306::mode::BufferedGraphicsMode<DisplaySize128x64>,
         >,
         radio_settings: RadioSettings,
-        module_drive: DriveMod,
+        modules: [Box<dyn ControllerModule>; 1],
+        active_module: usize,
     }
 
     #[init]
@@ -181,7 +183,9 @@ mod app {
             btn_right,
         };
 
-        let module_drive = DriveMod::new();
+        let modules: [Box<dyn ControllerModule>; 1] = [Box::new(DriveMod::new())];
+
+        let active_module = 1;
 
         //init devices
         init_devices::spawn().ok();
@@ -202,7 +206,8 @@ mod app {
                 inputs,
                 radio,
                 display,
-                module_drive,
+                modules,
+                active_module: active_module,
                 radio_settings,
             },
             Local {
@@ -243,10 +248,10 @@ mod app {
 
     #[task(
         binds = GPIO4_COMBINED_0_15,
-        priority = 1, shared=[inputs,module_drive])]
+        priority = 1, shared=[inputs,activeModule])]
     fn btn_changed_int(ctx: btn_changed_int::Context) {
         log::info!("Button Interrupt");
-        (ctx.shared.inputs, ctx.shared.module_drive).lock(|inputs, module_drive| {
+        (ctx.shared.inputs, ctx.shared.activeModule).lock(|inputs, module| {
             //clear what was pressed
             inputs.btn_left.clear_triggered();
             inputs.btn_right.clear_triggered();
@@ -273,43 +278,46 @@ mod app {
                 joy_rx: None,
                 joy_ry: None,
             };
-
-            module_drive.update_inputs(state_update);
         });
     }
 
-    #[task(priority = 1, shared=[inputs,module_drive])]
+    #[task(priority = 1, shared=[inputs,modules,activeModule])]
     async fn poll_input_status(ctx: poll_input_status::Context) {
-        (ctx.shared.inputs, ctx.shared.module_drive).lock(|inputs, module_drive| {
-            //debounce
+        (
+            ctx.shared.inputs,
+            ctx.shared.modules,
+            ctx.shared.activeModule,
+        )
+            .lock(|inputs, modules, activeModule| {
+                //debounce
 
-            //Teensy 4 runs at 600MHz, so this is ~10ms
-            cortex_m::asm::delay(6_000_000);
+                //Teensy 4 runs at 600MHz, so this is ~10ms
+                cortex_m::asm::delay(6_000_000);
 
-            let btn_left = inputs.btn_left.is_set();
-            let btn_right = inputs.btn_right.is_set();
-            let btn_up = inputs.btn_up.is_set();
-            let btn_down = inputs.btn_down.is_set();
+                let btn_left = inputs.btn_left.is_set();
+                let btn_right = inputs.btn_right.is_set();
+                let btn_up = inputs.btn_up.is_set();
+                let btn_down = inputs.btn_down.is_set();
 
-            //update joysticks
-            let joy_lx = inputs.adc.read_blocking(&mut inputs.joy_lx);
-            let joy_ly = inputs.adc.read_blocking(&mut inputs.joy_ly);
-            let joy_rx = inputs.adc.read_blocking(&mut inputs.joy_rx);
-            let joy_ry = inputs.adc.read_blocking(&mut inputs.joy_ry);
+                //update joysticks
+                let joy_lx = inputs.adc.read_blocking(&mut inputs.joy_lx);
+                let joy_ly = inputs.adc.read_blocking(&mut inputs.joy_ly);
+                let joy_rx = inputs.adc.read_blocking(&mut inputs.joy_rx);
+                let joy_ry = inputs.adc.read_blocking(&mut inputs.joy_ry);
 
-            let state_update = InputStateUpdate {
-                btn_left: Some(btn_left),
-                btn_right: Some(btn_right),
-                btn_up: Some(btn_up),
-                btn_down: Some(btn_down),
-                joy_lx: Some(joy_lx),
-                joy_ly: Some(joy_ly),
-                joy_rx: Some(joy_rx),
-                joy_ry: Some(joy_ry),
-            };
+                let state_update = InputStateUpdate {
+                    btn_left: Some(btn_left),
+                    btn_right: Some(btn_right),
+                    btn_up: Some(btn_up),
+                    btn_down: Some(btn_down),
+                    joy_lx: Some(joy_lx),
+                    joy_ly: Some(joy_ly),
+                    joy_rx: Some(joy_rx),
+                    joy_ry: Some(joy_ry),
+                };
 
-            module_drive.update_inputs(state_update);
-        });
+                modules[*activeModule].update_inputs(state_update);
+            });
     }
 
     #[idle]
@@ -353,16 +361,21 @@ mod app {
         delay_main::spawn().ok();
     }
 
-    #[task(priority = 1,shared=[display, module_drive])]
+    #[task(priority = 1,shared=[display, modules,activeModule])]
     async fn update_display(ctx: update_display::Context) {
-        (ctx.shared.module_drive, ctx.shared.display).lock(|module_drive, display| {
-            display.clear();
-            module_drive.update_display(display);
-            display.flush().unwrap();
-        });
+        (
+            ctx.shared.modules,
+            ctx.shared.display,
+            ctx.shared.activeModule,
+        )
+            .lock(|modules, display, activeModule| {
+                display.clear();
+                modules[*activeModule].update_display(display);
+                display.flush().unwrap();
+            });
     }
 
-    #[task(priority = 1,shared=[module_drive, radio, shared_spi,delay,radio_settings])]
+    #[task(priority = 1,shared=[modules, radio, shared_spi,delay,radio_settings,activeModule])]
     async fn update_radio(ctx: update_radio::Context) {
         log::info!("Time (ms): {}", Systick::now().ticks());
 
@@ -370,12 +383,13 @@ mod app {
             ctx.shared.shared_spi,
             ctx.shared.delay,
             ctx.shared.radio,
-            ctx.shared.module_drive,
+            ctx.shared.modules,
             ctx.shared.radio_settings,
+            ctx.shared.activeModule,
         )
-            .lock(|spi, delay, radio, module_drive, radio_settings| {
-                module_drive.update_settings(radio_settings);
-                module_drive.radio_update(radio, spi, delay);
+            .lock(|spi, delay, radio, modules, radio_settings, activeModule| {
+                modules[*activeModule].update_settings(radio_settings);
+                modules[*activeModule].radio_update(radio, spi, delay);
             });
     }
 }
