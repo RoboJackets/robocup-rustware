@@ -7,17 +7,17 @@
 #![no_main] // bsp-rt is used as the entry point of the program instead
 #![feature(type_alias_impl_trait)] // this feature is needed for RTIC v2
 
-//// BASIC BSP PACKAGES ///
+/// BASIC BSP PACKAGES ///
 use bsp::board;
 use teensy4_bsp as bsp;
 use teensy4_panic as _; // allows program to panic and print panic messages
                         //////////////////////////
 
-//// ASSOCIATED TPYES FOR INSTANCES ////
+/// ASSOCIATED TPYES FOR INSTANCES ////
 use bsp::hal::timer::Blocking;
 ////////////////////////////////////////
 
-//// RTIC PKACAGES ///
+/// RTIC PKACAGES ///
 use rtic_monotonics::systick::*;
 ////////////////////
 
@@ -165,7 +165,7 @@ mod app {
                 Err(_error) => log::info!("error"),
             }
 
-            if *rotary_interrupt == false {
+            if !(*rotary_interrupt) {
                 *rotary_interrupt = true;
                 read_rotary_dly::spawn().ok();
             }

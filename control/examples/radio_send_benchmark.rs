@@ -125,7 +125,7 @@ mod app {
 
         let initial_robot_status = RobotStatusMessageBuilder::new().build();
 
-        if !success.is_err() {
+        if success.is_ok() {
             radio.set_pa_level(PA_LEVEL, &mut shared_spi, &mut delay2);
             radio.set_channel(CHANNEL, &mut shared_spi, &mut delay2);
             radio.set_payload_size(ROBOT_STATUS_SIZE as u8, &mut shared_spi, &mut delay2);

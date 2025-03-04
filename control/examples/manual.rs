@@ -367,7 +367,7 @@ mod app {
                 if rx_int.is_triggered() {
                     *elapsed_time = 0;
                     rx_int.clear_triggered();
-                    gpio1.set_interrupt(&rx_int, None);
+                    gpio1.set_interrupt(rx_int, None);
                     return true;
                 }
                 false
@@ -422,7 +422,7 @@ mod app {
 
         (ctx.shared.rx_int, ctx.shared.gpio1).lock(|rx_int, gpio1| {
             rx_int.clear_triggered();
-            gpio1.set_interrupt(&rx_int, Some(Trigger::FallingEdge));
+            gpio1.set_interrupt(rx_int, Some(Trigger::FallingEdge));
         });
     }
 
