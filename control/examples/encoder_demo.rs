@@ -2,7 +2,7 @@
 #![no_main] // bsp-rt is used as the entry point of the program instead
 #![feature(type_alias_impl_trait)] // this feature is needed for RTIC v2
 
-//// BASIC BSP PACKAGES ///
+/// BASIC BSP PACKAGES ///
 use bsp::board;
 use teensy4_bsp as bsp;
 use teensy4_panic as _; // allows program to panic and print panic messages
@@ -10,11 +10,11 @@ use teensy4_panic as _; // allows program to panic and print panic messages
 /// Package used to configure pin configuration
 use imxrt_iomuxc::prelude::*;
 
-//// ASSOCIATED TPYES FOR INSTANCES ////
+/// ASSOCIATED TPYES FOR INSTANCES ////
 use bsp::hal::timer::Blocking;
 ////////////////////////////////////////
 
-//// RTIC PKACAGES ///
+/// RTIC PKACAGES ///
 use rtic::app;
 use rtic_monotonics::systick::*;
 ////////////////////
