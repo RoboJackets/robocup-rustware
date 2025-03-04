@@ -92,12 +92,13 @@ mod app {
         radio.set_pa_level(BASE_AMPLIFICATION_LEVEL, &mut shared_spi, &mut delay);
         radio.set_channel(CHANNEL, &mut shared_spi, &mut delay);
         radio.set_payload_size(4, &mut shared_spi, &mut delay);
-        radio.open_writing_pipe(
-            RADIO_ADDRESS,
+        radio.open_writing_pipe(RADIO_ADDRESS, &mut shared_spi, &mut delay);
+        radio.open_reading_pipe(
+            1,
+            BASE_STATION_ADDRESSES[TEAM_NUM],
             &mut shared_spi,
             &mut delay,
         );
-        radio.open_reading_pipe(1, BASE_STATION_ADDRESSES[TEAM_NUM], &mut shared_spi, &mut delay);
         radio.stop_listening(&mut shared_spi, &mut delay);
 
         ping_pong::spawn().unwrap();

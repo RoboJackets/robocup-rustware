@@ -18,17 +18,17 @@ use teensy4_bsp::hal::{
 };
 
 use fpga_rs::FPGA;
-use rotary_switch_rs::RotarySwitch;
-use io_expander_rs::IoExpander;
 use icm42605_driver::IMU;
+use io_expander_rs::IoExpander;
 use kicker_programmer::KickerProgrammer;
+use rotary_switch_rs::RotarySwitch;
 
 use super::GPT_FREQUENCY;
 
 /// SPI that is used for the FPGA
 pub type FpgaSpi = Lpspi<board::LpspiPins<P11, P12, P13, P10>, 4>;
 /// The FPGA
-pub type Fpga = FPGA<FpgaSpi, Output<P9>, P29, Output<P28>, P30, Delay1, LpspiError, Infallible>;
+pub type Fpga = FPGA<FpgaSpi, Output<P9>, P29, Output<P28>, P30, LpspiError, Infallible>;
 // i2c for the io expander
 pub type IoI2C = Lpi2c3;
 // io expander
