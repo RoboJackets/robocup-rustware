@@ -6,14 +6,27 @@ In 2023, we decided to switch microcontrollers from the team built A-Train micro
 
 Therefore, this repository contains the code for the firmware for the RoboJackets RoboCup team.
 
+## Setup
+
+If you are running linux or macos, run:
+```sh
+./setup/unix.sh
+```
+
+If running windows, follow the steps in [setup/WindowsSetup.md](setup/WindowsSetup.md). 
+
+To ensure the correct version of Teensy loader is used by your system ensure the line under your operating system (i.e. "MacOS", "Windows", and "Linux") is uncommented in [control/tools/runner.rs](control/tools/runner.rs)
+
 ## Common Commands
+
+> Run these under the `control/` directory
 
 ### Running main.rs
 
 Kelvin created a runner to make running code on the teensy easier.  To utilize this runner run:
 
 ```sh
-cargo run --target thumbv7em-none-eabihf
+cargo run --target thumbv7em-none-eabihf --release
 ```
 
 ### examples (and tests)
@@ -30,6 +43,21 @@ To open the documentation for internal drivers, libraries, and dependencies run:
 
 ```sh
 cargo docs --open
+```
+
+### Troubleshooting
+
+#### \[Linux (maybe MacOS)\] "Unable to claim interface, check USB permissions"
+1. Run:
+> This add you to the `dialout` group, which allows you to access serial communication devices
+```sh
+sudo usermod -a -G dialout $USERNAME
+```
+2. Check if it works. If not, proceed to step 3.
+3. Run:
+> This allows everyone to access USB devices
+```sh
+sudo chmod 777 /dev/bus/usb
 ```
 
 ## New Members Project

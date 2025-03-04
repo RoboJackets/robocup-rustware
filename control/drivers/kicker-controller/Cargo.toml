@@ -1,0 +1,8 @@
+[package]
+name = "kicker-controller"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+embedded-hal = "~0.2"
+robojackets-robocup-rtp = "0.6.3"
