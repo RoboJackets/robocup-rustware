@@ -458,7 +458,6 @@ dependencies = [
 [[package]]
 name = "stm32f0xx-hal"
 version = "0.18.0"
-source = "git+https://github.com/stm32-rs/stm32f0xx-hal.git#0d1a7f40c35938e72c795b70c43e48fde81eb303"
 dependencies = [
  "bare-metal 1.0.0",
  "bxcan",

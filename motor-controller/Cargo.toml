@@ -13,5 +13,11 @@ panic-probe = "0.3.2"
 portable-atomic = { version = "1.10.0", features = ["unsafe-assume-single-core"] }
 rtic = { version = "2.1.2", features = ["thumbv6-backend"] }
 rtic-monotonics = { version = "2.0.3", features = ["defmt", "stm32f031c6", "stm32_tim3"] }
-stm32f0xx-hal = { git = "https://github.com/stm32-rs/stm32f0xx-hal.git", features = ["stm32f031"] }
 embedded-hal = { version = "0.2.7", features = ["unproven"]}
+
+[dependencies.stm32f0xx-hal]
+# I'm working on getting the qei changes merged into the upstream stm32f0xx-hal.  Until then, I'm going
+# to use my working fork
+# git = "https://github.com/stm32-rs/stm32f0xx-hal.git"
+path = "../../stm32f0xx-hal"
+features = ["stm32f031"]
