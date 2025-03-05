@@ -1,0 +1,16 @@
+[package]
+name = "battery_sense_rs"
+version = "0.1.0"
+authors = ["wade-groff <wgroff7@gatech.edu>"]
+edition = "2021"
+
+# always needed for device drivers :)
+[dependencies.embedded-hal]
+version = "~0.2"
+
+[dependencies.teensy4-bsp]
+version = "0.4"
+
+[dependencies.imxrt-hal]
+version = "=0.5.4"
+features = ["eh02-unproven"]

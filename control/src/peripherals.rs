@@ -15,13 +15,16 @@ use teensy4_bsp::hal::{
     lpspi::{Lpspi, LpspiError},
     pit::Pit2,
     timer::Blocking,
+    adc::AnalogInput,
 };
 
 use fpga_rs::FPGA;
 use icm42605_driver::IMU;
 use io_expander_rs::IoExpander;
+use battery_sense_rs::BatterySense;
 use kicker_programmer::KickerProgrammer;
 use rotary_switch_rs::RotarySwitch;
+use imxrt_hal::adc::Adc;
 
 use super::GPT_FREQUENCY;
 
@@ -68,3 +71,11 @@ pub type KickerReset = Output<P6>;
 pub type KickerCSn = Output<P5>;
 /// The Kicker Programmer
 pub type KickerProg = KickerProgrammer<KickerCSn, KickerReset>;
+
+// Adc Port used by BatterySense
+pub type AdcP = AnalogInput<P41, 1>;
+
+/// One of two ADCs defined under Teensy 4.1 docs
+pub type Adc1 = Adc<1>;
+// Alias of BatterySense
+pub type BatterySenseT = BatterySense<Adc1, u16, AdcP, Infallible>;
