@@ -42,6 +42,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8fe8f5a8a398345e52358e18ff07cc17a568fbca5c6f73873d3a62056309603"
 
 [[package]]
+name = "battery_sense_rs"
+version = "0.1.0"
+dependencies = [
+ "embedded-hal 0.2.7",
+ "imxrt-hal",
+ "teensy4-bsp",
+]
+
+[[package]]
 name = "bbqueue"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -572,6 +581,7 @@ checksum = "46b71a9d9206e8b46714c74255adcaea8b11e0350c1d8456165073c3f75fc81a"
 name = "robojackets-robocup-control"
 version = "0.2.0"
 dependencies = [
+ "battery_sense_rs",
  "controller",
  "cortex-m",
  "defmt",
