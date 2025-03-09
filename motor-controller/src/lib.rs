@@ -125,6 +125,18 @@ pub enum Phase {
     Negative,
 }
 
+/// Get the current phase number from the hall sensor readings
+pub fn phase_number(h1: bool, h2: bool, h3: bool) -> u8 {
+    match (h1, h2, h3) {
+        (false, false, true) => 0,
+        (true, false, true) => 1,
+        (true, false, false) => 2,
+        (true, true, false) => 3,
+        (false, true, false) => 4,
+        _ => 5,
+    }
+}
+
 /// Convert the values read from the hall sensors into the corresponding U, V, and W phases
 /// to move the motors
 pub fn hall_to_phases(h1: bool, h2: bool, h3: bool, clockwise: bool) -> [Phase; 3] {

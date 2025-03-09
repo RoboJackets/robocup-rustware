@@ -1,11 +1,10 @@
 //!
-//! Example program to read the HAL-effect sensors and print out the current state
-//! of the motor
+//! Program to control the speed of the dribbler based on the 0-100%
+//! of maximum speed (defined)
 //! 
 
 #![no_std]
 #![no_main]
-#![feature(type_alias_impl_trait)]
 
 use panic_probe as _;
 
@@ -13,8 +12,15 @@ use defmt_rtt as _;
 
 #[rtic::app(device = stm32f0xx_hal::pac, peripherals = true, dispatchers = [TSC])]
 mod app {
-    use motor_controller::{hall_to_phases, set_pwm_output, OvercurrentComparator, HS1, HS2, HS3};
-    use stm32f0xx_hal::{pac::{EXTI, TIM1, TIM2}, prelude::*, pwm::{PwmChannels, C1, C1N, C2, C2N, C3, C3N}, timers::{Event, Timer}};
+    use motor_controller::{hall_to_phases, set_pwm_output, phase_number, OvercurrentComparator, HS1, HS2, HS3, Phase};
+    use stm32f0xx_hal::{
+        pac::{EXTI, TIM1, USART1, TIM2},
+        prelude::*,
+        pwm::{PwmChannels, C1, C1N, C2, C2N, C3, C3N},
+        serial::{self, Serial},
+        timers::{self, Timer},
+        gpio::{gpioa::{PA14, PA15}, Alternate, AF1},
+    };
 
     const PWM_DUTY_CYCLE: u16 = 200;
 
@@ -42,13 +48,19 @@ mod app {
         
         // Overcurrent Comparataor
         overcurrent_comparator: OvercurrentComparator,
-        // Timer 3 (used for motor control interrupt)
+        /// Timer 2 (used for motor control interrupt)
         tim2: Timer<TIM2>,
+        
+        // The serial peripheral
+        // serial: Serial<USART1, PA14<Alternate<AF1>>, PA15<Alternate<AF1>>>,
     }
 
     #[shared]
     struct Shared {
+        /// The pin interrupt register
         exti: EXTI,
+        /// The number of rotations per millisecond
+        rotations_per_ms: f32,
     }
 
     #[init]
@@ -86,9 +98,6 @@ mod app {
         overcurrent_comparator.set_threshold(motor_controller::OvercurrentThreshold::T1);
         overcurrent_comparator.set_interrupt(&syscfg, &exti);
 
-        let mut tim2 = Timer::tim2(ctx.device.TIM2, 1_000.hz(), &mut rcc);
-        tim2.listen(Event::TimeOut);
-
         let pwm = stm32f0xx_hal::pwm::tim1(
             ctx.device.TIM1,
             channels,
@@ -118,9 +127,28 @@ mod app {
         ch3n.set_duty(0);
         ch3n.enable();
 
+        // let (tx, rx) = cortex_m::interrupt::free(move |cs| {
+        //     (
+        //         gpioa.pa14.into_alternate_af1(cs),
+        //         gpioa.pa15.into_alternate_af1(cs)
+        //     )
+        // });
+
+        // let mut serial = Serial::usart1(
+        //     ctx.device.USART1,
+        //     (tx, rx),
+        //     115_200.bps(),
+        //     &mut rcc
+        // );
+        // serial.listen(serial::Event::Rxne);
+
+        let mut tim2 = Timer::tim2(ctx.device.TIM2, 1_000.hz(), &mut rcc);
+        tim2.listen(timers::Event::TimeOut);
+
         (
             Shared {
                 exti,
+                rotations_per_ms: 0.0,
             },
             Local {
                 hs1,
@@ -134,6 +162,7 @@ mod app {
                 ch3n,
                 overcurrent_comparator,
                 tim2,
+                // serial,
             }
         )
     }
@@ -146,21 +175,58 @@ mod app {
     }
 
     #[task(
-        local = [hs1, hs2, hs3, ch1, ch1n, ch2, ch2n, ch3, ch3n, tim2, clockwise: bool = true, iteration: u32 = 0],
+        local = [
+            hs1,
+            hs2,
+            hs3,
+            ch1,
+            ch1n,
+            ch2,
+            ch2n,
+            ch3,
+            ch3n,
+            tim2,
+            iteration: u32 = 0,
+            last_phase: u8 = 0,
+            rotations_idx: usize = 0,
+            rotations_buffer: [u8; 10_000] = [0u8; 10_000],
+        ],
+        shared = [
+            rotations_per_ms,
+        ],
         binds = TIM2
     )]
-    fn motor_state_check(ctx: motor_state_check::Context) {
-        if *ctx.local.iteration >= 100_000 {
-            *ctx.local.clockwise = !*ctx.local.clockwise;
-            *ctx.local.iteration = 0;
+    fn revs_per_second(ctx: revs_per_second::Context) {
+        if *ctx.local.iteration == 0 {
+            *ctx.local.last_phase = phase_number(
+                ctx.local.hs1.is_high().unwrap(),
+                ctx.local.hs2.is_high().unwrap(),
+                ctx.local.hs3.is_high().unwrap(),
+            );
+            return;
         }
 
-        let phases = hall_to_phases(
-            ctx.local.hs1.is_high().unwrap(),
-            ctx.local.hs2.is_high().unwrap(),
-            ctx.local.hs3.is_high().unwrap(),
-            *ctx.local.clockwise,
-        );
+        // 100_000 iterations = ~1 second so 100 iterations = 1 millisecond
+        if *ctx.local.iteration % 10_000 == 0 {
+            let rotations_per_ms = ctx.local.rotations_buffer.iter().map(|v| *v as u64).sum::<u64>() as f32 / (6.0 * 100.0);
+            defmt::info!("Speed (rotations/ms): {}", rotations_per_ms);
+        }
+
+        let hs1 = ctx.local.hs1.is_high().unwrap();
+        let hs2 = ctx.local.hs2.is_high().unwrap();
+        let hs3 = ctx.local.hs3.is_high().unwrap();
+
+        // Update the phase rotations
+        let phase_num = phase_number(hs1, hs2, hs3);
+        let rotation = if phase_num >= *ctx.local.last_phase {
+            phase_num - *ctx.local.last_phase
+        } else {
+            6 + phase_num - *ctx.local.last_phase
+        };
+        ctx.local.rotations_buffer[*ctx.local.rotations_idx] = rotation;
+        *ctx.local.rotations_idx = (*ctx.local.rotations_idx + 1) % 10_000;
+
+        let phases = hall_to_phases(hs1, hs2, hs3, true);
 
         set_pwm_output(
             ctx.local.ch1,
@@ -168,12 +234,14 @@ mod app {
             phases[0],
             PWM_DUTY_CYCLE,
         );
+
         set_pwm_output(
             ctx.local.ch2,
             ctx.local.ch2n,
             phases[1],
             PWM_DUTY_CYCLE,
         );
+
         set_pwm_output(
             ctx.local.ch3,
             ctx.local.ch3n,
@@ -183,6 +251,34 @@ mod app {
 
         *ctx.local.iteration += 1;
     }
+
+    // #[task(
+    //     local = [
+    //         hs1,
+    //         hs2,
+    //         hs3,
+    //         ch1,
+    //         ch1n,
+    //         ch2,
+    //         ch2n,
+    //         ch3,
+    //         ch3n,
+    //         tim2,
+    //     ],
+    //     binds = TIM2
+    // )]
+    // fn motor_state_check(ctx: motor_state_check::Context) {
+
+    // }
+
+    // #[task(
+    //     local = [serial],
+    //     binds = USART1,
+    //     priority = 1
+    // )]
+    // fn serial_received(ctx: serial_received::Context) {
+
+    // }
 
     #[task(
         local = [overcurrent_comparator],

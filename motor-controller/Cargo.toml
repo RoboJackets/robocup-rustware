@@ -12,7 +12,7 @@ nb = { version = "1.1.0", features = ["defmt-0-3"] }
 panic-probe = "0.3.2"
 portable-atomic = { version = "1.10.0", features = ["unsafe-assume-single-core"] }
 rtic = { version = "2.1.2", features = ["thumbv6-backend"] }
-rtic-monotonics = { version = "2.0.3", features = ["defmt", "stm32f031c6", "stm32_tim3"] }
+rtic-monotonics = { version = "2.0.3", features = ["defmt", "stm32f031c6", "stm32_tim2"] }
 embedded-hal = { version = "0.2.7", features = ["unproven"]}
 
 [dependencies.stm32f0xx-hal]

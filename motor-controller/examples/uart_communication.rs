@@ -13,11 +13,11 @@ use defmt_rtt as _;
 
 #[rtic::app(device = stm32f0xx_hal::pac, peripherals = true, dispatchers = [TSC])]
 mod app {
-    use motor_controller::TIM3_CLOCK_HZ;
+    use motor_controller::TIM2_CLOCK_HZ;
     use rtic_monotonics::stm32::prelude::*;
     use stm32f0xx_hal::{gpio::{gpiob::{PB6, PB7}, Alternate, AF0}, pac::USART1, prelude::*, serial::{Event, Serial}};
 
-    stm32_tim3_monotonic!(Mono, 1_000_000);
+    stm32_tim2_monotonic!(Mono, 1_000_000);
 
     #[local]
     struct Local {
@@ -31,7 +31,7 @@ mod app {
 
     #[init]
     fn init(mut ctx: init::Context) -> (Shared, Local) {
-        Mono::start(TIM3_CLOCK_HZ);
+        Mono::start(TIM2_CLOCK_HZ);
 
         let mut rcc = ctx.device.RCC.configure().sysclk(48.mhz()).freeze(&mut ctx.device.FLASH);
         let gpiob = ctx.device.GPIOB.split(&mut rcc);
