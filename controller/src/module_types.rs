@@ -1,3 +1,4 @@
+use alloc::boxed::Box;
 use ssd1306::{prelude::*, Ssd1306};
 use teensy4_pins::t41::*;
 
@@ -28,15 +29,26 @@ pub enum NextModule {
     DriveMode = 1, //directly go to drive mode
 }
 
-pub struct RadioSettings {
+pub type ModuleArr = [Box<dyn ControllerModule>; 1];
+
+pub enum Button {
+    Left = 0,
+    Right = 1,
+    Up = 2,
+    Down = 3,
+}
+
+pub struct RadioState {
     pub team: u8,
     pub robot_id: u8,
+    pub conn_acks_results: [bool; 100],
+    pub conn_acks_attempts: u16,
 }
 
 pub trait ControllerModule: Send + Sync {
     fn update_display(&self, display: Display);
     fn update_inputs(&mut self, input: InputStateUpdate);
     fn radio_update(&mut self, radio: &mut RFRadio, spi: &mut SharedSPI, delay: &mut Delay2);
-    fn update_settings(&mut self, settings: &mut RadioSettings);
+    fn update_settings(&mut self, settings: &mut RadioState);
     fn next_module(&self) -> NextModule;
 }
