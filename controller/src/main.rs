@@ -22,14 +22,14 @@ use teensy4_panic as _;
 #[rtic::app(device = teensy4_bsp, peripherals = true, dispatchers = [GPT2,GPT1])]
 mod app {
 
-    use crate::module_types::InputStateUpdate;
+    use crate::module_types::{InputStateUpdate, ModuleArr};
 
     use super::*;
 
     use alloc::boxed::Box;
     use imxrt_hal::gpio::Input;
     use module_drive::DriveMod;
-    use module_types::{ControllerModule, RadioSettings};
+    use module_types::{ControllerModule, RadioState};
 
     use core::mem::MaybeUninit;
 
@@ -94,8 +94,8 @@ mod app {
             DisplaySize128x64,
             ssd1306::mode::BufferedGraphicsMode<DisplaySize128x64>,
         >,
-        radio_settings: RadioSettings,
-        modules: [Box<dyn ControllerModule>; 1],
+        radio_settings: RadioState,
+        modules: ModuleArr,
         active_module: usize,
     }
 
@@ -186,7 +186,7 @@ mod app {
 
         let modules: [Box<dyn ControllerModule>; 1] = [Box::new(DriveMod::new())];
 
-        let active_module = 1;
+        let active_module = 0;
 
         //init devices
         init_devices::spawn().ok();
@@ -195,9 +195,11 @@ mod app {
         let last_tick_ms = Systick::now().ticks();
 
         //set radio settings
-        let radio_settings = RadioSettings {
+        let radio_settings = RadioState {
             team: 0,
             robot_id: 0,
+            conn_acks_results: [false; 100],
+            conn_acks_attempts: 0,
         };
 
         (
