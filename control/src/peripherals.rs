@@ -10,21 +10,21 @@ use teensy4_pins::t41::*;
 
 use teensy4_bsp::board::{self, Lpi2c1, Lpi2c3, PERCLK_FREQUENCY};
 use teensy4_bsp::hal::{
+    adc::AnalogInput,
     gpio::{Input, Output, Port},
     gpt::{Gpt1, Gpt2},
     lpspi::{Lpspi, LpspiError},
     pit::Pit2,
     timer::Blocking,
-    adc::AnalogInput,
 };
 
+use battery_sense_rs::BatterySense;
 use fpga_rs::FPGA;
 use icm42605_driver::IMU;
+use imxrt_hal::adc::Adc;
 use io_expander_rs::IoExpander;
-use battery_sense_rs::BatterySense;
 use kicker_programmer::KickerProgrammer;
 use rotary_switch_rs::RotarySwitch;
-use imxrt_hal::adc::Adc;
 
 use super::GPT_FREQUENCY;
 
