@@ -542,8 +542,6 @@ impl ControllerModule for DriveMod {
 
     fn update_settings(&mut self, settings: &mut RadioState) {
         //copy the settings over
-        self.state.radio_state.conn_acks_attempts = settings.conn_acks_attempts;
-        self.state.radio_state.conn_acks_results = settings.conn_acks_results;
         self.state.radio_state.robot_id = settings.robot_id;
         self.state.radio_state.team = settings.team;
     }

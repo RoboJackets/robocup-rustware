@@ -1,3 +1,5 @@
+use core::cmp::min;
+
 use alloc::string::ToString;
 use embedded_graphics::{
     mono_font::{ascii::FONT_6X10, MonoTextStyleBuilder},
@@ -70,12 +72,15 @@ pub fn render_status_header(display: Display, state: &RadioState, title: &str) {
     let team_name = alloc::fmt::format(format_args!("{}{}", team_name, state.robot_id));
     render_text(display, &team_name, 2, 0, false);
 
-    let mut ack_count = get_successful_ack_count(state);
-    let ack_percent = (ack_count as f32 / state.conn_acks_attempts as f32) * 100.0;
-    let ack_percent = alloc::fmt::format(format_args!("{:02}%", ack_percent));
+    let ack_count = get_successful_ack_count(state);
+    let ack_attempts = min(state.conn_acks_attempts, 100);
+    let ack_percent = (ack_count as f32 / ack_attempts as f32) * 100.0;
+    let ack_percent = alloc::fmt::format(format_args!("{:02}%", ack_percent as u8));
     render_text(display, &ack_percent, 104, 0, false);
+
+    log::info!("{}: {}", ack_count, ack_percent);
 
     let title_len = title.len() * 6;
     let title_x = (128 - title_len) / 2;
-    render_text(display, title, title_x as u8, 0, false);
+    render_text(display, title, title_x as u8, 0, true);
 }
