@@ -60,7 +60,6 @@ where
     pub fn get_percent_capacity(&mut self) -> Result<u16, BatteryError> {
         let voltage = self.read_voltage()?;
         //Ok(voltage)
-        //Ok((-2530. + 232. * voltage - 5.09 * voltage * voltage))
         self.percent_capacity = (voltage * 16.37124 - 450.39) as u16;
         Ok(self.percent_capacity)
     }
