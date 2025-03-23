@@ -67,7 +67,7 @@ pub fn get_successful_ack_count(state: &RadioState) -> u8 {
     return ack_count;
 }
 
-pub fn render_status_header(display: Display, state: &RadioState, title: &str) {
+pub fn render_status_header(display: Display, state: &RadioState) {
     let team_name = TEAM_NAME_MAP[state.team as usize].to_string();
     let team_name = alloc::fmt::format(format_args!("{}{}", team_name, state.robot_id));
     render_text(display, &team_name, 2, 0, false);
@@ -79,7 +79,9 @@ pub fn render_status_header(display: Display, state: &RadioState, title: &str) {
     render_text(display, &ack_percent, 104, 0, false);
 
     log::info!("{}: {}", ack_count, ack_percent);
+}
 
+pub fn render_status_title(display: Display, title: &str) {
     let title_len = title.len() * 6;
     let title_x = (128 - title_len) / 2;
     render_text(display, title, title_x as u8, 0, true);

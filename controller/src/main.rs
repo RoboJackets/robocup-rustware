@@ -23,6 +23,7 @@ use teensy4_panic as _;
 mod app {
 
     use crate::module_types::{InputStateUpdate, ModuleArr};
+    use crate::module_util::render_status_header;
 
     use super::*;
 
@@ -94,7 +95,7 @@ mod app {
             DisplaySize128x64,
             ssd1306::mode::BufferedGraphicsMode<DisplaySize128x64>,
         >,
-        radio_settings: RadioState,
+        radio_state: RadioState,
         modules: ModuleArr,
         active_module: usize,
     }
@@ -195,7 +196,7 @@ mod app {
         let last_tick_ms = Systick::now().ticks();
 
         //set radio settings
-        let radio_settings = RadioState {
+        let radio_state = RadioState {
             team: 0,
             robot_id: 0,
             conn_acks_results: [false; 100],
@@ -211,7 +212,7 @@ mod app {
                 display,
                 modules,
                 active_module: active_module,
-                radio_settings,
+                radio_state,
             },
             Local {
                 dispatcher_tick,
@@ -378,21 +379,23 @@ mod app {
         delay_main::spawn().ok();
     }
 
-    #[task(priority = 1,shared=[display, modules,active_module])]
+    #[task(priority = 1,shared=[display, modules,active_module, radio_state])]
     async fn update_display(ctx: update_display::Context) {
         (
             ctx.shared.modules,
             ctx.shared.display,
             ctx.shared.active_module,
+            ctx.shared.radio_state,
         )
-            .lock(|modules, display, active_module| {
+            .lock(|modules, display, active_module, radio_state| {
                 display.clear();
+                render_status_header(display, radio_state);
                 modules[*active_module].update_display(display);
                 display.flush().unwrap();
             });
     }
 
-    #[task(priority = 1,shared=[modules, radio, shared_spi,delay,radio_settings,active_module])]
+    #[task(priority = 1,shared=[modules, radio, shared_spi,delay,radio_state,active_module])]
     async fn update_radio(ctx: update_radio::Context) {
         log::info!("Time (ms): {}", Systick::now().ticks());
 
@@ -401,12 +404,12 @@ mod app {
             ctx.shared.delay,
             ctx.shared.radio,
             ctx.shared.modules,
-            ctx.shared.radio_settings,
+            ctx.shared.radio_state,
             ctx.shared.active_module,
         )
             .lock(
-                |spi, delay, radio, modules, radio_settings, active_module| {
-                    modules[*active_module].update_settings(radio_settings);
+                |spi, delay, radio, modules, radio_state, active_module| {
+                    modules[*active_module].update_settings(radio_state);
                     modules[*active_module].radio_update(radio, spi, delay);
                 },
             );

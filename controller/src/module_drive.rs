@@ -12,11 +12,14 @@ use robojackets_robocup_rtp::{
     CONTROL_MESSAGE_SIZE, ROBOT_RADIO_ADDRESSES, ROBOT_STATUS_SIZE,
 };
 
-use crate::module_types::{ControllerModule, RadioState};
-use crate::{module_types::InputStateUpdate, module_util::render_status_header};
+use crate::module_types::InputStateUpdate;
 use crate::{
     module_types::{Button, Display},
     module_util::get_successful_ack_count,
+};
+use crate::{
+    module_types::{ControllerModule, RadioState},
+    module_util::render_status_title,
 };
 
 use crate::module_util::{encode_btn_state, render_text};
@@ -455,7 +458,7 @@ impl ControllerModule for DriveMod {
             Screen::MainReceiv => "Robot Status",
             Screen::Options => "Options",
         };
-        render_status_header(display, &self.state.radio_state, screen_name);
+        render_status_title(display, screen_name);
         match self.state.current_screen {
             Screen::Main => self.render_main_screen(display),
             Screen::MainReceiv => self.render_main_receiv(display),
@@ -544,6 +547,9 @@ impl ControllerModule for DriveMod {
         //copy the settings over
         self.state.radio_state.robot_id = settings.robot_id;
         self.state.radio_state.team = settings.team;
+
+        settings.conn_acks_results = self.state.radio_state.conn_acks_results;
+        settings.conn_acks_attempts = self.state.radio_state.conn_acks_attempts;
     }
 
     fn next_module(&self) -> crate::module_types::NextModule {
