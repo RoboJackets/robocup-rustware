@@ -327,7 +327,7 @@ impl DriveMod {
                 }
                 if self.btn_rising(old_state, buttons, Button::Down) {
                     self.state.options_selected_entry =
-                        cmp::min(self.state.options_selected_entry + 1, 6);
+                        cmp::min(self.state.options_selected_entry + 1, 4);
                 }
                 if self.btn_rising(old_state, buttons, Button::Right)
                     || self.btn_held(old_state, buttons, Button::Right)
