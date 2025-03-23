@@ -22,14 +22,15 @@ use teensy4_panic as _;
 #[rtic::app(device = teensy4_bsp, peripherals = true, dispatchers = [GPT2,GPT1])]
 mod app {
 
-    use crate::module_types::InputStateUpdate;
+    use crate::module_types::{InputStateUpdate, ModuleArr};
+    use crate::module_util::render_status_header;
 
     use super::*;
 
     use alloc::boxed::Box;
     use imxrt_hal::gpio::Input;
     use module_drive::DriveMod;
-    use module_types::{ControllerModule, RadioSettings};
+    use module_types::{ControllerModule, RadioState};
 
     use core::mem::MaybeUninit;
 
@@ -94,8 +95,8 @@ mod app {
             DisplaySize128x64,
             ssd1306::mode::BufferedGraphicsMode<DisplaySize128x64>,
         >,
-        radio_settings: RadioSettings,
-        modules: [Box<dyn ControllerModule>; 1],
+        radio_state: RadioState,
+        modules: ModuleArr,
         active_module: usize,
     }
 
@@ -186,7 +187,7 @@ mod app {
 
         let modules: [Box<dyn ControllerModule>; 1] = [Box::new(DriveMod::new())];
 
-        let active_module = 1;
+        let active_module = 0;
 
         //init devices
         init_devices::spawn().ok();
@@ -195,9 +196,11 @@ mod app {
         let last_tick_ms = Systick::now().ticks();
 
         //set radio settings
-        let radio_settings = RadioSettings {
+        let radio_state = RadioState {
             team: 0,
             robot_id: 0,
+            conn_acks_results: [false; 100],
+            conn_acks_attempts: 0,
         };
 
         (
@@ -209,7 +212,7 @@ mod app {
                 display,
                 modules,
                 active_module: active_module,
-                radio_settings,
+                radio_state,
             },
             Local {
                 dispatcher_tick,
@@ -376,21 +379,23 @@ mod app {
         delay_main::spawn().ok();
     }
 
-    #[task(priority = 1,shared=[display, modules,active_module])]
+    #[task(priority = 1,shared=[display, modules,active_module, radio_state])]
     async fn update_display(ctx: update_display::Context) {
         (
             ctx.shared.modules,
             ctx.shared.display,
             ctx.shared.active_module,
+            ctx.shared.radio_state,
         )
-            .lock(|modules, display, active_module| {
+            .lock(|modules, display, active_module, radio_state| {
                 display.clear();
+                render_status_header(display, radio_state);
                 modules[*active_module].update_display(display);
                 display.flush().unwrap();
             });
     }
 
-    #[task(priority = 1,shared=[modules, radio, shared_spi,delay,radio_settings,active_module])]
+    #[task(priority = 1,shared=[modules, radio, shared_spi,delay,radio_state,active_module])]
     async fn update_radio(ctx: update_radio::Context) {
         log::info!("Time (ms): {}", Systick::now().ticks());
 
@@ -399,12 +404,12 @@ mod app {
             ctx.shared.delay,
             ctx.shared.radio,
             ctx.shared.modules,
-            ctx.shared.radio_settings,
+            ctx.shared.radio_state,
             ctx.shared.active_module,
         )
             .lock(
-                |spi, delay, radio, modules, radio_settings, active_module| {
-                    modules[*active_module].update_settings(radio_settings);
+                |spi, delay, radio, modules, radio_state, active_module| {
+                    modules[*active_module].update_settings(radio_state);
                     modules[*active_module].radio_update(radio, spi, delay);
                 },
             );

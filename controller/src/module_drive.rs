@@ -1,6 +1,5 @@
 extern crate alloc;
 
-use alloc::string::ToString;
 use core::cmp;
 
 use robojackets_robocup_control::{Delay2, RFRadio, SharedSPI, CHANNEL};
@@ -13,17 +12,21 @@ use robojackets_robocup_rtp::{
     CONTROL_MESSAGE_SIZE, ROBOT_RADIO_ADDRESSES, ROBOT_STATUS_SIZE,
 };
 
-use crate::module_types::Display;
 use crate::module_types::InputStateUpdate;
-use crate::module_types::{ControllerModule, RadioSettings};
+use crate::{
+    module_types::{Button, Display},
+    module_util::get_successful_ack_count,
+};
+use crate::{
+    module_types::{ControllerModule, RadioState},
+    module_util::render_status_title,
+};
 
 use crate::module_util::{encode_btn_state, render_text};
 
 use ncomm_utils::packing::Packable;
 
-pub struct InternalSettngs {
-    robot_id: u8,
-    team: u8,
+pub struct InternalSettings {
     shoot_mode: u8,
     trigger_mode: u8,
     dribbler_speed: i8,
@@ -58,30 +61,20 @@ struct InternalState {
     motor_error: u8,
     fpga_status: bool,
 
-    conn_acks_last: [bool; 100],
-    conn_acks_attempts: u32,
-
     current_screen: Screen,
     options_selected_entry: i8,
 
     input_state: InputState,
 
+    radio_state: RadioState,
+
     pend_radio_config_update: bool,
 }
-
-pub enum Button {
-    Left = 0,
-    Right = 1,
-    Up = 2,
-    Down = 3,
-}
-
 pub struct DriveMod {
-    settings: InternalSettngs,
+    settings: InternalSettings,
     state: InternalState,
 }
 
-const TEAM_NAME_MAP: [&str; 2] = ["BLU", "YLW"];
 const SHOOT_MODE_MAP: [&str; 2] = ["KICK", "CHIP"];
 const TRIGGER_MODE_MAP: [&str; 3] = ["DISB", "IMM ", "BRKB"];
 
@@ -95,9 +88,7 @@ fn joy_map(val: i32, deadzone: i32) -> i32 {
 impl DriveMod {
     pub fn new() -> DriveMod {
         DriveMod {
-            settings: InternalSettngs {
-                robot_id: 0,
-                team: 0,
+            settings: InternalSettings {
                 shoot_mode: 0,
                 trigger_mode: 0,
                 dribbler_speed: 0,
@@ -113,9 +104,6 @@ impl DriveMod {
                 motor_error: 0,
                 fpga_status: false,
 
-                conn_acks_last: [false; 100],
-                conn_acks_attempts: 0,
-
                 current_screen: Screen::Main,
                 options_selected_entry: 0,
 
@@ -129,44 +117,16 @@ impl DriveMod {
                     joy_ry: 0,
                 },
 
+                radio_state: RadioState {
+                    team: 0,
+                    robot_id: 0,
+                    conn_acks_results: [false; 100],
+                    conn_acks_attempts: 0,
+                },
+
                 pend_radio_config_update: false,
             },
         }
-    }
-
-    fn get_successful_ack_count(&self) -> u32 {
-        let mut count = 0;
-        for i in 0..cmp::min(100, self.state.conn_acks_attempts) {
-            if self.state.conn_acks_last[i as usize] {
-                count += 1;
-            }
-        }
-        return count;
-    }
-
-    fn render_header(&self, display: Display) {
-        let team_name = TEAM_NAME_MAP[self.settings.team as usize].to_string();
-        let team_name = alloc::fmt::format(format_args!("{}{}", team_name, self.settings.robot_id));
-        render_text(display, &team_name, 2, 0, false);
-
-        let ack_count = self.get_successful_ack_count() as f32;
-        let ack_percent = (ack_count * 100.0)
-            / (cmp::min(cmp::max(self.state.conn_acks_attempts, 1), 100)) as f32;
-
-        let ack_percent = ack_percent - (ack_percent % 1.0);
-
-        let ack_str = alloc::fmt::format(format_args!("{:02}%", ack_percent));
-        render_text(display, &ack_str, 104, 0, false);
-
-        let screen_name = match self.state.current_screen {
-            Screen::Main => "Send Status",
-            Screen::MainReceiv => "Robot Status",
-            Screen::Options => "Options",
-        };
-        let screen_name_len = screen_name.len() as i32;
-        let width = 6 * screen_name_len;
-        let x = (128 - width) / 2;
-        render_text(display, screen_name, x as u8, 0, true);
     }
 
     fn render_main_screen(&self, display: Display) {
@@ -202,7 +162,7 @@ impl DriveMod {
     }
 
     fn render_main_receiv(&self, display: Display) {
-        let conn_success = self.get_successful_ack_count();
+        let conn_success = get_successful_ack_count(&self.state.radio_state);
         //if we've gotten no connections at all, whatever we put on the screen will be lies
         if conn_success == 0 {
             render_text(display, "No Status to Display", 2, 14, false);
@@ -236,8 +196,6 @@ impl DriveMod {
     fn render_settings(&self, display: Display) {
         let entry_names = [
             "Back",
-            "Robot ID",
-            "Team",
             "Shoot Mode",
             "Trigger Mode",
             "Dribbler Speed",
@@ -245,8 +203,6 @@ impl DriveMod {
         ];
         let entry_values = [
             "",
-            &self.settings.robot_id.to_string(),
-            &TEAM_NAME_MAP[self.settings.team as usize],
             &SHOOT_MODE_MAP[self.settings.shoot_mode as usize],
             &TRIGGER_MODE_MAP[self.settings.trigger_mode as usize],
             &alloc::fmt::format(format_args!("{}%", self.settings.dribbler_speed)),
@@ -278,31 +234,9 @@ impl DriveMod {
                 }
             }
             1 => {
-                if increment && self.settings.robot_id < 9 {
-                    self.settings.robot_id += 1;
-                } else if !increment && self.settings.robot_id > 0 {
-                    self.settings.robot_id -= 1;
-                }
-
-                //new robot, wipe the connection status
-                self.state.conn_acks_attempts = 0;
-                for i in 0..self.state.conn_acks_last.len() {
-                    self.state.conn_acks_last[i] = false;
-                }
-            }
-            2 => {
-                self.settings.team = if self.settings.team == 0 { 1 } else { 0 };
-
-                //new team, wipe the connection status
-                self.state.conn_acks_attempts = 0;
-                for i in 0..self.state.conn_acks_last.len() {
-                    self.state.conn_acks_last[i] = false;
-                }
-            }
-            3 => {
                 self.settings.shoot_mode = if self.settings.shoot_mode == 0 { 1 } else { 0 };
             }
-            4 => {
+            2 => {
                 if increment {
                     if self.settings.trigger_mode == 2 {
                         self.settings.trigger_mode = 0;
@@ -317,14 +251,14 @@ impl DriveMod {
                     }
                 }
             }
-            5 => {
+            3 => {
                 if increment && self.settings.dribbler_speed <= 95 {
                     self.settings.dribbler_speed += 5;
                 } else if !increment && self.settings.dribbler_speed >= 5 {
                     self.settings.dribbler_speed -= 5;
                 }
             }
-            6 => {
+            4 => {
                 if increment && self.settings.kick_strength <= 95 {
                     self.settings.kick_strength += 5;
                 } else if !increment && self.settings.kick_strength >= 5 {
@@ -393,7 +327,7 @@ impl DriveMod {
                 }
                 if self.btn_rising(old_state, buttons, Button::Down) {
                     self.state.options_selected_entry =
-                        cmp::min(self.state.options_selected_entry + 1, 6);
+                        cmp::min(self.state.options_selected_entry + 1, 4);
                 }
                 if self.btn_rising(old_state, buttons, Button::Right)
                     || self.btn_held(old_state, buttons, Button::Right)
@@ -421,8 +355,8 @@ impl DriveMod {
         let body_w = (lw as f32 / 512.0) * 3.0;
 
         let msg = ControlMessageBuilder::new()
-            .robot_id(self.settings.robot_id)
-            .team(if self.settings.team == 0 {
+            .robot_id(self.state.radio_state.robot_id)
+            .team(if self.state.radio_state.team == 0 {
                 Team::Blue
             } else {
                 Team::Yellow
@@ -478,7 +412,8 @@ impl DriveMod {
         radio.set_pa_level(PowerAmplifier::PALow, spi, delay);
         radio.set_channel(CHANNEL, spi, delay);
         radio.open_writing_pipe(
-            ROBOT_RADIO_ADDRESSES[self.settings.team as usize][self.settings.robot_id as usize],
+            ROBOT_RADIO_ADDRESSES[self.state.radio_state.team as usize]
+                [self.state.radio_state.robot_id as usize],
             spi,
             delay,
         );
@@ -518,7 +453,12 @@ impl DriveMod {
 
 impl ControllerModule for DriveMod {
     fn update_display(&self, display: Display) {
-        self.render_header(display);
+        let screen_name = match self.state.current_screen {
+            Screen::Main => "Send Status",
+            Screen::MainReceiv => "Robot Status",
+            Screen::Options => "Options",
+        };
+        render_status_title(display, screen_name);
         match self.state.current_screen {
             Screen::Main => self.render_main_screen(display),
             Screen::MainReceiv => self.render_main_receiv(display),
@@ -593,19 +533,23 @@ impl ControllerModule for DriveMod {
         }
 
         //update the connection status
-        for i in (1..(self.state.conn_acks_last.len() - 1)).rev() {
-            self.state.conn_acks_last[i] = self.state.conn_acks_last[i - 1];
+        for i in (1..(self.state.radio_state.conn_acks_results.len() - 1)).rev() {
+            self.state.radio_state.conn_acks_results[i] =
+                self.state.radio_state.conn_acks_results[i - 1];
         }
 
-        self.state.conn_acks_last[0] = report;
+        self.state.radio_state.conn_acks_results[0] = report;
 
-        self.state.conn_acks_attempts += 1;
+        self.state.radio_state.conn_acks_attempts += 1;
     }
 
-    fn update_settings(&mut self, settings: &mut RadioSettings) {
-        //this module actually writes to the settings
-        settings.team = self.settings.team;
-        settings.robot_id = self.settings.robot_id;
+    fn update_settings(&mut self, settings: &mut RadioState) {
+        //copy the settings over
+        self.state.radio_state.robot_id = settings.robot_id;
+        self.state.radio_state.team = settings.team;
+
+        settings.conn_acks_results = self.state.radio_state.conn_acks_results;
+        settings.conn_acks_attempts = self.state.radio_state.conn_acks_attempts;
     }
 
     fn next_module(&self) -> crate::module_types::NextModule {
