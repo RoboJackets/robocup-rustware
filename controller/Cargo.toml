@@ -11,11 +11,17 @@ cortex-m = "0.7" # basic hal package for cortex m microcontroller boards
 log = "0.4" # allows for the logging feautre (a.k.a printing to the serial port)
 teensy4-pins = "0.3.1"
 imxrt-iomuxc = "0.2.2"
-rtic-nrf24l01 = { git = "https://github.com/N8BWert/rtic-nrf24l01.git" }
 embedded-alloc = "0.5.0"
 defmt = "0.3.5"
 libm = "0.2.8"
 fixed-queue = "0.5.1"
+embedded-graphics = "0.7.0"
+ssd1306 = "0.7.1"
+
+[dependencies.rtic-nrf24l01]
+git = "https://github.com/N8BWert/rtic-nrf24l01.git"
+default-features = false
+features = ["embedded-hal-02"]
 
 [dependencies.nalgebra]
 version = "0.33.0"
@@ -28,7 +34,11 @@ default-features = false
 features = ["nostd"]
 
 [dependencies.robojackets-robocup-rtp]
-version = "0.5.1"
+version = "0.6.3"
+
+[dependencies.robojackets-robocup-control]
+version = "0.2.0"
+path = "../control"
 
 [dependencies.embedded-hal]
 version = "~0.2"
@@ -68,3 +78,8 @@ features = ["log"]
 members = [
     "tools"
 ]
+
+[features]
+default = []
+robot-0 = ["robojackets-robocup-control/robot-0"]
+robot-1 = ["robojackets-robocup-control/robot-1"]

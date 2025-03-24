@@ -1,0 +1,588 @@
+extern crate alloc;
+
+use core::cmp;
+
+use robojackets_robocup_control::{Delay2, RFRadio, SharedSPI, CHANNEL};
+use rtic_monotonics::{systick::Systick, Monotonic};
+use rtic_nrf24l01::config::power_amplifier::PowerAmplifier;
+
+use robojackets_robocup_rtp::{
+    control_message::{ShootMode, TriggerMode},
+    ControlMessage, ControlMessageBuilder, RobotStatusMessage, Team, BASE_STATION_ADDRESSES,
+    CONTROL_MESSAGE_SIZE, ROBOT_RADIO_ADDRESSES, ROBOT_STATUS_SIZE,
+};
+
+use crate::types::{InputStateUpdate, NextModule};
+use crate::{
+    types::{Button, Display},
+    util::get_successful_ack_count,
+};
+use crate::{
+    types::{ControllerModule, RadioState},
+    util::render_status_title,
+};
+
+use crate::util::{encode_btn_state, render_text};
+
+use ncomm_utils::packing::Packable;
+
+pub struct InternalSettings {
+    shoot_mode: u8,
+    trigger_mode: u8,
+    dribbler_speed: i8,
+    kick_strength: u8,
+    //role: u8
+}
+
+#[derive(PartialEq)]
+enum Screen {
+    Main = 0,
+    MainReceiv = 1,
+    Options = 2,
+}
+
+struct InputState {
+    btn_last: u8,
+    btn_press_timeout: u32,
+
+    first_read_flag: bool,
+
+    joy_lx: u16,
+    joy_ly: u16,
+    joy_rx: u16,
+    joy_ry: u16,
+}
+
+struct InternalState {
+    dribbler_enabled: bool,
+    kicker_state: u8,
+
+    ball_sense_status: bool,
+    kick_health: bool,
+    battery_voltage: u8,
+    motor_error: u8,
+    fpga_status: bool,
+
+    current_screen: Screen,
+    options_selected_entry: i8,
+
+    input_state: InputState,
+
+    radio_state: RadioState,
+
+    pend_radio_config_update: bool,
+}
+pub struct DriveMod {
+    settings: InternalSettings,
+    state: InternalState,
+    return_menu_flag: bool,
+}
+
+const SHOOT_MODE_MAP: [&str; 2] = ["KICK", "CHIP"];
+const TRIGGER_MODE_MAP: [&str; 3] = ["DISB", "IMM ", "BRKB"];
+
+fn joy_map(val: i32, deadzone: i32) -> i32 {
+    if val.abs() < deadzone {
+        return 0;
+    }
+    return val;
+}
+
+impl DriveMod {
+    pub fn new() -> DriveMod {
+        DriveMod {
+            settings: InternalSettings {
+                shoot_mode: 0,
+                trigger_mode: 0,
+                dribbler_speed: 0,
+                kick_strength: 0,
+            },
+            state: InternalState {
+                dribbler_enabled: false,
+                kicker_state: 0,
+
+                ball_sense_status: false,
+                kick_health: false,
+                battery_voltage: 0,
+                motor_error: 0,
+                fpga_status: false,
+
+                current_screen: Screen::Main,
+                options_selected_entry: 1,
+
+                input_state: InputState {
+                    btn_last: 0,
+                    btn_press_timeout: 0,
+
+                    first_read_flag: true,
+
+                    joy_lx: 0,
+                    joy_ly: 0,
+                    joy_rx: 0,
+                    joy_ry: 0,
+                },
+
+                radio_state: RadioState {
+                    team: 0,
+                    robot_id: 0,
+                    conn_acks_results: [false; 100],
+                    conn_acks_attempts: 0,
+                },
+
+                pend_radio_config_update: false,
+            },
+            return_menu_flag: false,
+        }
+    }
+
+    fn render_main_screen(&self, display: Display) {
+        //joysticks
+        let joy_lx_str = alloc::fmt::format(format_args!("LX: {}", self.state.input_state.joy_lx));
+        let joy_ly_str = alloc::fmt::format(format_args!("LY: {}", self.state.input_state.joy_ly));
+        let joy_rx_str = alloc::fmt::format(format_args!("RX: {}", self.state.input_state.joy_rx));
+        let joy_ry_str = alloc::fmt::format(format_args!("RY: {}", self.state.input_state.joy_ry));
+
+        render_text(display, joy_lx_str.as_str(), 2, 14, false);
+        render_text(display, joy_ly_str.as_str(), 2, 24, false);
+        render_text(display, joy_rx_str.as_str(), 64, 14, false);
+        render_text(display, joy_ry_str.as_str(), 64, 24, false);
+
+        //dribbler and kicker
+        let dribbler_str = if self.state.dribbler_enabled {
+            "Drib ON"
+        } else {
+            "Drib OFF"
+        };
+        let kicker_str = if self.settings.trigger_mode != 0 {
+            match self.state.kicker_state {
+                1 => "Kick ON",
+                0 => "Kick OFF",
+                _ => "Kick ERR",
+            }
+        } else {
+            "Kick DISB"
+        };
+
+        render_text(display, dribbler_str, 2, 34, false);
+        render_text(display, kicker_str, 64, 34, false);
+    }
+
+    fn render_main_receiv(&self, display: Display) {
+        let conn_success = get_successful_ack_count(&self.state.radio_state);
+        //if we've gotten no connections at all, whatever we put on the screen will be lies
+        if conn_success == 0 {
+            render_text(display, "No Status to Display", 2, 14, false);
+            render_text(display, "No Connection", 2, 24, false);
+            return;
+        }
+
+        let entry_names = ["Ball Sense", "Kick Health", "Battery", "Motor Err", "FPGA"];
+        let entry_values = [
+            if self.state.ball_sense_status {
+                "ON"
+            } else {
+                "OFF"
+            },
+            if self.state.kick_health { "OK" } else { "ERR" },
+            &alloc::fmt::format(format_args!("{}", self.state.battery_voltage)),
+            &alloc::fmt::format(format_args!("{}", self.state.motor_error)),
+            if self.state.fpga_status { "OK" } else { "ERR" },
+        ];
+
+        for i in 0..5 {
+            let entry_name = entry_names[i];
+            let entry_value = entry_values[i];
+            let y = 14 + i * 10;
+
+            render_text(display, entry_name, 4, y as u8, false);
+            render_text(display, entry_value, 104, y as u8, false);
+        }
+    }
+
+    fn render_settings(&self, display: Display) {
+        let entry_names = [
+            "Exit Drive Mode",
+            "Back",
+            "Shoot Mode",
+            "Trigger Mode",
+            "Dribbler Speed",
+            "Kick Strength",
+        ];
+        let entry_values = [
+            ">",
+            ">",
+            &SHOOT_MODE_MAP[self.settings.shoot_mode as usize],
+            &TRIGGER_MODE_MAP[self.settings.trigger_mode as usize],
+            &alloc::fmt::format(format_args!("{}%", self.settings.dribbler_speed)),
+            &alloc::fmt::format(format_args!("{}%", self.settings.kick_strength)),
+        ];
+
+        let page_size: i32 = 5;
+        let start: i32 = cmp::min(
+            entry_names.len() as i32 - page_size,
+            self.state.options_selected_entry as i32,
+        );
+
+        for i in 0..page_size {
+            let entry_name = entry_names[(start + i) as usize];
+            let entry_value = entry_values[(start + i) as usize];
+            let y: i32 = 14 + i * 10;
+            let is_selected = start + i == self.state.options_selected_entry as i32;
+            render_text(display, entry_name, 2, y as u8, is_selected);
+            render_text(display, entry_value, 104, y as u8, is_selected);
+        }
+    }
+
+    fn handle_entry_modify(&mut self, increment: bool) {
+        match self.state.options_selected_entry {
+            0 => {
+                self.return_menu_flag = true;
+            }
+            1 => {
+                if increment {
+                    self.state.current_screen = Screen::Main;
+                    self.state.pend_radio_config_update = true;
+                }
+            }
+            2 => {
+                self.settings.shoot_mode = if self.settings.shoot_mode == 0 { 1 } else { 0 };
+            }
+            3 => {
+                if increment {
+                    if self.settings.trigger_mode == 2 {
+                        self.settings.trigger_mode = 0;
+                    } else {
+                        self.settings.trigger_mode += 1;
+                    }
+                } else if !increment {
+                    if self.settings.trigger_mode == 0 {
+                        self.settings.trigger_mode = 2;
+                    } else {
+                        self.settings.trigger_mode -= 1;
+                    }
+                }
+            }
+            4 => {
+                if increment && self.settings.dribbler_speed <= 95 {
+                    self.settings.dribbler_speed += 5;
+                } else if !increment && self.settings.dribbler_speed >= 5 {
+                    self.settings.dribbler_speed -= 5;
+                }
+            }
+            5 => {
+                if increment && self.settings.kick_strength <= 95 {
+                    self.settings.kick_strength += 5;
+                } else if !increment && self.settings.kick_strength >= 5 {
+                    self.settings.kick_strength -= 5;
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn btn_rising(&mut self, old_state: u8, new_state: u8, button: Button) -> bool {
+        let mask = 1 << button as u8;
+        //This is ~500 ms
+        if (old_state & mask) == 0 && (new_state & mask) != 0 {
+            self.state.input_state.btn_press_timeout = Systick::now().ticks() + 500;
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+    fn btn_held(&mut self, old_state: u8, new_state: u8, button: Button) -> bool {
+        let mask = 1 << button as u8;
+        if Systick::now().ticks() < self.state.input_state.btn_press_timeout {
+            return false;
+        }
+        self.state.input_state.btn_press_timeout = 0;
+        (old_state & mask) != 0 && (new_state & mask) != 0
+    }
+
+    fn update_joysticks(&mut self, lx: u16, ly: u16, rx: u16, ry: u16) {
+        self.state.input_state.joy_lx = lx;
+        self.state.input_state.joy_ly = ly;
+        self.state.input_state.joy_rx = rx;
+        self.state.input_state.joy_ry = ry;
+    }
+
+    fn update_buttons(&mut self, buttons: u8) {
+        //get the buttons difference
+        let old_state = self.state.input_state.btn_last;
+        self.state.input_state.btn_last = buttons;
+
+        match self.state.current_screen {
+            Screen::Main => {
+                if self.btn_rising(old_state, buttons, Button::Right) {
+                    self.state.current_screen = Screen::MainReceiv;
+                } else if self.btn_rising(old_state, buttons, Button::Up) {
+                    self.state.current_screen = Screen::Options;
+                } else if self.btn_rising(old_state, buttons, Button::Left) {
+                    self.state.dribbler_enabled = !self.state.dribbler_enabled;
+                } else if self.btn_rising(old_state, buttons, Button::Down) {
+                    self.state.kicker_state = if self.state.kicker_state == 0 { 1 } else { 0 };
+                }
+            }
+            Screen::MainReceiv => {
+                if self.btn_rising(old_state, buttons, Button::Right) {
+                    self.state.current_screen = Screen::Main;
+                } else if self.btn_rising(old_state, buttons, Button::Up) {
+                    self.state.current_screen = Screen::Options;
+                }
+            }
+            Screen::Options => {
+                if self.btn_rising(old_state, buttons, Button::Up) {
+                    self.state.options_selected_entry =
+                        cmp::max(self.state.options_selected_entry - 1, 0);
+                }
+                if self.btn_rising(old_state, buttons, Button::Down) {
+                    self.state.options_selected_entry =
+                        cmp::min(self.state.options_selected_entry + 1, 5);
+                }
+                if self.btn_rising(old_state, buttons, Button::Right)
+                    || self.btn_held(old_state, buttons, Button::Right)
+                {
+                    self.handle_entry_modify(true);
+                }
+
+                if self.btn_rising(old_state, buttons, Button::Left)
+                    || self.btn_held(old_state, buttons, Button::Left)
+                {
+                    self.handle_entry_modify(false);
+                }
+            }
+        }
+    }
+
+    fn generate_outgoing_packet(&mut self) -> ControlMessage {
+        //this is a *very* basic joystick mapping
+        let lx = joy_map(self.state.input_state.joy_lx as i32 - 512, 10);
+        let ly = joy_map(self.state.input_state.joy_ly as i32 - 512, 10);
+        let lw = joy_map(self.state.input_state.joy_rx as i32 - 512, 10);
+
+        let body_x = (lx as f32 / 512.0) * 1.0;
+        let body_y = (ly as f32 / 512.0) * 1.0;
+        let body_w = (lw as f32 / 512.0) * 3.0;
+
+        let msg = ControlMessageBuilder::new()
+            .robot_id(self.state.radio_state.robot_id)
+            .team(if self.state.radio_state.team == 0 {
+                Team::Blue
+            } else {
+                Team::Yellow
+            })
+            .shoot_mode(match self.settings.shoot_mode {
+                0 => ShootMode::Kick,
+                1 => ShootMode::Chip,
+                _ => ShootMode::Kick,
+            })
+            .trigger_mode(match self.settings.trigger_mode {
+                0 => TriggerMode::StandDown,
+                1 => TriggerMode::Immediate,
+                2 => TriggerMode::OnBreakBeam,
+                _ => TriggerMode::StandDown,
+            })
+            .body_x(body_x)
+            .body_y(body_y)
+            .body_w(body_w)
+            .dribbler_speed(if self.state.dribbler_enabled {
+                self.settings.dribbler_speed as i8
+            } else {
+                0
+            })
+            .kick_strength(self.settings.kick_strength)
+            .build();
+
+        return msg;
+    }
+
+    fn enable_radio_listen(
+        &mut self,
+        radio: &mut RFRadio,
+        spi: &mut SharedSPI,
+        delay: &mut Delay2,
+    ) {
+        radio.set_payload_size(ROBOT_STATUS_SIZE as u8, spi, delay);
+        radio.start_listening(spi, delay);
+    }
+
+    fn disable_radio_listen(
+        &mut self,
+        radio: &mut RFRadio,
+        spi: &mut SharedSPI,
+        delay: &mut Delay2,
+    ) {
+        radio.set_payload_size(CONTROL_MESSAGE_SIZE as u8, spi, delay);
+        radio.stop_listening(spi, delay);
+    }
+
+    fn configure_radio(&mut self, radio: &mut RFRadio, spi: &mut SharedSPI, delay: &mut Delay2) {
+        log::info!("Configuring Radio");
+
+        radio.set_pa_level(PowerAmplifier::PALow, spi, delay);
+        radio.set_channel(CHANNEL, spi, delay);
+        radio.open_writing_pipe(
+            ROBOT_RADIO_ADDRESSES[self.state.radio_state.team as usize]
+                [self.state.radio_state.robot_id as usize],
+            spi,
+            delay,
+        );
+        radio.open_reading_pipe(1, BASE_STATION_ADDRESSES[0], spi, delay);
+        self.enable_radio_listen(radio, spi, delay);
+    }
+
+    fn update_incoming_packet(&mut self, msg: RobotStatusMessage) {
+        self.state.ball_sense_status = msg.ball_sense_status;
+        self.state.kick_health = msg.kick_healthy;
+        self.state.battery_voltage = msg.battery_voltage;
+        self.state.motor_error = msg.motor_errors;
+        self.state.fpga_status = msg.fpga_status;
+    }
+
+    fn radio_poll(&mut self, radio: &mut RFRadio, spi: &mut SharedSPI, delay: &mut Delay2) {
+        if self.state.current_screen == Screen::Options {
+            return;
+        }
+
+        if radio.packet_ready(spi, delay) {
+            let mut data = [0u8; ROBOT_STATUS_SIZE];
+            radio.read(&mut data, spi, delay);
+
+            match RobotStatusMessage::unpack(&data[..]) {
+                Ok(data) => {
+                    log::info!("Data Received!");
+                    self.update_incoming_packet(data);
+                }
+                Err(err) => {
+                    log::info!("Unable to Unpack Data: {:?}", err)
+                }
+            }
+        }
+    }
+}
+
+impl ControllerModule for DriveMod {
+    fn update_display(&self, display: Display) {
+        let screen_name = match self.state.current_screen {
+            Screen::Main => "Send Status",
+            Screen::MainReceiv => "Robot Status",
+            Screen::Options => "Options",
+        };
+        render_status_title(display, screen_name);
+        match self.state.current_screen {
+            Screen::Main => self.render_main_screen(display),
+            Screen::MainReceiv => self.render_main_receiv(display),
+            Screen::Options => self.render_settings(display),
+        }
+    }
+
+    fn update_inputs(&mut self, inputs: InputStateUpdate) {
+        //only update joysticks if all are present
+        if inputs.joy_lx.is_some()
+            && inputs.joy_ly.is_some()
+            && inputs.joy_rx.is_some()
+            && inputs.joy_ry.is_some()
+        {
+            self.update_joysticks(
+                inputs.joy_lx.unwrap(),
+                inputs.joy_ly.unwrap(),
+                inputs.joy_rx.unwrap(),
+                inputs.joy_ry.unwrap(),
+            );
+        }
+
+        //only update buttons if all are present
+        if inputs.btn_left.is_some()
+            && inputs.btn_right.is_some()
+            && inputs.btn_up.is_some()
+            && inputs.btn_down.is_some()
+        {
+            let new_state = encode_btn_state(
+                inputs.btn_left.unwrap(),
+                inputs.btn_right.unwrap(),
+                inputs.btn_up.unwrap(),
+                inputs.btn_down.unwrap(),
+            );
+
+            //we don't want edge triggers on the first read
+            if self.state.input_state.first_read_flag {
+                self.state.input_state.btn_last = new_state;
+                self.state.input_state.first_read_flag = false;
+            }
+
+            self.update_buttons(new_state);
+        }
+    }
+
+    fn radio_update(&mut self, radio: &mut RFRadio, spi: &mut SharedSPI, delay: &mut Delay2) {
+        if self.state.current_screen == Screen::Options {
+            return;
+        }
+
+        //poll for messages we got in the meantime
+        self.radio_poll(radio, spi, delay);
+
+        //update radio config if needed
+        if self.state.pend_radio_config_update {
+            self.configure_radio(radio, spi, delay);
+            self.state.pend_radio_config_update = false;
+        }
+
+        self.disable_radio_listen(radio, spi, delay);
+
+        let control_message = self.generate_outgoing_packet();
+
+        let mut packed_data = [0u8; CONTROL_MESSAGE_SIZE];
+        control_message.pack(&mut packed_data).unwrap();
+
+        let report = radio.write(&packed_data, spi, delay);
+        radio.flush_tx(spi, delay);
+
+        self.enable_radio_listen(radio, spi, delay);
+
+        match report {
+            true => {
+                log::info!("Data Sent!");
+            }
+            false => {
+                log::info!("Unable to Send Data!");
+            }
+        }
+
+        //update the connection status
+        for i in (1..(self.state.radio_state.conn_acks_results.len() - 1)).rev() {
+            self.state.radio_state.conn_acks_results[i] =
+                self.state.radio_state.conn_acks_results[i - 1];
+        }
+
+        self.state.radio_state.conn_acks_results[0] = report;
+
+        self.state.radio_state.conn_acks_attempts += 1;
+    }
+
+    fn update_settings(&mut self, settings: &mut RadioState) {
+        //copy the settings over
+        self.state.radio_state.robot_id = settings.robot_id;
+        self.state.radio_state.team = settings.team;
+
+        settings.conn_acks_results = self.state.radio_state.conn_acks_results;
+        settings.conn_acks_attempts = self.state.radio_state.conn_acks_attempts;
+    }
+
+    fn next_module(&mut self) -> NextModule {
+        match self.return_menu_flag {
+            true => NextModule::Menu,
+            false => NextModule::None,
+        }
+    }
+
+    fn reset(&mut self) {
+        //reset internal state to prepare for re-entry
+        self.return_menu_flag = false;
+        self.state.current_screen = Screen::Main;
+        self.state.pend_radio_config_update = true;
+        self.state.input_state.first_read_flag = true;
+        self.state.options_selected_entry = 1;
+    }
+}
