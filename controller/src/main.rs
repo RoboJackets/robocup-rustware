@@ -12,8 +12,8 @@ use embedded_alloc::Heap;
 
 mod module_drive;
 mod module_menu;
-mod module_types;
-mod module_util;
+mod types;
+mod util;
 
 #[global_allocator]
 static HEAP: Heap = Heap::empty();
@@ -23,8 +23,8 @@ use teensy4_panic as _;
 #[rtic::app(device = teensy4_bsp, peripherals = true, dispatchers = [GPT2,GPT1])]
 mod app {
 
-    use crate::module_types::{InputStateUpdate, ModuleArr, MODULE_COUNT};
-    use crate::module_util::render_status_header;
+    use crate::types::{InputStateUpdate, ModuleArr, MODULE_COUNT};
+    use crate::util::render_status_header;
 
     use super::*;
 
@@ -32,7 +32,7 @@ mod app {
     use imxrt_hal::gpio::Input;
     use module_drive::DriveMod;
     use module_menu::MenuMod;
-    use module_types::{ControllerModule, RadioState};
+    use types::{ControllerModule, RadioState};
 
     use core::mem::MaybeUninit;
 
@@ -363,7 +363,7 @@ mod app {
 
         (ctx.shared.modules, ctx.shared.active_module).lock(|modules, active_module| {
             let next_module = modules[*active_module].next_module();
-            if next_module != module_types::NextModule::None {
+            if next_module != types::NextModule::None {
                 *active_module = next_module as usize;
 
                 //reset the internal state of the module
