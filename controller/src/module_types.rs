@@ -22,14 +22,34 @@ pub struct InputStateUpdate {
 
 use robojackets_robocup_control::{Delay2, RFRadio, SharedSPI};
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Clone, Copy)]
 pub enum NextModule {
     None = -1,     //don't change
     Menu = 0,      //send back to menu
     DriveMode = 1, //directly go to drive mode
 }
 
-pub type ModuleArr = [Box<dyn ControllerModule>; 1];
+pub const TEAM_NAME_MAP: [&str; 2] = ["BLU", "YLW"];
+
+pub const MODULE_COUNT: usize = 2;
+
+pub type ModuleArr = [Box<dyn ControllerModule>; MODULE_COUNT];
+
+pub struct ModuleEntry {
+    pub name: &'static str,
+    pub id: NextModule,
+}
+
+pub const MODULE_ENTRIES: [ModuleEntry; MODULE_COUNT] = [
+    ModuleEntry {
+        name: "Menu",
+        id: NextModule::Menu,
+    },
+    ModuleEntry {
+        name: "Drive Mode",
+        id: NextModule::DriveMode,
+    },
+];
 
 pub enum Button {
     Left = 0,
@@ -50,5 +70,5 @@ pub trait ControllerModule: Send + Sync {
     fn update_inputs(&mut self, input: InputStateUpdate);
     fn radio_update(&mut self, radio: &mut RFRadio, spi: &mut SharedSPI, delay: &mut Delay2);
     fn update_settings(&mut self, settings: &mut RadioState);
-    fn next_module(&self) -> NextModule;
+    fn next_module(&mut self) -> NextModule;
 }

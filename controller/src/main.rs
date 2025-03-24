@@ -11,6 +11,7 @@ extern crate alloc;
 use embedded_alloc::Heap;
 
 mod module_drive;
+mod module_menu;
 mod module_types;
 mod module_util;
 
@@ -22,7 +23,7 @@ use teensy4_panic as _;
 #[rtic::app(device = teensy4_bsp, peripherals = true, dispatchers = [GPT2,GPT1])]
 mod app {
 
-    use crate::module_types::{InputStateUpdate, ModuleArr};
+    use crate::module_types::{InputStateUpdate, ModuleArr, MODULE_COUNT};
     use crate::module_util::render_status_header;
 
     use super::*;
@@ -30,6 +31,7 @@ mod app {
     use alloc::boxed::Box;
     use imxrt_hal::gpio::Input;
     use module_drive::DriveMod;
+    use module_menu::MenuMod;
     use module_types::{ControllerModule, RadioState};
 
     use core::mem::MaybeUninit;
@@ -185,7 +187,8 @@ mod app {
             btn_right,
         };
 
-        let modules: [Box<dyn ControllerModule>; 1] = [Box::new(DriveMod::new())];
+        let modules: [Box<dyn ControllerModule>; MODULE_COUNT] =
+            [Box::new(MenuMod::new()), Box::new(DriveMod::new())];
 
         let active_module = 0;
 
@@ -407,11 +410,9 @@ mod app {
             ctx.shared.radio_state,
             ctx.shared.active_module,
         )
-            .lock(
-                |spi, delay, radio, modules, radio_state, active_module| {
-                    modules[*active_module].update_settings(radio_state);
-                    modules[*active_module].radio_update(radio, spi, delay);
-                },
-            );
+            .lock(|spi, delay, radio, modules, radio_state, active_module| {
+                modules[*active_module].update_settings(radio_state);
+                modules[*active_module].radio_update(radio, spi, delay);
+            });
     }
 }

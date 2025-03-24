@@ -9,7 +9,7 @@ use embedded_graphics::{
     Drawable,
 };
 
-use crate::module_types::{Display, RadioState};
+use crate::module_types::{Display, RadioState, TEAM_NAME_MAP};
 
 pub fn encode_btn_state(left: bool, right: bool, up: bool, down: bool) -> u8 {
     let mut btn = 0u8;
@@ -54,8 +54,6 @@ pub fn render_text(display: Display, text: &str, x: u8, y: u8, highlight: bool) 
     .draw(display)
     .unwrap();
 }
-
-const TEAM_NAME_MAP: [&str; 2] = ["BLU", "YLW"];
 
 pub fn get_successful_ack_count(state: &RadioState) -> u8 {
     let mut ack_count = 0;
