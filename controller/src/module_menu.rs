@@ -29,6 +29,7 @@ use crate::module_util::{encode_btn_state, render_text};
 struct InputState {
     btn_last: u8,
     btn_press_timeout: u32,
+    first_read_flag: bool,
 }
 
 enum Screen {
@@ -58,6 +59,7 @@ impl MenuMod {
             input_state: InputState {
                 btn_last: 0,
                 btn_press_timeout: 0,
+                first_read_flag: true,
             },
             next_module: NextModule::None,
         }
@@ -131,6 +133,14 @@ impl MenuMod {
                     self.options_selected_entry =
                         cmp::min(self.options_selected_entry + 1, MODULE_COUNT as i8 - 1);
                 }
+
+                if self.btn_rising(old_state, buttons, Button::Right) {
+                    self.handle_entry_modify(true);
+                }
+
+                if self.btn_rising(old_state, buttons, Button::Left) {
+                    self.handle_entry_modify(false);
+                }
             }
             Screen::Options => {
                 if self.btn_rising(old_state, buttons, Button::Up) {
@@ -139,19 +149,19 @@ impl MenuMod {
                 if self.btn_rising(old_state, buttons, Button::Down) {
                     self.options_selected_entry = cmp::min(self.options_selected_entry + 1, 2);
                 }
+
+                if self.btn_rising(old_state, buttons, Button::Right)
+                    || self.btn_held(old_state, buttons, Button::Right)
+                {
+                    self.handle_entry_modify(true);
+                }
+
+                if self.btn_rising(old_state, buttons, Button::Left)
+                    || self.btn_held(old_state, buttons, Button::Left)
+                {
+                    self.handle_entry_modify(false);
+                }
             }
-        }
-
-        if self.btn_rising(old_state, buttons, Button::Right)
-            || self.btn_held(old_state, buttons, Button::Right)
-        {
-            self.handle_entry_modify(true);
-        }
-
-        if self.btn_rising(old_state, buttons, Button::Left)
-            || self.btn_held(old_state, buttons, Button::Left)
-        {
-            self.handle_entry_modify(false);
         }
     }
 
@@ -230,6 +240,13 @@ impl ControllerModule for MenuMod {
                 inputs.btn_up.unwrap(),
                 inputs.btn_down.unwrap(),
             );
+
+            //we don't want edge triggers on the first read
+            if self.input_state.first_read_flag {
+                self.input_state.first_read_flag = false;
+                self.input_state.btn_last = new_state;
+            }
+
             self.update_buttons(new_state);
         }
     }
@@ -248,15 +265,13 @@ impl ControllerModule for MenuMod {
     }
 
     fn next_module(&mut self) -> NextModule {
-        match self.next_module {
-            NextModule::None => NextModule::Menu,
-            _ => {
-                //reset internal state for next time
-                let old_next = self.next_module;
-                self.next_module = NextModule::None;
-                self.options_selected_entry = 0;
-                old_next
-            }
-        }
+        self.next_module
+    }
+
+    fn reset(&mut self) {
+        self.next_module = NextModule::None;
+        self.current_screen = Screen::Main;
+        self.input_state.first_read_flag = true;
+        self.options_selected_entry = 0;
     }
 }

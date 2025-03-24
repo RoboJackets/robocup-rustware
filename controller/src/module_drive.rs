@@ -45,6 +45,8 @@ struct InputState {
     btn_last: u8,
     btn_press_timeout: u32,
 
+    first_read_flag: bool,
+
     joy_lx: u16,
     joy_ly: u16,
     joy_rx: u16,
@@ -111,6 +113,8 @@ impl DriveMod {
                 input_state: InputState {
                     btn_last: 0,
                     btn_press_timeout: 0,
+
+                    first_read_flag: true,
 
                     joy_lx: 0,
                     joy_ly: 0,
@@ -500,6 +504,13 @@ impl ControllerModule for DriveMod {
                 inputs.btn_up.unwrap(),
                 inputs.btn_down.unwrap(),
             );
+
+            //we don't want edge triggers on the first read
+            if self.state.input_state.first_read_flag {
+                self.state.input_state.btn_last = new_state;
+                self.state.input_state.first_read_flag = false;
+            }
+
             self.update_buttons(new_state);
         }
     }
@@ -561,15 +572,17 @@ impl ControllerModule for DriveMod {
 
     fn next_module(&mut self) -> NextModule {
         match self.return_menu_flag {
-            true => {
-                //reset internal state to prepare for re-entry
-                self.return_menu_flag = false;
-                self.state.current_screen = Screen::Main;
-                self.state.pend_radio_config_update = true;
-                self.state.options_selected_entry = 1;
-                NextModule::Menu
-            }
+            true => NextModule::Menu,
             false => NextModule::None,
         }
+    }
+
+    fn reset(&mut self) {
+        //reset internal state to prepare for re-entry
+        self.return_menu_flag = false;
+        self.state.current_screen = Screen::Main;
+        self.state.pend_radio_config_update = true;
+        self.state.input_state.first_read_flag = true;
+        self.state.options_selected_entry = 1;
     }
 }

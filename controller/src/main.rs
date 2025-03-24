@@ -365,6 +365,9 @@ mod app {
             let next_module = modules[*active_module].next_module();
             if next_module != module_types::NextModule::None {
                 *active_module = next_module as usize;
+
+                //reset the internal state of the module
+                modules[*active_module].reset();
             }
         });
 
