@@ -12,19 +12,19 @@ use robojackets_robocup_rtp::{
     CONTROL_MESSAGE_SIZE, ROBOT_RADIO_ADDRESSES, ROBOT_STATUS_SIZE,
 };
 
-use crate::module_types::{
+use crate::types::{
     InputStateUpdate, NextModule, MODULE_COUNT, MODULE_ENTRIES, TEAM_NAME_MAP,
 };
 use crate::{
-    module_types::{Button, Display},
-    module_util::get_successful_ack_count,
+    types::{Button, Display},
+    util::get_successful_ack_count,
 };
 use crate::{
-    module_types::{ControllerModule, RadioState},
-    module_util::render_status_title,
+    types::{ControllerModule, RadioState},
+    util::render_status_title,
 };
 
-use crate::module_util::{encode_btn_state, render_text};
+use crate::util::{encode_btn_state, render_text};
 
 struct InputState {
     btn_last: u8,

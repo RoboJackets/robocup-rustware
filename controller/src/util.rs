@@ -9,7 +9,7 @@ use embedded_graphics::{
     Drawable,
 };
 
-use crate::module_types::{Display, RadioState, TEAM_NAME_MAP};
+use crate::types::{Display, RadioState, TEAM_NAME_MAP};
 
 pub fn encode_btn_state(left: bool, right: bool, up: bool, down: bool) -> u8 {
     let mut btn = 0u8;
