@@ -584,5 +584,7 @@ impl ControllerModule for DriveMod {
         self.state.pend_radio_config_update = true;
         self.state.input_state.first_read_flag = true;
         self.state.options_selected_entry = 1;
+        self.state.radio_state.conn_acks_attempts = 0;
+        self.state.radio_state.conn_acks_results = [false; 100];
     }
 }
