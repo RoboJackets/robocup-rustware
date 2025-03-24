@@ -12,9 +12,7 @@ use robojackets_robocup_rtp::{
     CONTROL_MESSAGE_SIZE, ROBOT_RADIO_ADDRESSES, ROBOT_STATUS_SIZE,
 };
 
-use crate::types::{
-    InputStateUpdate, NextModule, MODULE_COUNT, MODULE_ENTRIES, TEAM_NAME_MAP,
-};
+use crate::types::{InputStateUpdate, NextModule, MODULE_COUNT, MODULE_ENTRIES, TEAM_NAME_MAP};
 use crate::{
     types::{Button, Display},
     util::get_successful_ack_count,
