@@ -66,9 +66,21 @@ pub struct RadioState {
 }
 
 pub trait ControllerModule: Send + Sync {
+    //perform any nessesary work to update the display
     fn update_display(&self, display: Display);
+
+    //triggered on button press or poll. provides the current state of the inputs.
     fn update_inputs(&mut self, input: InputStateUpdate);
+
+    //perform nessesary work with the radio
     fn radio_update(&mut self, radio: &mut RFRadio, spi: &mut SharedSPI, delay: &mut Delay2);
+
+    //update the radio settings of the module
     fn update_settings(&mut self, settings: &mut RadioState);
+
+    //poll to see what module to switch to
     fn next_module(&mut self) -> NextModule;
+
+    //triggered when the module is switched to
+    fn reset(&mut self);
 }
