@@ -11,8 +11,9 @@ extern crate alloc;
 use embedded_alloc::Heap;
 
 mod module_drive;
-mod module_types;
-mod module_util;
+mod module_menu;
+mod types;
+mod util;
 
 #[global_allocator]
 static HEAP: Heap = Heap::empty();
@@ -22,15 +23,16 @@ use teensy4_panic as _;
 #[rtic::app(device = teensy4_bsp, peripherals = true, dispatchers = [GPT2,GPT1])]
 mod app {
 
-    use crate::module_types::{InputStateUpdate, ModuleArr};
-    use crate::module_util::render_status_header;
+    use crate::types::{InputStateUpdate, ModuleArr, MODULE_COUNT};
+    use crate::util::render_status_header;
 
     use super::*;
 
     use alloc::boxed::Box;
     use imxrt_hal::gpio::Input;
     use module_drive::DriveMod;
-    use module_types::{ControllerModule, RadioState};
+    use module_menu::MenuMod;
+    use types::{ControllerModule, RadioState};
 
     use core::mem::MaybeUninit;
 
@@ -185,7 +187,8 @@ mod app {
             btn_right,
         };
 
-        let modules: [Box<dyn ControllerModule>; 1] = [Box::new(DriveMod::new())];
+        let modules: [Box<dyn ControllerModule>; MODULE_COUNT] =
+            [Box::new(MenuMod::new()), Box::new(DriveMod::new())];
 
         let active_module = 0;
 
@@ -360,8 +363,11 @@ mod app {
 
         (ctx.shared.modules, ctx.shared.active_module).lock(|modules, active_module| {
             let next_module = modules[*active_module].next_module();
-            if next_module != module_types::NextModule::None {
+            if next_module != types::NextModule::None {
                 *active_module = next_module as usize;
+
+                //reset the internal state of the module
+                modules[*active_module].reset();
             }
         });
 
@@ -407,11 +413,9 @@ mod app {
             ctx.shared.radio_state,
             ctx.shared.active_module,
         )
-            .lock(
-                |spi, delay, radio, modules, radio_state, active_module| {
-                    modules[*active_module].update_settings(radio_state);
-                    modules[*active_module].radio_update(radio, spi, delay);
-                },
-            );
+            .lock(|spi, delay, radio, modules, radio_state, active_module| {
+                modules[*active_module].update_settings(radio_state);
+                modules[*active_module].radio_update(radio, spi, delay);
+            });
     }
 }

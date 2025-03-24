@@ -12,17 +12,17 @@ use robojackets_robocup_rtp::{
     CONTROL_MESSAGE_SIZE, ROBOT_RADIO_ADDRESSES, ROBOT_STATUS_SIZE,
 };
 
-use crate::module_types::InputStateUpdate;
+use crate::types::{InputStateUpdate, NextModule};
 use crate::{
-    module_types::{Button, Display},
-    module_util::get_successful_ack_count,
+    types::{Button, Display},
+    util::get_successful_ack_count,
 };
 use crate::{
-    module_types::{ControllerModule, RadioState},
-    module_util::render_status_title,
+    types::{ControllerModule, RadioState},
+    util::render_status_title,
 };
 
-use crate::module_util::{encode_btn_state, render_text};
+use crate::util::{encode_btn_state, render_text};
 
 use ncomm_utils::packing::Packable;
 
@@ -44,6 +44,8 @@ enum Screen {
 struct InputState {
     btn_last: u8,
     btn_press_timeout: u32,
+
+    first_read_flag: bool,
 
     joy_lx: u16,
     joy_ly: u16,
@@ -73,6 +75,7 @@ struct InternalState {
 pub struct DriveMod {
     settings: InternalSettings,
     state: InternalState,
+    return_menu_flag: bool,
 }
 
 const SHOOT_MODE_MAP: [&str; 2] = ["KICK", "CHIP"];
@@ -105,11 +108,13 @@ impl DriveMod {
                 fpga_status: false,
 
                 current_screen: Screen::Main,
-                options_selected_entry: 0,
+                options_selected_entry: 1,
 
                 input_state: InputState {
                     btn_last: 0,
                     btn_press_timeout: 0,
+
+                    first_read_flag: true,
 
                     joy_lx: 0,
                     joy_ly: 0,
@@ -126,6 +131,7 @@ impl DriveMod {
 
                 pend_radio_config_update: false,
             },
+            return_menu_flag: false,
         }
     }
 
@@ -195,6 +201,7 @@ impl DriveMod {
 
     fn render_settings(&self, display: Display) {
         let entry_names = [
+            "Exit Drive Mode",
             "Back",
             "Shoot Mode",
             "Trigger Mode",
@@ -202,7 +209,8 @@ impl DriveMod {
             "Kick Strength",
         ];
         let entry_values = [
-            "",
+            ">",
+            ">",
             &SHOOT_MODE_MAP[self.settings.shoot_mode as usize],
             &TRIGGER_MODE_MAP[self.settings.trigger_mode as usize],
             &alloc::fmt::format(format_args!("{}%", self.settings.dribbler_speed)),
@@ -228,15 +236,18 @@ impl DriveMod {
     fn handle_entry_modify(&mut self, increment: bool) {
         match self.state.options_selected_entry {
             0 => {
+                self.return_menu_flag = true;
+            }
+            1 => {
                 if increment {
                     self.state.current_screen = Screen::Main;
                     self.state.pend_radio_config_update = true;
                 }
             }
-            1 => {
+            2 => {
                 self.settings.shoot_mode = if self.settings.shoot_mode == 0 { 1 } else { 0 };
             }
-            2 => {
+            3 => {
                 if increment {
                     if self.settings.trigger_mode == 2 {
                         self.settings.trigger_mode = 0;
@@ -251,14 +262,14 @@ impl DriveMod {
                     }
                 }
             }
-            3 => {
+            4 => {
                 if increment && self.settings.dribbler_speed <= 95 {
                     self.settings.dribbler_speed += 5;
                 } else if !increment && self.settings.dribbler_speed >= 5 {
                     self.settings.dribbler_speed -= 5;
                 }
             }
-            4 => {
+            5 => {
                 if increment && self.settings.kick_strength <= 95 {
                     self.settings.kick_strength += 5;
                 } else if !increment && self.settings.kick_strength >= 5 {
@@ -327,7 +338,7 @@ impl DriveMod {
                 }
                 if self.btn_rising(old_state, buttons, Button::Down) {
                     self.state.options_selected_entry =
-                        cmp::min(self.state.options_selected_entry + 1, 4);
+                        cmp::min(self.state.options_selected_entry + 1, 5);
                 }
                 if self.btn_rising(old_state, buttons, Button::Right)
                     || self.btn_held(old_state, buttons, Button::Right)
@@ -493,6 +504,13 @@ impl ControllerModule for DriveMod {
                 inputs.btn_up.unwrap(),
                 inputs.btn_down.unwrap(),
             );
+
+            //we don't want edge triggers on the first read
+            if self.state.input_state.first_read_flag {
+                self.state.input_state.btn_last = new_state;
+                self.state.input_state.first_read_flag = false;
+            }
+
             self.update_buttons(new_state);
         }
     }
@@ -552,7 +570,19 @@ impl ControllerModule for DriveMod {
         settings.conn_acks_attempts = self.state.radio_state.conn_acks_attempts;
     }
 
-    fn next_module(&self) -> crate::module_types::NextModule {
-        crate::module_types::NextModule::None
+    fn next_module(&mut self) -> NextModule {
+        match self.return_menu_flag {
+            true => NextModule::Menu,
+            false => NextModule::None,
+        }
+    }
+
+    fn reset(&mut self) {
+        //reset internal state to prepare for re-entry
+        self.return_menu_flag = false;
+        self.state.current_screen = Screen::Main;
+        self.state.pend_radio_config_update = true;
+        self.state.input_state.first_read_flag = true;
+        self.state.options_selected_entry = 1;
     }
 }
