@@ -14,6 +14,7 @@ mod module_drive;
 mod module_menu;
 mod types;
 mod util;
+mod module_recieve_benchmark;
 
 #[global_allocator]
 static HEAP: Heap = Heap::empty();
@@ -32,6 +33,7 @@ mod app {
     use imxrt_hal::gpio::Input;
     use module_drive::DriveMod;
     use module_menu::MenuMod;
+    use module_recieve_benchmark::RadioMod;
     use types::{ControllerModule, RadioState};
 
     use core::mem::MaybeUninit;
@@ -188,7 +190,7 @@ mod app {
         };
 
         let modules: [Box<dyn ControllerModule>; MODULE_COUNT] =
-            [Box::new(MenuMod::new()), Box::new(DriveMod::new())];
+            [Box::new(MenuMod::new()), Box::new(DriveMod::new()), Box::new(RadioMod::new())];
 
         let active_module = 0;
 

@@ -56,6 +56,7 @@ pub enum NextModule {
     None = -1,     //don't change
     Menu = 0,      //swap to the menu
     DriveMode = 1, //swap to the drive mode
+    RadioMode = 2, //swap to radio test mode
 }
 
 pub const TEAM_NAME_MAP: [&str; 2] = ["BLU", "YLW"];
