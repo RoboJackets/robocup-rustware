@@ -71,14 +71,13 @@ mod app {
     struct Local {
         dispatcher_tick: u32,
         last_tick_ms: u32,
+
+        inputs_digital: InputsDigital,
+        inputs_analog: InputsAnalog,
     }
 
-    pub struct IOInputs {
-        adc: Adc<1>,
-        joy_lx: AnalogInput<P24, 1>,
-        joy_ly: AnalogInput<P25, 1>,
-        joy_rx: AnalogInput<P16, 1>,
-        joy_ry: AnalogInput<P17, 1>,
+    pub struct InputsDigital {
+        gpio4: hal::gpio::Port<4>,
 
         btn_up: Input<P2>,
         btn_down: Input<P5>,
@@ -86,11 +85,18 @@ mod app {
         btn_right: Input<P4>,
     }
 
+    pub struct InputsAnalog {
+        adc: Adc<1>,
+        joy_lx: AnalogInput<P24, 1>,
+        joy_ly: AnalogInput<P25, 1>,
+        joy_rx: AnalogInput<P16, 1>,
+        joy_ry: AnalogInput<P17, 1>,
+    }
+
     #[shared]
     struct Shared {
         shared_spi: SharedSPI,
         delay: Delay2,
-        inputs: IOInputs,
         radio: RFRadio,
         display: Ssd1306<
             I2CInterface<imxrt_hal::lpi2c::Lpi2c<imxrt_hal::lpi2c::Pins<P19, P18>, 1>>,
@@ -175,16 +181,20 @@ mod app {
         gpio4.set_interrupt(&btn_left, Some(Trigger::EitherEdge));
         gpio4.set_interrupt(&btn_right, Some(Trigger::EitherEdge));
 
-        let inputs = IOInputs {
+        let inputs = InputsDigital {
+            btn_up,
+            btn_down,
+            btn_left,
+            btn_right,
+            gpio4,
+        };
+
+        let inputs_joy = InputsAnalog {
             adc: adc1,
             joy_lx,
             joy_ly,
             joy_rx,
             joy_ry,
-            btn_up,
-            btn_down,
-            btn_left,
-            btn_right,
         };
 
         let modules: [Box<dyn ControllerModule>; MODULE_COUNT] =
@@ -210,7 +220,6 @@ mod app {
             Shared {
                 shared_spi,
                 delay,
-                inputs,
                 radio,
                 display,
                 modules,
@@ -220,6 +229,8 @@ mod app {
             Local {
                 dispatcher_tick,
                 last_tick_ms,
+                inputs_digital: inputs,
+                inputs_analog: inputs_joy,
             },
         )
     }
@@ -255,83 +266,115 @@ mod app {
 
     #[task(
         binds = GPIO4_COMBINED_0_15,
-        priority = 1, shared=[inputs,modules,active_module])]
+        priority = 1, shared=[modules,active_module],local=[inputs_digital])]
     fn btn_changed_int(ctx: btn_changed_int::Context) {
+        //disable GPIO interrupts
+        ctx.local
+            .inputs_digital
+            .gpio4
+            .set_interrupt(&ctx.local.inputs_digital.btn_up, None);
+        ctx.local
+            .inputs_digital
+            .gpio4
+            .set_interrupt(&ctx.local.inputs_digital.btn_down, None);
+        ctx.local
+            .inputs_digital
+            .gpio4
+            .set_interrupt(&ctx.local.inputs_digital.btn_left, None);
+        ctx.local
+            .inputs_digital
+            .gpio4
+            .set_interrupt(&ctx.local.inputs_digital.btn_right, None);
+
+        //clear what was pressed
+        ctx.local.inputs_digital.btn_left.clear_triggered();
+        ctx.local.inputs_digital.btn_right.clear_triggered();
+        ctx.local.inputs_digital.btn_up.clear_triggered();
+        ctx.local.inputs_digital.btn_down.clear_triggered();
+
         log::info!("Button Interrupt");
-        (
-            ctx.shared.inputs,
-            ctx.shared.modules,
-            ctx.shared.active_module,
-        )
-            .lock(|inputs, module, active_module| {
-                //clear what was pressed
-                inputs.btn_left.clear_triggered();
-                inputs.btn_right.clear_triggered();
-                inputs.btn_up.clear_triggered();
-                inputs.btn_down.clear_triggered();
+        (ctx.shared.modules, ctx.shared.active_module).lock(|module, active_module| {
+            //debounce
 
-                //debounce
+            //Teensy 4 runs at 600MHz, so this is ~1ms
+            cortex_m::asm::delay(6_000_00);
 
-                //Teensy 4 runs at 600MHz, so this is ~10ms
-                cortex_m::asm::delay(6_000_000);
+            let btn_left = ctx.local.inputs_digital.btn_left.is_set();
+            let btn_right = ctx.local.inputs_digital.btn_right.is_set();
+            let btn_up = ctx.local.inputs_digital.btn_up.is_set();
+            let btn_down = ctx.local.inputs_digital.btn_down.is_set();
 
-                let btn_left = inputs.btn_left.is_set();
-                let btn_right = inputs.btn_right.is_set();
-                let btn_up = inputs.btn_up.is_set();
-                let btn_down = inputs.btn_down.is_set();
+            let state_update = InputStateUpdate {
+                btn_left: Some(btn_left),
+                btn_right: Some(btn_right),
+                btn_up: Some(btn_up),
+                btn_down: Some(btn_down),
+                joy_lx: None,
+                joy_ly: None,
+                joy_rx: None,
+                joy_ry: None,
+            };
 
-                let state_update = InputStateUpdate {
-                    btn_left: Some(btn_left),
-                    btn_right: Some(btn_right),
-                    btn_up: Some(btn_up),
-                    btn_down: Some(btn_down),
-                    joy_lx: None,
-                    joy_ly: None,
-                    joy_rx: None,
-                    joy_ry: None,
-                };
+            module[*active_module].update_inputs(state_update);
+        });
 
-                module[*active_module].update_inputs(state_update);
-            });
+        //enable GPIO interrupts
+        ctx.local
+            .inputs_digital
+            .gpio4
+            .set_interrupt(&ctx.local.inputs_digital.btn_up, Some(Trigger::EitherEdge));
+        ctx.local.inputs_digital.gpio4.set_interrupt(
+            &ctx.local.inputs_digital.btn_down,
+            Some(Trigger::EitherEdge),
+        );
+        ctx.local.inputs_digital.gpio4.set_interrupt(
+            &ctx.local.inputs_digital.btn_left,
+            Some(Trigger::EitherEdge),
+        );
+        ctx.local.inputs_digital.gpio4.set_interrupt(
+            &ctx.local.inputs_digital.btn_right,
+            Some(Trigger::EitherEdge),
+        );
     }
 
-    #[task(priority = 1, shared=[inputs,modules,active_module])]
+    #[task(priority = 1, shared=[modules,active_module],local=[inputs_analog])]
     async fn poll_input_status(ctx: poll_input_status::Context) {
-        (
-            ctx.shared.inputs,
-            ctx.shared.modules,
-            ctx.shared.active_module,
-        )
-            .lock(|inputs, modules, active_module| {
-                //debounce
+        (ctx.shared.modules, ctx.shared.active_module).lock(|modules, active_module| {
+            //update joysticks
+            let joy_lx = ctx
+                .local
+                .inputs_analog
+                .adc
+                .read_blocking(&mut ctx.local.inputs_analog.joy_lx);
+            let joy_ly = ctx
+                .local
+                .inputs_analog
+                .adc
+                .read_blocking(&mut ctx.local.inputs_analog.joy_ly);
+            let joy_rx = ctx
+                .local
+                .inputs_analog
+                .adc
+                .read_blocking(&mut ctx.local.inputs_analog.joy_rx);
+            let joy_ry = ctx
+                .local
+                .inputs_analog
+                .adc
+                .read_blocking(&mut ctx.local.inputs_analog.joy_ry);
 
-                //Teensy 4 runs at 600MHz, so this is ~10ms
-                cortex_m::asm::delay(6_000_000);
+            let state_update = InputStateUpdate {
+                btn_left: None,
+                btn_right: None,
+                btn_up: None,
+                btn_down: None,
+                joy_lx: Some(joy_lx),
+                joy_ly: Some(joy_ly),
+                joy_rx: Some(joy_rx),
+                joy_ry: Some(joy_ry),
+            };
 
-                let btn_left = inputs.btn_left.is_set();
-                let btn_right = inputs.btn_right.is_set();
-                let btn_up = inputs.btn_up.is_set();
-                let btn_down = inputs.btn_down.is_set();
-
-                //update joysticks
-                let joy_lx = inputs.adc.read_blocking(&mut inputs.joy_lx);
-                let joy_ly = inputs.adc.read_blocking(&mut inputs.joy_ly);
-                let joy_rx = inputs.adc.read_blocking(&mut inputs.joy_rx);
-                let joy_ry = inputs.adc.read_blocking(&mut inputs.joy_ry);
-
-                let state_update = InputStateUpdate {
-                    btn_left: Some(btn_left),
-                    btn_right: Some(btn_right),
-                    btn_up: Some(btn_up),
-                    btn_down: Some(btn_down),
-                    joy_lx: Some(joy_lx),
-                    joy_ly: Some(joy_ly),
-                    joy_rx: Some(joy_rx),
-                    joy_ry: Some(joy_ry),
-                };
-
-                modules[*active_module].update_inputs(state_update);
-            });
+            modules[*active_module].update_inputs(state_update);
+        });
     }
 
     #[idle]
@@ -403,8 +446,6 @@ mod app {
 
     #[task(priority = 1,shared=[modules, radio, shared_spi,delay,radio_state,active_module])]
     async fn update_radio(ctx: update_radio::Context) {
-        log::info!("Time (ms): {}", Systick::now().ticks());
-
         (
             ctx.shared.shared_spi,
             ctx.shared.delay,

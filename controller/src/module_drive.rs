@@ -490,6 +490,8 @@ impl ControllerModule for DriveMod {
                 inputs.joy_rx.unwrap(),
                 inputs.joy_ry.unwrap(),
             );
+
+            self.update_buttons(self.state.input_state.btn_last);
         }
 
         //only update buttons if all are present

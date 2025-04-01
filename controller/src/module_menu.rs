@@ -2,21 +2,11 @@ extern crate alloc;
 
 use core::cmp;
 
-use robojackets_robocup_control::{Delay2, RFRadio, SharedSPI, CHANNEL};
+use robojackets_robocup_control::{Delay2, RFRadio, SharedSPI};
 use rtic_monotonics::{systick::Systick, Monotonic};
-use rtic_nrf24l01::config::power_amplifier::PowerAmplifier;
 
-use robojackets_robocup_rtp::{
-    control_message::{ShootMode, TriggerMode},
-    ControlMessage, ControlMessageBuilder, RobotStatusMessage, Team, BASE_STATION_ADDRESSES,
-    CONTROL_MESSAGE_SIZE, ROBOT_RADIO_ADDRESSES, ROBOT_STATUS_SIZE,
-};
-
+use crate::types::{Button, Display};
 use crate::types::{InputStateUpdate, NextModule, MODULE_COUNT, MODULE_ENTRIES, TEAM_NAME_MAP};
-use crate::{
-    types::{Button, Display},
-    util::get_successful_ack_count,
-};
 use crate::{
     types::{ControllerModule, RadioState},
     util::render_status_title,
@@ -246,6 +236,8 @@ impl ControllerModule for MenuMod {
             }
 
             self.update_buttons(new_state);
+        } else {
+            self.update_buttons(self.input_state.btn_last);
         }
     }
 
