@@ -11,6 +11,7 @@ extern crate alloc;
 use embedded_alloc::Heap;
 
 mod module_drive;
+mod module_imu;
 mod module_menu;
 mod types;
 mod util;
@@ -31,6 +32,7 @@ mod app {
     use alloc::boxed::Box;
     use imxrt_hal::gpio::Input;
     use module_drive::DriveMod;
+    use module_imu::IMUTestMod;
     use module_menu::MenuMod;
     use types::{ControllerModule, RadioState};
 
@@ -187,8 +189,11 @@ mod app {
             btn_right,
         };
 
-        let modules: [Box<dyn ControllerModule>; MODULE_COUNT] =
-            [Box::new(MenuMod::new()), Box::new(DriveMod::new())];
+        let modules: [Box<dyn ControllerModule>; MODULE_COUNT] = [
+            Box::new(MenuMod::new()),
+            Box::new(DriveMod::new()),
+            Box::new(IMUTestMod::new()),
+        ];
 
         let active_module = 0;
 
