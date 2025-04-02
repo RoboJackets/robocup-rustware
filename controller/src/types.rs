@@ -36,7 +36,7 @@ pub struct InputStateUpdate {
 
 use robojackets_robocup_control::{Delay2, RFRadio, SharedSPI};
 
-/* Adding a new module: 
+/* Adding a new module:
  *
  * 1. Create a new module file in the src directory. Naming scheme module_<name>.rs
  * 2. Implement the ControllerModule trait for the new module
@@ -56,6 +56,7 @@ pub enum NextModule {
     None = -1,     //don't change
     Menu = 0,      //swap to the menu
     DriveMode = 1, //swap to the drive mode
+    IMUTest = 2,   //swap to the imu test
 }
 
 pub const TEAM_NAME_MAP: [&str; 2] = ["BLU", "YLW"];
@@ -65,7 +66,7 @@ pub struct ModuleEntry {
     pub id: NextModule,
 }
 
-pub const MODULE_COUNT: usize = 2;
+pub const MODULE_COUNT: usize = 3;
 
 pub type ModuleArr = [Box<dyn ControllerModule>; MODULE_COUNT];
 
@@ -77,6 +78,10 @@ pub const MODULE_ENTRIES: [ModuleEntry; MODULE_COUNT] = [
     ModuleEntry {
         name: "Drive Mode",
         id: NextModule::DriveMode,
+    },
+    ModuleEntry {
+        name: "IMU Test",
+        id: NextModule::IMUTest,
     },
 ];
 
