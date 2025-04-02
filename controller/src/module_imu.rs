@@ -166,18 +166,12 @@ impl IMUTestMod {
             render_text(display, "Accel X: ", 0, 24, false);
             render_text(display, "Accel Y: ", 0, 34, false);
 
-            let gyro_z = alloc::fmt::format(format_args!(
-                "{:.4}",
-                self.benchmark_state.frame.gyro_z
-            ));
-            let accel_x = alloc::fmt::format(format_args!(
-                "{:.4}",
-                self.benchmark_state.frame.accel_x
-            ));
-            let accel_y = alloc::fmt::format(format_args!(
-                "{:.4}",
-                self.benchmark_state.frame.accel_y
-            ));
+            let gyro_z =
+                alloc::fmt::format(format_args!("{:.4}", self.benchmark_state.frame.gyro_z));
+            let accel_x =
+                alloc::fmt::format(format_args!("{:.4}", self.benchmark_state.frame.accel_x));
+            let accel_y =
+                alloc::fmt::format(format_args!("{:.4}", self.benchmark_state.frame.accel_y));
             render_text(display, &gyro_z, 50, 14, false);
             render_text(display, &accel_x, 50, 24, false);
             render_text(display, &accel_y, 50, 34, false);
@@ -298,10 +292,6 @@ impl ControllerModule for IMUTestMod {
             self.config_radio_flag = false;
         }
 
-        log::info!("Radio Update");
-
-        log::info!("Radio State: {:?}", self.benchmark_state.state);
-
         match self.benchmark_state.state {
             BenchmarkStatus::Initialize => {
                 //try to send a start message
@@ -309,12 +299,8 @@ impl ControllerModule for IMUTestMod {
                 let mut buf = [0u8; CONTROL_MESSAGE_SIZE];
                 msg.pack(&mut buf).unwrap();
 
-                log::info!("Packet prepared");
-
                 let report = radio.write(&buf, spi, delay);
                 radio.flush_tx(spi, delay);
-
-                log::info!("Radio Written");
 
                 if report {
                     //we start listening for the IMU data
