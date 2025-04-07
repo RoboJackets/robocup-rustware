@@ -80,7 +80,7 @@ mod app {
             *battery_capacity = capacity;
         });
 
-        log::info!("Battreee capacity: {:?}", capacity);
+        log::info!("Battery capacity: {:?}", capacity);
 
         battery_dly::spawn().ok();
     }

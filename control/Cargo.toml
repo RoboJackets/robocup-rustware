@@ -19,6 +19,8 @@ defmt = "0.3.5"
 libm = "0.2.8"
 fixed-queue = "0.5.1"
 battery_sense_rs = { version = "0.1.0", path = "drivers/battery_sense" }
+embedded-graphics = "0.8.1"
+battery_indicator = {path = "graphics/battery_indicator"}
 
 [dependencies.rtic-nrf24l01]
 git = "https://github.com/N8BWert/rtic-nrf24l01.git"
@@ -99,7 +101,7 @@ members = [
     "drivers/rotary_switch",
     "tools",
     "drivers/kicker-programmer",
-    "drivers/kicker-controller", "drivers/battery_sense",
+    "drivers/kicker-controller", "drivers/battery_sense", "graphics/windows/main_window", "graphics/startup_graphic",
 ]
 
 # overrides the release build optimization level
