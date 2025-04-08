@@ -103,7 +103,8 @@ impl RadioMod {
         }
     }
     //What methods do I need for radio testing?
-    //ask nate what benchmark I should base this off
+    //Base module on radio_send and radio_recieve benchmarks (lines 974 - 1118 in main.rs in main branch)
+
 }
 
 impl ControllerModule for RadioMod {
