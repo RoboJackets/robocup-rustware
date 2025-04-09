@@ -19,8 +19,9 @@ defmt = "0.3.5"
 libm = "0.2.8"
 fixed-queue = "0.5.1"
 battery_sense_rs = { version = "0.1.0", path = "drivers/battery_sense" }
-embedded-graphics = "0.8.1"
+embedded-graphics = "0.7.0"
 battery_indicator = {path = "graphics/battery_indicator"}
+ssd1306 = "0.7.1"
 
 [dependencies.rtic-nrf24l01]
 git = "https://github.com/N8BWert/rtic-nrf24l01.git"
@@ -87,6 +88,9 @@ path = "drivers/kicker-programmer"
 
 [dependencies.kicker-controller]
 path = "drivers/kicker-controller"
+
+[dependencies.startup_graphic]
+path = "graphics/startup_graphic"
 
 # the root package is also a workspace that holds all of the neccesary "supporting" packages
 # such as driver files, utility files (e.g. tools), etc.

@@ -10,6 +10,7 @@ use embedded_graphics::{
     text::{Alignment, Baseline, Text, TextStyleBuilder}
 };
 
+
 /**
  * Battery indicator as a battery icon and percentage value.
  * Uses Drawable trait.
