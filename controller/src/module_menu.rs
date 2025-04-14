@@ -97,9 +97,9 @@ impl MenuMod {
                 }
                 2 => {
                     self.radio_state.robot_id = if increment {
-                        cmp::min(self.radio_state.robot_id + 1, 11)
+                        cmp::min((self.radio_state.robot_id as i8) + 1, 11) as u8
                     } else {
-                        cmp::max(self.radio_state.robot_id - 1, 0)
+                        cmp::max((self.radio_state.robot_id as i8) - 1, 0) as u8
                     };
                 }
                 _ => {}
