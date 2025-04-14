@@ -77,15 +77,15 @@ mod app {
 
     pub struct IOInputs {
         adc: Adc<1>,
-        joy_lx: AnalogInput<P24, 1>,
-        joy_ly: AnalogInput<P25, 1>,
-        joy_rx: AnalogInput<P16, 1>,
-        joy_ry: AnalogInput<P17, 1>,
+        joy_lx: AnalogInput<P16, 1>,
+        joy_ly: AnalogInput<P17, 1>,
+        joy_rx: AnalogInput<P25, 1>,
+        joy_ry: AnalogInput<P24, 1>,
 
-        btn_up: Input<P2>,
-        btn_down: Input<P5>,
-        btn_left: Input<P3>,
-        btn_right: Input<P4>,
+        btn_up: Input<P7>,
+        btn_down: Input<P9>,
+        btn_left: Input<P6>,
+        btn_right: Input<P8>,
     }
 
     #[shared]
@@ -114,7 +114,7 @@ mod app {
             usb,
             pins,
             mut gpio1,
-            mut gpio4,
+            mut gpio2,
             mut gpt2,
             adc1,
             lpi2c1,
@@ -160,22 +160,22 @@ mod app {
             .into_buffered_graphics_mode();
 
         //start ADC
-        let joy_lx = bsp::hal::adc::AnalogInput::new(pins.p24);
-        let joy_ly = bsp::hal::adc::AnalogInput::new(pins.p25);
-        let joy_rx = bsp::hal::adc::AnalogInput::new(pins.p16);
-        let joy_ry = bsp::hal::adc::AnalogInput::new(pins.p17);
+        let joy_lx = bsp::hal::adc::AnalogInput::new(pins.p16);
+        let joy_ly = bsp::hal::adc::AnalogInput::new(pins.p17);
+        let joy_rx = bsp::hal::adc::AnalogInput::new(pins.p25);
+        let joy_ry = bsp::hal::adc::AnalogInput::new(pins.p24);
 
         //buttons
-        let btn_up = gpio4.input(pins.p2);
-        let btn_down = gpio4.input(pins.p5);
-        let btn_left = gpio4.input(pins.p3);
-        let btn_right = gpio4.input(pins.p4);
+        let btn_up = gpio2.input(pins.p7);
+        let btn_down = gpio2.input(pins.p9);
+        let btn_left = gpio2.input(pins.p6);
+        let btn_right = gpio2.input(pins.p8);
 
         //set interrupt for buttons
-        gpio4.set_interrupt(&btn_up, Some(Trigger::EitherEdge));
-        gpio4.set_interrupt(&btn_down, Some(Trigger::EitherEdge));
-        gpio4.set_interrupt(&btn_left, Some(Trigger::EitherEdge));
-        gpio4.set_interrupt(&btn_right, Some(Trigger::EitherEdge));
+        gpio2.set_interrupt(&btn_up, Some(Trigger::EitherEdge));
+        gpio2.set_interrupt(&btn_down, Some(Trigger::EitherEdge));
+        gpio2.set_interrupt(&btn_left, Some(Trigger::EitherEdge));
+        gpio2.set_interrupt(&btn_right, Some(Trigger::EitherEdge));
 
         let inputs = IOInputs {
             adc: adc1,
@@ -259,7 +259,7 @@ mod app {
     }
 
     #[task(
-        binds = GPIO4_COMBINED_0_15,
+        binds = GPIO2_COMBINED_0_15,
         priority = 1, shared=[inputs,modules,active_module])]
     fn btn_changed_int(ctx: btn_changed_int::Context) {
         log::info!("Button Interrupt");
@@ -319,8 +319,8 @@ mod app {
                 let btn_down = inputs.btn_down.is_set();
 
                 //update joysticks
-                let joy_lx = inputs.adc.read_blocking(&mut inputs.joy_lx);
-                let joy_ly = inputs.adc.read_blocking(&mut inputs.joy_ly);
+                let joy_lx = 1024 - inputs.adc.read_blocking(&mut inputs.joy_lx);
+                let joy_ly = 1024 - inputs.adc.read_blocking(&mut inputs.joy_ly);
                 let joy_rx = inputs.adc.read_blocking(&mut inputs.joy_rx);
                 let joy_ry = inputs.adc.read_blocking(&mut inputs.joy_ry);
 
