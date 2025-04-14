@@ -54,6 +54,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 
 [[package]]
+name = "common"
+version = "0.1.0"
+dependencies = [
+ "defmt",
+ "ncomm-utils",
+]
+
+[[package]]
 name = "cortex-m"
 version = "0.7.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -240,12 +248,14 @@ dependencies = [
 name = "motor-controller"
 version = "0.1.0"
 dependencies = [
+ "common",
  "cortex-m",
  "cortex-m-rt",
  "defmt",
  "defmt-rtt",
  "embedded-hal 0.2.7",
  "nb 1.1.0",
+ "ncomm-utils",
  "panic-probe",
  "portable-atomic",
  "rtic",
@@ -270,6 +280,12 @@ checksum = "8d5439c4ad607c3c23abf66de8c8bf57ba8adcd1f129e699851a6e43935d339d"
 dependencies = [
  "defmt",
 ]
+
+[[package]]
+name = "ncomm-utils"
+version = "1.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7b29ad5223b5925db3273ddf9a373b7890dee69c176e311da044315c6345270a"
 
 [[package]]
 name = "panic-probe"

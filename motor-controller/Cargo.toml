@@ -14,6 +14,9 @@ portable-atomic = { version = "1.10.0", features = ["unsafe-assume-single-core"]
 rtic = { version = "2.1.2", features = ["thumbv6-backend"] }
 rtic-monotonics = { version = "2.0.3", features = ["defmt", "stm32f031c6", "stm32_tim2"] }
 embedded-hal = { version = "0.2.7", features = ["unproven"]}
+ncomm-utils = { version = "1.1.4", default-features = false, features = ["nostd"] }
+
+common = { path = "../common" }
 
 [dependencies.stm32f0xx-hal]
 # I'm working on getting the qei changes merged into the upstream stm32f0xx-hal.  Until then, I'm going

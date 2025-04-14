@@ -9,7 +9,7 @@
 
 use core::fmt::Debug;
 
-use stm32f0xx_hal::{gpio::{gpioa::{PA0, PA1, PA11, PA2}, gpiob::PB12, gpiof::{PF6, PF7}, Input, Output, PullDown, PushPull}, pac::{EXTI, SYSCFG}};
+use stm32f0xx_hal::{gpio::{gpioa::{PA0, PA1, PA11, PA2}, gpiob::PB12, gpiof::{PF6, PF7}, Floating, Input, Output, PullDown, PullUp, PushPull}, pac::{EXTI, SYSCFG}};
 use stm32f0xx_hal::prelude::*;
 use embedded_hal::PwmPin;
 use defmt::Format;
@@ -48,7 +48,7 @@ pub struct OvercurrentComparator {
     /// pf7 overcurrent selector
     pf7: PF7<Output<PushPull>>,
     /// pb12 overcurrent comparator result
-    _pb12: PB12<Input<PullDown>>,
+    pb12: PB12<Input<PullDown>>,
 }
 
 impl OvercurrentComparator {
@@ -63,8 +63,13 @@ impl OvercurrentComparator {
             pa11,
             pf6,
             pf7,
-            _pb12: pb12,
+            pb12,
         }
+    }
+
+    /// Determine if the overcurrent comparator is tripped 
+    pub fn is_tripped(&mut self) -> bool {
+        self.pb12.is_high().unwrap()
     }
 
     /// Make the overcurrent register automatically turn off the gate driver control logic

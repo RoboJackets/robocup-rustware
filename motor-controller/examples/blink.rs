@@ -14,12 +14,14 @@ use defmt_rtt as _;
 mod app {
     use rtic_monotonics::stm32::prelude::*;
     use motor_controller::TIM2_CLOCK_HZ;
+    use stm32f0xx_hal::{gpio::{gpioa::PA8, gpiob::PB1, Output, PushPull}, prelude::*};
 
     stm32_tim2_monotonic!(Mono, 1_000_000);
 
     #[local]
     struct Local {
-
+        led: PB1<Output<PushPull>>,
+        test: PA8<Output<PushPull>>,
     }
 
     #[shared]
@@ -28,8 +30,15 @@ mod app {
     }
 
     #[init]
-    fn init(_ctx: init::Context) -> (Shared, Local) {
+    fn init(mut ctx: init::Context) -> (Shared, Local) {
         Mono::start(TIM2_CLOCK_HZ);
+
+        let mut rcc = ctx.device.RCC.configure().sysclk(48.mhz()).freeze(&mut ctx.device.FLASH);
+        let gpioa = ctx.device.GPIOA.split(&mut rcc);
+        let gpiob = ctx.device.GPIOB.split(&mut rcc);
+
+        let led = cortex_m::interrupt::free(|cs| gpiob.pb1.into_push_pull_output(cs));
+        let test = cortex_m::interrupt::free(|cs| gpioa.pa8.into_push_pull_output(cs));
 
         blink::spawn().ok();
 
@@ -38,7 +47,8 @@ mod app {
 
             },
             Local {
-
+                led,
+                test,
             }
         )
     }
@@ -50,12 +60,18 @@ mod app {
         }
     }
 
-    #[task(priority = 1)]
-    async fn blink(_ctx: blink::Context) {
+    #[task(
+        local = [led, test],
+        priority = 1
+    )]
+    async fn blink(ctx: blink::Context) {
+        ctx.local.test.set_high().unwrap();
         loop {
             defmt::info!("On!!!");
+            ctx.local.led.set_high().unwrap();
             Mono::delay(1_000.millis()).await;
             defmt::info!("Off!!!");
+            ctx.local.led.set_low().unwrap();
             Mono::delay(1_000.millis()).await;
         }
     }

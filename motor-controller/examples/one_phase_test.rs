@@ -107,9 +107,6 @@ mod app {
         ) = pwm;
 
         ch1.set_dead_time(stm32f0xx_hal::pwm::DTInterval::DT_5);
-        ch1.set_duty(0);
-        ch2.set_duty(0);
-        ch3.set_duty(0);
         ch1.disable();
         ch1n.disable();
         ch2.disable();
@@ -145,72 +142,29 @@ mod app {
     }
 
     #[task(
-        local = [hs1, hs2, hs3, ch1, ch1n, ch2, ch2n, ch3, ch3n, tim2, overcurrent_comparator, clockwise: bool = true, iteration: u32 = 0],
+        local = [hs1, hs2, hs3, ch1, ch1n, ch2, ch2n, ch3, ch3n, tim2, clockwise: bool = true, iteration: u32 = 0],
         binds = TIM2
     )]
     fn motor_state_check(ctx: motor_state_check::Context) {
-        if *ctx.local.iteration % 100 == 0 {
-            defmt::info!("Overcurrent Tripped: {}", ctx.local.overcurrent_comparator.is_tripped());
-        }
-        
-        let phases = hall_to_phases(
-            ctx.local.hs1.is_high().unwrap(),
-            ctx.local.hs2.is_high().unwrap(),
-            ctx.local.hs3.is_high().unwrap(),
-            *ctx.local.clockwise,
-        );
+        ctx.local.ch1.set_duty(ctx.local.ch1.get_max_duty() / 2);
+        ctx.local.ch1.enable();
+        ctx.local.ch1n.enable();
 
-        match phases[0] {
-            Phase::Positive => {
-                ctx.local.ch1.set_duty(ctx.local.ch1.get_max_duty() / 16);
-                ctx.local.ch1.enable();
-                ctx.local.ch1n.enable();
-            },
-            Phase::Zero => {
-                ctx.local.ch1.disable();
-                ctx.local.ch1n.disable();
-            },
-            Phase::Negative => {
-                ctx.local.ch1.set_duty(0);
-                ctx.local.ch1.enable();
-                ctx.local.ch1n.enable();
-            },
-        }
+        ctx.local.ch2.set_duty(0);
+        ctx.local.ch2.enable();
+        ctx.local.ch2n.enable();
 
-        match phases[1] {
-            Phase::Positive => {
-                ctx.local.ch2.set_duty(ctx.local.ch1.get_max_duty() / 16);
-                ctx.local.ch2.enable();
-                ctx.local.ch2n.enable();
-            },
-            Phase::Zero => {
-                ctx.local.ch2.disable();
-                ctx.local.ch2n.disable();
-            },
-            Phase::Negative => {
-                ctx.local.ch2.set_duty(0);
-                ctx.local.ch2.enable();
-                ctx.local.ch2n.enable();
-            },
-        }
+        ctx.local.ch3.set_duty(0);
+        ctx.local.ch3.enable();
+        ctx.local.ch3n.enable();
+    }
 
-        match phases[2] {
-            Phase::Positive => {
-                ctx.local.ch3.set_duty(ctx.local.ch1.get_max_duty() / 16);
-                ctx.local.ch3.enable();
-                ctx.local.ch3n.enable();
-            },
-            Phase::Zero => {
-                ctx.local.ch3.disable();
-                ctx.local.ch3n.disable();
-            },
-            Phase::Negative => {
-                ctx.local.ch3.set_duty(0);
-                ctx.local.ch3.enable();
-                ctx.local.ch3n.enable();
-            },
-        }
-
-        *ctx.local.iteration += 1;
+    #[task(
+        local = [overcurrent_comparator],
+        shared = [exti],
+        binds = EXTI0_1
+    )]
+    fn overcurrent_interrupt(_ctx: overcurrent_interrupt::Context) {
+        panic!("Overcurrent Detected");
     }
 }
