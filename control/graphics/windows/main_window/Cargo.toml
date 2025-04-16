@@ -5,3 +5,4 @@ edition = "2024"
 
 [dependencies]
 battery_indicator = {path = "../../battery_indicator"}
+embedded-graphics = "0.7.0"

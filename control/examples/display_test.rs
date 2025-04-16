@@ -13,7 +13,7 @@ use embedded_graphics::{
     pixelcolor::BinaryColor,
     prelude::*,
     mono_font::MonoTextStyle,
-    mono_font::ascii::FONT_4X6,
+    mono_font::ascii::FONT_5X7,
     text::Text,
     text::TextStyleBuilder,
     text::Alignment,
@@ -31,10 +31,17 @@ mod app {
 
     use robojackets_robocup_control::peripherals::BatterySenseT;
     use startup_graphic::StartScreen;
+    use main_window::MainWindow;
     use teensy4_bsp::board::Lpi2c3;
+
+    use core::mem::MaybeUninit;
+
+    const HEAP_SIZE: usize = 1024;
+    static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
 
     #[shared]
     struct Shared {
+
     }
 
     #[local]
@@ -43,6 +50,11 @@ mod app {
 
     #[init]
     fn init(cx: init::Context) -> (Shared, Local) {
+        unsafe {
+            #[allow(static_mut_refs)]
+            HEAP.init(HEAP_MEM.as_ptr() as usize, HEAP_SIZE);
+        }
+
         let board::Resources {
             pins, lpi2c3, usb, ..
         } = board::t41(cx.device);
@@ -56,7 +68,7 @@ mod app {
             lpi2c3,
             pins.p16,
             pins.p17,
-            board::Lpi2cClockSpeed::KHz400,
+            board::Lpi2cClockSpeed::MHz1,
         );
         let interface = I2CDisplayInterface::new(i2c);
         let mut display = Ssd1306::new(
@@ -67,18 +79,25 @@ mod app {
 
         display.init();
 
+        display.clear();
+
         let text_style = TextStyleBuilder::new()
             .alignment(Alignment::Left)
             .baseline(Baseline::Middle)
             .build();
-        let char_style = MonoTextStyle::new(&FONT_4X6, BinaryColor::On);
-
+        let char_style = MonoTextStyle::new(&FONT_5X7, BinaryColor::On);
+        /*
         Text::with_text_style(
             "Yeet",
-            Point::new(0, 0),
+            Point::new(0, 10),
             char_style,
             text_style,
         ).draw(&mut display);
+        display.flush();*/
+
+        //StartScreen::new(Point::new(0, 0), Point::new(24, 4)).draw(&mut display);
+        MainWindow::new(0, "Blue").draw(&mut display);
+        display.flush();
 
         (Shared {}, Local {})
 

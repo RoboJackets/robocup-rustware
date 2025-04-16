@@ -92,6 +92,9 @@ path = "drivers/kicker-controller"
 [dependencies.startup_graphic]
 path = "graphics/startup_graphic"
 
+[dependencies.main_window]
+path = "graphics/windows/main_window"
+
 # the root package is also a workspace that holds all of the neccesary "supporting" packages
 # such as driver files, utility files (e.g. tools), etc.
 [workspace]

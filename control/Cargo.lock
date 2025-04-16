@@ -488,6 +488,7 @@ name = "main_window"
 version = "0.1.0"
 dependencies = [
  "battery_indicator",
+ "embedded-graphics",
 ]
 
 [[package]]
@@ -696,6 +697,7 @@ dependencies = [
  "kicker-programmer",
  "libm",
  "log",
+ "main_window",
  "motion",
  "nalgebra 0.33.2",
  "ncomm-utils",

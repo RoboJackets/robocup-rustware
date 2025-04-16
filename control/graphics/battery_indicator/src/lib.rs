@@ -3,7 +3,7 @@
 extern crate alloc;
 use alloc::format;
 use embedded_graphics::{
-    mono_font::{ascii::FONT_4X6, MonoTextStyle},
+    mono_font::{ascii::FONT_7X13, MonoTextStyle},
     pixelcolor::BinaryColor,
     prelude::*,
     primitives::{PrimitiveStyle, Rectangle},
@@ -53,15 +53,15 @@ impl Drawable for BatteryIndicator {
         let text = &format!("{}%", self.percent);
         
         let text_style = TextStyleBuilder::new()
-            .alignment(Alignment::Left)
+            .alignment(Alignment::Right)
             .baseline(Baseline::Middle)
             .build();
-        let char_style = MonoTextStyle::new(&FONT_4X6, BinaryColor::On);
+        let char_style = MonoTextStyle::new(&FONT_7X13, BinaryColor::On);
 
-        Rectangle::new(self.top_left, Size::new(12, 6))
+        Rectangle::new(self.top_left, Size::new(15, 8))
             .into_styled(line_style)
             .draw(target)?;
-        Rectangle::new(Point::new(self.top_left.x + 12, self.top_left.y + 1), Size::new(2, 4))
+        Rectangle::new(Point::new(self.top_left.x + 15, self.top_left.y + 2), Size::new(2, 4))
             .into_styled(fill_style)
             .draw(target)?;
         Rectangle::new(self.top_left, Size::new(width_fill, 6))
@@ -69,7 +69,7 @@ impl Drawable for BatteryIndicator {
             .draw(target)?;
         Text::with_text_style(
             text,
-            Point::new(self.top_left.x + 15, self.top_left.y + 3),
+            Point::new(self.top_left.x + - 3, self.top_left.y + 3),
             char_style,
             text_style,
         ).draw(target)?;
