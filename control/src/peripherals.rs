@@ -27,7 +27,7 @@ pub type RadioSPI = Lpspi<board::LpspiPins<P11, P12, P13, P10>, 4>;
 /// The Chip Enable for the Radio
 pub type RadioCE = Output<P41>; //Changed from P20
 /// The Chip Select for the Radio
-pub type RadioCSN = Output<P10>; //Changed from P14
+pub type RadioCSN = Output<P14>; //Changed from P14
 /// The Interrupt for the Radio
 pub type RadioInterrupt = Input<P9>; //Changed from P15
 /// The Radio

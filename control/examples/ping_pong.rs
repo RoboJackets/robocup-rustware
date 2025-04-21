@@ -49,6 +49,7 @@ mod app {
         let board::Resources {
             pins,
             mut gpio1,
+            mut gpio2,
             usb,
             mut gpt2,
             lpspi4,
