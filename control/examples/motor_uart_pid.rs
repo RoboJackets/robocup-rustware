@@ -22,8 +22,13 @@ mod app {
     use imxrt_hal::lpuart::{self, Direction};
     use teensy4_bsp::{self as bsp, board::Lpuart2};
 
-    use crate::common::motor::{MotorCommand, MOTOR_COMMAND_SIZE};
+    use common::motor::{MotorCommand, MOTOR_COMMAND_SIZE, PID_RESPONSE_SIZE};
+    use ncomm_utils::packing::Packable;
     use rtic_monotonics::systick::*;
+
+    use core::mem::MaybeUninit;
+    const HEAP_SIZE: usize = 1024;
+    static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
 
     struct TestParams {
         kp: f32,
@@ -43,10 +48,6 @@ mod app {
 
     #[init]
     fn init(ctx: init::Context) -> (Shared, Local) {
-        unsafe {
-            HEAP.init(HEAP_MEM.as_ptr() as usize, HEAP_SIZE);
-        }
-
         let board::Resources {
             pins, usb, lpuart2, ..
         } = board::t41(ctx.device);
@@ -64,7 +65,7 @@ mod app {
             uart.set_parity(None);
         });
 
-        send_data::spawn().ok();
+        delay_main::spawn().ok();
 
         (
             Shared { uart },
@@ -87,6 +88,7 @@ mod app {
 
     #[task(
         shared = [uart],
+        local = [current_params],
         priority = 1
     )]
     async fn send_data(mut ctx: send_data::Context) {
@@ -98,7 +100,7 @@ mod app {
                 kd: ctx.local.current_params.kd,
             };
             command.pack(&mut buf).unwrap();
-            uart.write(&buf).unwrap();
+            uart.bwrite_all(&buf).unwrap();
             log::info!(
                 "Sent: kp: {}, ki: {}, kd: {}",
                 ctx.local.current_params.kp,
@@ -119,20 +121,21 @@ mod app {
             for i in 0..buffer.len() {
                 buffer[i] = uart.read().unwrap();
             }
-            log::info!("Received data!", buffer);
+            log::info!("Received data!");
         });
 
-        //start dumping it to the log
-        #[task(priority = 1)]
-        async fn delay_main(ctx: delay_main::Context) {
-            Systick::delay(1000.millis()).await;
-
-            send_data::spawn().ok();
-        }
         for i in 0..1000 {
             let err = f32::from_le_bytes(buffer[i * 4..(i + 1) * 4].try_into().unwrap());
             log::info!("{}, {}", i, err);
         }
         log::info!("Done receiving data!");
+    }
+
+    #[task(priority = 1)]
+    async fn delay_main(ctx: delay_main::Context) {
+        //delay 4 seconds to allow for debug
+        Systick::delay(4000.millis()).await;
+
+        send_data::spawn().ok();
     }
 }
