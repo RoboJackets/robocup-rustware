@@ -21,11 +21,9 @@ use icm42605_driver::IMU;
 use kicker_programmer::KickerProgrammer;
 
 use super::GPT_FREQUENCY;
-
-/// Fake Spi for kicker
-pub type FakeSPI = Lpspi<board::LpspiPins<P26, P39, P27, KickerCSn>, 3>; //What is last pin supposed to be?
+//See spi.rs for the fake SPI for kicker
 /// Radio Spi
-pub type RadioSPI = Lpspi<board::LpspiPins<P11, P12, P13, RadioCSN>, 3>;
+pub type RadioSPI = Lpspi<board::LpspiPins<P11, P12, P13, P10>, 4>;
 /// The Chip Enable for the Radio
 pub type RadioCE = Output<P41>; //Changed from P20
 /// The Chip Select for the Radio
