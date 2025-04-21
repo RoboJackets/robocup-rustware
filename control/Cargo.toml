@@ -20,7 +20,7 @@ libm = "0.2.8"
 fixed-queue = "0.5.1"
 battery_sense_rs = { version = "0.1.0", path = "drivers/battery_sense" }
 embedded-graphics = "0.7.0"
-battery_indicator = {path = "graphics/battery_indicator"}
+graphics = {path = "graphics"}
 ssd1306 = "0.7.1"
 
 [dependencies.rtic-nrf24l01]
@@ -89,12 +89,6 @@ path = "drivers/kicker-programmer"
 [dependencies.kicker-controller]
 path = "drivers/kicker-controller"
 
-[dependencies.startup_graphic]
-path = "graphics/startup_graphic"
-
-[dependencies.main_window]
-path = "graphics/windows/main_window"
-
 # the root package is also a workspace that holds all of the neccesary "supporting" packages
 # such as driver files, utility files (e.g. tools), etc.
 [workspace]
@@ -108,7 +102,7 @@ members = [
     "drivers/rotary_switch",
     "tools",
     "drivers/kicker-programmer",
-    "drivers/kicker-controller", "drivers/battery_sense", "graphics/windows/main_window", "graphics/startup_graphic",
+    "drivers/kicker-controller", "drivers/battery_sense", "graphics",
 ]
 
 # overrides the release build optimization level

@@ -48,13 +48,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8fe8f5a8a398345e52358e18ff07cc17a568fbca5c6f73873d3a62056309603"
 
 [[package]]
-name = "battery_indicator"
-version = "0.1.0"
-dependencies = [
- "embedded-graphics",
-]
-
-[[package]]
 name = "battery_sense_rs"
 version = "0.1.0"
 dependencies = [
@@ -330,6 +323,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1d758ba1b47b00caf47f24925c0074ecb20d6dfcffe7f6d53395c0465674841a"
 
 [[package]]
+name = "graphics"
+version = "0.1.0"
+dependencies = [
+ "embedded-graphics",
+ "tinybmp",
+]
+
+[[package]]
 name = "hashbrown"
 version = "0.15.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -482,14 +483,6 @@ name = "log"
 version = "0.4.26"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "30bde2b3dc3671ae49d8e2e9f044c7c005836e7a023ee57cffa25ab82764bb9e"
-
-[[package]]
-name = "main_window"
-version = "0.1.0"
-dependencies = [
- "battery_indicator",
- "embedded-graphics",
-]
 
 [[package]]
 name = "micromath"
@@ -679,7 +672,6 @@ checksum = "46b71a9d9206e8b46714c74255adcaea8b11e0350c1d8456165073c3f75fc81a"
 name = "robojackets-robocup-control"
 version = "0.2.0"
 dependencies = [
- "battery_indicator",
  "battery_sense_rs",
  "controller",
  "cortex-m",
@@ -689,6 +681,7 @@ dependencies = [
  "embedded-hal 0.2.7",
  "fixed-queue",
  "fpga-rs",
+ "graphics",
  "icm42605-driver",
  "imxrt-hal",
  "imxrt-iomuxc",
@@ -697,7 +690,6 @@ dependencies = [
  "kicker-programmer",
  "libm",
  "log",
- "main_window",
  "motion",
  "nalgebra 0.33.2",
  "ncomm-utils",
@@ -707,7 +699,6 @@ dependencies = [
  "rtic-monotonics",
  "rtic-nrf24l01",
  "ssd1306",
- "startup_graphic",
  "teensy4-bsp",
  "teensy4-panic",
  "teensy4-pins",
@@ -867,14 +858,6 @@ dependencies = [
  "display-interface-spi",
  "embedded-graphics-core",
  "embedded-hal 0.2.7",
-]
-
-[[package]]
-name = "startup_graphic"
-version = "0.1.0"
-dependencies = [
- "embedded-graphics",
- "tinybmp",
 ]
 
 [[package]]

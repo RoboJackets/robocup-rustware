@@ -29,14 +29,15 @@ static HEAP: Heap = Heap::empty();
 mod app {
     use super::*;
 
+    use graphics::error_screen::ErrorScreen;
     use robojackets_robocup_control::peripherals::BatterySenseT;
-    use startup_graphic::StartScreen;
-    use main_window::MainWindow;
+    use graphics::startup_screen::StartScreen;
+    use graphics::main_window::MainWindow;
     use teensy4_bsp::board::Lpi2c3;
 
     use core::mem::MaybeUninit;
 
-    const HEAP_SIZE: usize = 1024;
+    const HEAP_SIZE: usize = 1024 * 8;
     static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
 
     #[shared]
@@ -95,8 +96,9 @@ mod app {
         ).draw(&mut display);
         display.flush();*/
 
-        //StartScreen::new(Point::new(0, 0), Point::new(24, 4)).draw(&mut display);
-        MainWindow::new(0, "Blue").draw(&mut display);
+        StartScreen::new(Point::new(0, 0), Point::new(24, 4)).draw(&mut display);
+        //MainWindow::new(0, "Blue").draw(&mut display);
+        //ErrorScreen::new("Error", "1234567890123456789012345678901234567890").draw(&mut display);
         display.flush();
 
         (Shared {}, Local {})
