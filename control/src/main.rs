@@ -48,10 +48,10 @@ mod app {
     use shared_bus;
 
     // Includes for display module
+    use embedded_graphics::prelude::*;
+    use ssd1306::{mode::BufferedGraphicsMode, prelude::*, I2CDisplayInterface, Ssd1306};
     use teensy4_bsp::board::Lpi2c1;
     use teensy4_pins::t41::{P18, P19};
-    use ssd1306::{prelude::*, I2CDisplayInterface, Ssd1306, mode::BufferedGraphicsMode};
-    use embedded_graphics::prelude::*;
 
     use robojackets_robocup_control::robot::{TEAM, TEAM_NUM};
     use robojackets_robocup_rtp::BASE_STATION_ADDRESSES;
@@ -79,11 +79,11 @@ mod app {
     use icm42605_driver::IMU;
 
     use robojackets_robocup_control::{
-        spi::FakeSpi, Delay2, FPGAInitError, FPGAProgError, Fpga, Gpio1, Imu, ImuInitError,
-        KickerCSn, KickerProg, KickerProgramError, KickerReset, KickerServicingError, PitDelay,
-        RFRadio, RadioInitError, RadioInterrupt, SharedSPI, State, BASE_AMPLIFICATION_LEVEL,
-        CHANNEL, GPT_1_DIVIDER, GPT_CLOCK_SOURCE, GPT_DIVIDER, GPT_FREQUENCY, RADIO_ADDRESS,
-        ROBOT_ID, DisplayT,
+        spi::FakeSpi, Delay2, DisplayT, FPGAInitError, FPGAProgError, Fpga, Gpio1, Imu,
+        ImuInitError, KickerCSn, KickerProg, KickerProgramError, KickerReset, KickerServicingError,
+        PitDelay, RFRadio, RadioInitError, RadioInterrupt, SharedSPI, State,
+        BASE_AMPLIFICATION_LEVEL, CHANNEL, GPT_1_DIVIDER, GPT_CLOCK_SOURCE, GPT_DIVIDER,
+        GPT_FREQUENCY, RADIO_ADDRESS, ROBOT_ID,
     };
 
     use kicker_controller::{KickTrigger, KickType, Kicker, KickerCommand};
@@ -246,11 +246,12 @@ mod app {
         spi.disabled(|spi| spi.set_mode(FPGA_SPI_MODE));
 
         // Initialize IMU
-        
+
         let i2c = board::lpi2c(lpi2c1, pins.p19, pins.p18, board::Lpi2cClockSpeed::KHz400);
         let i2c_bus: &'static _ = shared_bus::new_cortexm!(
             imxrt_hal::lpi2c::Lpi2c<imxrt_hal::lpi2c::Pins<P19, P18>, 1> = i2c
-        ).expect("Failed to initialize shared I2C bus LPI2C1");
+        )
+        .expect("Failed to initialize shared I2C bus LPI2C1");
         let pit_delay = Blocking::<_, PERCLK_FREQUENCY>::from_pit(pit2);
         let imu = IMU::new(i2c_bus.acquire_i2c());
 
@@ -310,7 +311,8 @@ mod app {
             display_interface,
             DisplaySize128x64,
             DisplayRotation::Rotate0,
-        ).into_buffered_graphics_mode();
+        )
+        .into_buffered_graphics_mode();
 
         initialize_imu::spawn().ok();
 

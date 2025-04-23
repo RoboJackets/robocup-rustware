@@ -1,10 +1,13 @@
 extern crate alloc;
 
-use alloc::vec::Vec;
 use alloc::string::String;
+use alloc::vec::Vec;
 
 use embedded_graphics::{
-    mono_font::{ascii::{FONT_7X13, FONT_5X8}, MonoTextStyle},
+    mono_font::{
+        MonoTextStyle,
+        ascii::{FONT_5X8, FONT_7X13},
+    },
     pixelcolor::BinaryColor,
     prelude::*,
     text::{Alignment, Baseline, Text, TextStyleBuilder},
@@ -17,17 +20,13 @@ pub struct ErrorScreen<'a> {
 
 impl<'a> ErrorScreen<'a> {
     pub fn new(heading: &'a str, message: &'a str) -> Self {
-
-        let instance = ErrorScreen {
-            heading,
-            message,
-        };
+        let instance = ErrorScreen { heading, message };
         return instance;
     }
 
     /**
      * Wraps text around at 24 column intervals.
-     * Does not account for word endings. 
+     * Does not account for word endings.
      * @return Vector of String, one element for each line on the display
      */
     pub fn wrap(&self, text: &str) -> Vec<String> {
@@ -52,12 +51,13 @@ impl<'a> Drawable for ErrorScreen<'a> {
     type Color = BinaryColor;
 
     fn draw<D>(&self, target: &mut D) -> Result<Self::Output, D::Error>
-        where
-            D: DrawTarget<Color = Self::Color> {
+    where
+        D: DrawTarget<Color = Self::Color>,
+    {
         let text_style = TextStyleBuilder::new()
-        .alignment(Alignment::Left)
-        .baseline(Baseline::Middle)
-        .build();
+            .alignment(Alignment::Left)
+            .baseline(Baseline::Middle)
+            .build();
         let char_style = MonoTextStyle::new(&FONT_5X8, BinaryColor::On);
         let header_style = MonoTextStyle::new(&FONT_7X13, BinaryColor::On);
 
@@ -65,7 +65,12 @@ impl<'a> Drawable for ErrorScreen<'a> {
             .draw(target)?;
         let wrapped = self.wrap(self.message);
         for (i, line) in wrapped.iter().enumerate() {
-            Text::with_text_style(line, Point::new(1, (20 + 7 * i) as i32), char_style, text_style)
+            Text::with_text_style(
+                line,
+                Point::new(1, (20 + 7 * i) as i32),
+                char_style,
+                text_style,
+            )
             .draw(target)?;
         }
         Ok(())

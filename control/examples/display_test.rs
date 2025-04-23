@@ -8,9 +8,8 @@ use teensy4_panic as _;
 
 use rtic_monotonics::systick::*;
 
-use ssd1306::{prelude::*, I2CDisplayInterface, Ssd1306, mode::BufferedGraphicsMode};
 use embedded_graphics::prelude::*;
-
+use ssd1306::{mode::BufferedGraphicsMode, prelude::*, I2CDisplayInterface, Ssd1306};
 
 use embedded_alloc::Heap;
 
@@ -36,8 +35,8 @@ mod app {
         display: Ssd1306<
             I2CInterface<imxrt_hal::lpi2c::Lpi2c<imxrt_hal::lpi2c::Pins<P19, P18>, 1>>,
             DisplaySize128x64,
-            ssd1306::mode::BufferedGraphicsMode<DisplaySize128x64>, 
-        >
+            ssd1306::mode::BufferedGraphicsMode<DisplaySize128x64>,
+        >,
     }
 
     #[local]
@@ -62,37 +61,39 @@ mod app {
         let systick_token = rtic_monotonics::create_systick_token!();
         Systick::start(cx.core.SYST, 36_000_000, systick_token);
 
-        let i2c: Lpi2c1 = board::lpi2c(
-            lpi2c1,
-            pins.p19,
-            pins.p18,
-            board::Lpi2cClockSpeed::MHz1,
-        );
+        let i2c: Lpi2c1 = board::lpi2c(lpi2c1, pins.p19, pins.p18, board::Lpi2cClockSpeed::MHz1);
         let interface = I2CDisplayInterface::new(i2c);
-        let display: Ssd1306<I2CInterface<imxrt_hal::lpi2c::Lpi2c<imxrt_hal::lpi2c::Pins<P19, P18>, 1>>, DisplaySize128x64, BufferedGraphicsMode<DisplaySize128x64>> = Ssd1306::new(
-            interface,
+        let display: Ssd1306<
+            I2CInterface<imxrt_hal::lpi2c::Lpi2c<imxrt_hal::lpi2c::Pins<P19, P18>, 1>>,
             DisplaySize128x64,
-            DisplayRotation::Rotate0,
-        ).into_buffered_graphics_mode();
+            BufferedGraphicsMode<DisplaySize128x64>,
+        > = Ssd1306::new(interface, DisplaySize128x64, DisplayRotation::Rotate0)
+            .into_buffered_graphics_mode();
 
         let main_window = MainWindow::new(0, "Blue");
         let error_screen = ErrorScreen::new(
             "Example Program",
             "Lorem ipsum dolor sit amet, consectetur adipiscing elit, 
-            sed do eiusmod tempor incididunt ut labore et dolore magna aliqua."
+            sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.",
         );
         let latency_placeholder: u16 = 0;
 
         init_devices::spawn().ok();
-        (Shared {display}, Local {main_window, error_screen, latency_placeholder})
-
+        (
+            Shared { display },
+            Local {
+                main_window,
+                error_screen,
+                latency_placeholder,
+            },
+        )
     }
 
     // Loops between the main screen and an error screen with sample text.
     // Does not demonstrate any other devices - Does not read battery, ball sensor, etc.
     #[task(priority=1, shared = [display])]
     async fn init_devices(mut _cx: init_devices::Context) {
-        _cx.shared.display.lock(| display | {
+        _cx.shared.display.lock(|display| {
             display.init().ok();
         });
         main_window_test::spawn().ok();
@@ -103,10 +104,22 @@ mod app {
         for _i in 0..30 {
             *_cx.local.latency_placeholder += 1;
             _cx.local.main_window.latency = *_cx.local.latency_placeholder as u32;
-            _cx.local.main_window.team = if *_cx.local.latency_placeholder % 2 == 0 {"blue"} else {"yellow"};
-            _cx.local.main_window.ball_sense = if *_cx.local.latency_placeholder % 2 == 0 {true} else {false};
-            _cx.local.main_window.kicker_charged = if *_cx.local.latency_placeholder % 2 == 0 {true} else {false};
-            _cx.shared.display.lock(|display | {
+            _cx.local.main_window.team = if *_cx.local.latency_placeholder % 2 == 0 {
+                "blue"
+            } else {
+                "yellow"
+            };
+            _cx.local.main_window.ball_sense = if *_cx.local.latency_placeholder % 2 == 0 {
+                true
+            } else {
+                false
+            };
+            _cx.local.main_window.kicker_charged = if *_cx.local.latency_placeholder % 2 == 0 {
+                true
+            } else {
+                false
+            };
+            _cx.shared.display.lock(|display| {
                 display.clear();
                 _cx.local.main_window.draw(display).ok();
                 display.flush().ok();
@@ -119,7 +132,7 @@ mod app {
 
     #[task(priority=1, shared=[display], local=[error_screen])]
     async fn error_screen_test(mut _cx: error_screen_test::Context) {
-        _cx.shared.display.lock(|display | {
+        _cx.shared.display.lock(|display| {
             display.clear();
             _cx.local.error_screen.draw(display).ok();
             display.flush().ok();
@@ -127,5 +140,4 @@ mod app {
         Systick::delay(250000000.micros()).await;
         main_window_test::spawn().ok();
     }
-    
 }
