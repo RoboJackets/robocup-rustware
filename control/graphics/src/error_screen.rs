@@ -5,8 +5,8 @@ use alloc::vec::Vec;
 
 use embedded_graphics::{
     mono_font::{
-        MonoTextStyle,
         ascii::{FONT_5X8, FONT_7X13},
+        MonoTextStyle,
     },
     pixelcolor::BinaryColor,
     prelude::*,
