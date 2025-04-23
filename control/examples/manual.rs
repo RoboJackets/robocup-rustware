@@ -60,9 +60,10 @@ mod app {
 
     use icm42605_driver::IMU;
 
+    //Removed fpga
     use robojackets_robocup_control::{
-        Delay2, FPGAInitError, FPGAProgError, Fpga, Gpio1, Imu, ImuInitError, PitDelay, RFRadio,
-        RadioInitError, RadioInterrupt, SharedSPI, BASE_AMPLIFICATION_LEVEL, CHANNEL,
+        Delay2, FPGAInitError, FPGAProgError, Gpio1, Imu, ImuInitError, PitDelay, RFRadio,
+        RadioInitError, RadioInterrupt, RadioSPI, BASE_AMPLIFICATION_LEVEL, CHANNEL,
         GPT_CLOCK_SOURCE, GPT_DIVIDER, GPT_FREQUENCY, RADIO_ADDRESS, ROBOT_ID,
     };
 
@@ -82,14 +83,13 @@ mod app {
     #[shared]
     struct Shared {
         // Peripherals
-        shared_spi: SharedSPI,
+        shared_spi: RadioSPI,
         delay2: Delay2,
         rx_int: RadioInterrupt,
         gpio1: Gpio1,
         pit_delay: PitDelay,
 
         // Drivers
-        fpga: Fpga,
         imu: Imu,
         radio: RFRadio,
 
@@ -146,37 +146,23 @@ mod app {
         let mut chained_timer = Chained01::new(pit0, pit1);
         chained_timer.enable();
 
-        // Setup Rx Interrupt
-        let rx_int = gpio1.input(pins.p15);
+        // Setup Rx Interrupt for Radio
+        let rx_int = gpio2.input(pins.p9);
         gpio1.set_interrupt(&rx_int, None);
-
-        // Initialize Fpga SPI
-        let mut spi = board::lpspi(
-            lpspi4,
-            board::LpspiPins {
-                pcs0: pins.p10,
-                sck: pins.p13,
-                sdo: pins.p11,
-                sdi: pins.p12,
-            },
-            FPGA_SPI_FREQUENCY,
-        );
-        spi.disabled(|spi| spi.set_mode(FPGA_SPI_MODE));
 
         // Initialize IMU
         let i2c = board::lpi2c(lpi2c1, pins.p19, pins.p18, board::Lpi2cClockSpeed::KHz400);
         let pit_delay = Blocking::<_, PERCLK_FREQUENCY>::from_pit(pit2);
         let imu = IMU::new(i2c);
 
-        // Initialize Shared SPI
+        // Initialize Shared SPI. Changedc to RadioSPI pinouts
         let shared_spi_pins = Pins {
-            pcs0: pins.p38,
-            sck: pins.p27,
-            sdo: pins.p26,
-            sdi: pins.p39,
+            pcs0: pins.p10,
+            sck: pins.p13,
+            sdo: pins.p11,
+            sdi: pins.p12,
         };
-        let shared_spi_block = unsafe { LPSPI3::instance() };
-        let mut shared_spi = Lpspi::new(shared_spi_block, shared_spi_pins);
+        let mut shared_spi = hal::lpspi::Lpspi::new(lpspi4, shared_spi_pins);
 
         shared_spi.disabled(|spi| {
             spi.set_clock_hz(LPSPI_FREQUENCY, 5_000_000u32);
@@ -185,7 +171,7 @@ mod app {
 
         // Init radio cs pin and ce pin
         let radio_cs = gpio1.output(pins.p14);
-        let ce = gpio1.output(pins.p20);
+        let ce = gpio1.output(pins.p41);
 
         // Initialize radio
         let radio = Radio::new(ce, radio_cs);
@@ -198,11 +184,6 @@ mod app {
         let prog_b = gpio3.output(pins.p28);
         let done = gpio3.input(pins.p30);
 
-        // Initialize the FPGA
-        let fpga = match FPGA::new(spi, cs, init_b, prog_b, done) {
-            Ok(fpga) => fpga,
-            Err(_) => panic!("Unable to initialize the FPGA"),
-        };
 
         // Set an initial robot status
         let initial_robot_status = RobotStatusMessageBuilder::new().robot_id(ROBOT_ID).build();
@@ -216,7 +197,6 @@ mod app {
                 shared_spi,
                 delay2,
                 rx_int,
-                fpga,
                 gpio1,
                 robot_status: initial_robot_status,
                 control_message: None,
@@ -295,12 +275,11 @@ mod app {
     }
 
     #[task(
-        shared = [fpga, pit_delay, imu_init_error, fpga_init_error, fpga_prog_error, radio_init_error, delay2],
+        shared = [pit_delay, imu_init_error, fpga_init_error, fpga_prog_error, radio_init_error, delay2],
         priority = 1
     )]
     async fn initialize_fpga(ctx: initialize_fpga::Context) {
         let fully_initialized = (
-            ctx.shared.fpga,
             ctx.shared.pit_delay,
             ctx.shared.imu_init_error,
             ctx.shared.fpga_init_error,
@@ -427,7 +406,7 @@ mod app {
     }
 
     #[task(
-        shared = [imu, control_message, counter, elapsed_time, fpga, rx_int, gpio1, delay2],
+        shared = [imu, control_message, counter, elapsed_time, rx_int, gpio1, delay2],
         local = [motion_controller, last_encoders, chain_timer, initialized: bool = false, iteration: u32 = 0, last_time: u64 = 0],
         priority = 1
     )]
@@ -501,7 +480,7 @@ mod app {
         #[cfg(feature = "debug")]
         log::info!("Moving at {:?}", wheel_velocities);
 
-        let encoder_velocities = (ctx.shared.fpga, ctx.shared.delay2).lock(|fpga, delay| {
+        let encoder_velocities = (ctx.shared.delay2).lock(|fpga, delay| {
             let encoder_velocities =
                 match fpga.set_velocities(wheel_velocities.into(), dribbler_enabled, delay) {
                     Ok(encoder_velocities) => encoder_velocities,
