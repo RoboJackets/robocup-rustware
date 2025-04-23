@@ -9,16 +9,8 @@ use teensy4_panic as _;
 use rtic_monotonics::systick::*;
 
 use ssd1306::{prelude::*, I2CDisplayInterface, Ssd1306, mode::BufferedGraphicsMode};
-use embedded_graphics::{
-    pixelcolor::BinaryColor,
-    prelude::*,
-    mono_font::MonoTextStyle,
-    mono_font::ascii::FONT_5X7,
-    text::Text,
-    text::TextStyleBuilder,
-    text::Alignment,
-    text::Baseline,
-};
+use embedded_graphics::prelude::*;
+
 
 use embedded_alloc::Heap;
 
@@ -30,10 +22,9 @@ mod app {
     use super::*;
 
     use graphics::error_screen::ErrorScreen;
-    use robojackets_robocup_control::peripherals::BatterySenseT;
-    use graphics::startup_screen::StartScreen;
     use graphics::main_window::MainWindow;
-    use teensy4_bsp::board::Lpi2c3;
+    use teensy4_bsp::board::Lpi2c1;
+    use teensy4_pins::t41::{P18, P19};
 
     use core::mem::MaybeUninit;
 
@@ -42,22 +33,28 @@ mod app {
 
     #[shared]
     struct Shared {
-
+        display: Ssd1306<
+            I2CInterface<imxrt_hal::lpi2c::Lpi2c<imxrt_hal::lpi2c::Pins<P19, P18>, 1>>,
+            DisplaySize128x64,
+            ssd1306::mode::BufferedGraphicsMode<DisplaySize128x64>, 
+        >
     }
 
     #[local]
     struct Local {
+        main_window: MainWindow<'static>,
+        error_screen: ErrorScreen<'static>,
+        latency_placeholder: u16,
     }
 
     #[init]
     fn init(cx: init::Context) -> (Shared, Local) {
         unsafe {
-            #[allow(static_mut_refs)]
             HEAP.init(HEAP_MEM.as_ptr() as usize, HEAP_SIZE);
         }
 
         let board::Resources {
-            pins, lpi2c3, usb, ..
+            pins, lpi2c1, usb, ..
         } = board::t41(cx.device);
 
         bsp::LoggingFrontend::default_log().register_usb(usb);
@@ -65,43 +62,68 @@ mod app {
         let systick_token = rtic_monotonics::create_systick_token!();
         Systick::start(cx.core.SYST, 36_000_000, systick_token);
 
-        let mut i2c: Lpi2c3 = board::lpi2c(
-            lpi2c3,
-            pins.p16,
-            pins.p17,
+        let i2c: Lpi2c1 = board::lpi2c(
+            lpi2c1,
+            pins.p19,
+            pins.p18,
             board::Lpi2cClockSpeed::MHz1,
         );
         let interface = I2CDisplayInterface::new(i2c);
-        let mut display = Ssd1306::new(
+        let display: Ssd1306<I2CInterface<imxrt_hal::lpi2c::Lpi2c<imxrt_hal::lpi2c::Pins<P19, P18>, 1>>, DisplaySize128x64, BufferedGraphicsMode<DisplaySize128x64>> = Ssd1306::new(
             interface,
             DisplaySize128x64,
             DisplayRotation::Rotate0,
         ).into_buffered_graphics_mode();
 
-        display.init();
+        let main_window = MainWindow::new(0, "Blue");
+        let error_screen = ErrorScreen::new(
+            "Example Program",
+            "Lorem ipsum dolor sit amet, consectetur adipiscing elit, 
+            sed do eiusmod tempor incididunt ut labore et dolore magna aliqua."
+        );
+        let latency_placeholder: u16 = 0;
 
-        display.clear();
-
-        let text_style = TextStyleBuilder::new()
-            .alignment(Alignment::Left)
-            .baseline(Baseline::Middle)
-            .build();
-        let char_style = MonoTextStyle::new(&FONT_5X7, BinaryColor::On);
-        /*
-        Text::with_text_style(
-            "Yeet",
-            Point::new(0, 10),
-            char_style,
-            text_style,
-        ).draw(&mut display);
-        display.flush();*/
-
-        StartScreen::new(Point::new(0, 0), Point::new(24, 4)).draw(&mut display);
-        //MainWindow::new(0, "Blue").draw(&mut display);
-        //ErrorScreen::new("Error", "1234567890123456789012345678901234567890").draw(&mut display);
-        display.flush();
-
-        (Shared {}, Local {})
+        init_devices::spawn().ok();
+        (Shared {display}, Local {main_window, error_screen, latency_placeholder})
 
     }
+
+    #[task(priority=1, shared = [display])]
+    async fn init_devices(mut _cx: init_devices::Context) {
+        _cx.shared.display.lock(| display | {
+            display.init().ok();
+        });
+        main_window_test::spawn().ok();
+    }
+
+    #[task(priority=1, shared=[display], local=[latency_placeholder, main_window])]
+    async fn main_window_test(mut _cx: main_window_test::Context) {
+        for _i in 0..30 {
+            *_cx.local.latency_placeholder += 1;
+            _cx.local.main_window.latency = *_cx.local.latency_placeholder as u32;
+            _cx.local.main_window.team = if *_cx.local.latency_placeholder % 2 == 0 {"blue"} else {"yellow"};
+            _cx.local.main_window.ball_sense = if *_cx.local.latency_placeholder % 2 == 0 {true} else {false};
+            _cx.local.main_window.kicker_charged = if *_cx.local.latency_placeholder % 2 == 0 {true} else {false};
+            _cx.shared.display.lock(|display | {
+                display.clear();
+                _cx.local.main_window.draw(display).ok();
+                display.flush().ok();
+            });
+            Systick::delay(5000000.micros()).await;
+        }
+        *_cx.local.latency_placeholder = 0;
+        error_screen_test::spawn().ok();
+    }
+
+    #[task(priority=1, shared=[display], local=[error_screen])]
+    async fn error_screen_test(mut _cx: error_screen_test::Context) {
+        _cx.shared.display.lock(|display | {
+            display.clear();
+            _cx.local.error_screen.draw(display).ok();
+            display.flush().ok();
+        });
+        Systick::delay(250000000.micros()).await;
+        main_window_test::spawn().ok();
+    }
+    
 }

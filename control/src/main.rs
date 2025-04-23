@@ -45,6 +45,12 @@ mod app {
 
     use ncomm_utils::packing::Packable;
 
+    // Includes for display module
+    use teensy4_bsp::board::Lpi2c1;
+    use teensy4_pins::t41::{P18, P19};
+    use ssd1306::{prelude::*, I2CDisplayInterface, Ssd1306, mode::BufferedGraphicsMode};
+    use embedded_graphics::prelude::*;
+
     use robojackets_robocup_control::robot::{TEAM, TEAM_NUM};
     use robojackets_robocup_rtp::BASE_STATION_ADDRESSES;
     use robojackets_robocup_rtp::{
@@ -161,6 +167,13 @@ mod app {
         control_message: Option<ControlMessage>,
         counter: u32,
         elapsed_time: u32,
+
+        // Display
+        // display: Ssd1306<
+        //     I2CInterface<imxrt_hal::lpi2c::Lpi2c<imxrt_hal::lpi2c::Pins<P19, P18>, 1>>,
+        //     DisplaySize128x64,
+        //     ssd1306::mode::BufferedGraphicsMode<DisplaySize128x64>, 
+        // >,
 
         // State
         state: State,
@@ -290,6 +303,13 @@ mod app {
 
         rx_int.clear_triggered();
 
+        // let display_interface = I2CDisplayInterface::new(i2c);
+        // let display: Ssd1306<I2CInterface<imxrt_hal::lpi2c::Lpi2c<imxrt_hal::lpi2c::Pins<P19, P18>, 1>>, DisplaySize128x64, BufferedGraphicsMode<DisplaySize128x64>> = Ssd1306::new(
+        //     display_interface,
+        //     DisplaySize128x64,
+        //     DisplayRotation::Rotate0,
+        // ).into_buffered_graphics_mode();
+
         initialize_imu::spawn().ok();
 
         (
@@ -311,6 +331,7 @@ mod app {
                 kicker_programmer: None,
                 kicker_controller: Some(kicker_controller),
                 fake_spi,
+                //display,
                 state: State::default(),
 
                 // Errors
