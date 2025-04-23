@@ -1,7 +1,7 @@
 extern crate alloc;
 use alloc::format;
 use embedded_graphics::{
-    mono_font::{MonoTextStyle, ascii::FONT_7X13},
+    mono_font::{ascii::FONT_7X13, MonoTextStyle},
     pixelcolor::BinaryColor,
     prelude::*,
     primitives::{PrimitiveStyle, Rectangle},
