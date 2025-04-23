@@ -51,6 +51,8 @@ mod app {
         RobotStatusMessage, RobotStatusMessageBuilder, ROBOT_STATUS_SIZE,
     };
 
+    use teensy4_pins::t41::{P18, P19};
+
     use motion::MotionControl;
 
     use fpga::FPGA;
@@ -165,8 +167,12 @@ mod app {
 
         // Initialize IMU
         let i2c = board::lpi2c(lpi2c1, pins.p19, pins.p18, board::Lpi2cClockSpeed::KHz400);
+        let i2c_bus: &'static _ = shared_bus::new_cortexm!(
+            imxrt_hal::lpi2c::Lpi2c<imxrt_hal::lpi2c::Pins<P19, P18>, 1> = i2c
+        )
+        .expect("Failed to initialize shared I2C bus LPI2C1");
         let pit_delay = Blocking::<_, PERCLK_FREQUENCY>::from_pit(pit2);
-        let imu = IMU::new(i2c);
+        let imu = IMU::new(i2c_bus.acquire_i2c());
 
         // Initialize Shared SPI
         let shared_spi_pins = Pins {

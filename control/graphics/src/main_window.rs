@@ -4,8 +4,8 @@ use alloc::format;
 use crate::battery_indicator::BatteryIndicator;
 use embedded_graphics::{
     mono_font::{
-        ascii::{FONT_6X9, FONT_7X13},
         MonoTextStyle,
+        ascii::{FONT_6X9, FONT_7X13},
     },
     pixelcolor::BinaryColor,
     prelude::*,
