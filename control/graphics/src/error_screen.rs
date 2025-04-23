@@ -25,6 +25,11 @@ impl<'a> ErrorScreen<'a> {
         return instance;
     }
 
+    /**
+     * Wraps text around at 24 column intervals.
+     * Does not account for word endings. 
+     * @return Vector of String, one element for each line on the display
+     */
     pub fn wrap(&self, text: &str) -> Vec<String> {
         let mut strs: Vec<String> = Vec::new();
         let iters = text.len() / 24;

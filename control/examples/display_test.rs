@@ -88,6 +88,8 @@ mod app {
 
     }
 
+    // Loops between the main screen and an error screen with sample text.
+    // Does not demonstrate any other devices - Does not read battery, ball sensor, etc.
     #[task(priority=1, shared = [display])]
     async fn init_devices(mut _cx: init_devices::Context) {
         _cx.shared.display.lock(| display | {

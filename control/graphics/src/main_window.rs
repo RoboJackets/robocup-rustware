@@ -19,6 +19,8 @@ pub struct MainWindow<'a> {
 }
 
 impl<'a> MainWindow<'a> {
+    // MainWindow object can be updated by manually changing its members.
+    // Might need an update() function in the future.
     pub fn new(robot_id: u16, team: &'a str) -> Self
     {
         let instance = MainWindow {

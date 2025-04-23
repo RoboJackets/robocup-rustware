@@ -11,7 +11,6 @@ use embedded_graphics::{
 
 /**
  * Battery indicator as a battery icon and percentage value.
- * Uses Drawable trait.
  */
 pub struct BatteryIndicator {
     pub top_left: Point,
