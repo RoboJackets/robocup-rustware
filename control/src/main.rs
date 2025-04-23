@@ -45,6 +45,8 @@ mod app {
 
     use ncomm_utils::packing::Packable;
 
+    use shared_bus;
+
     // Includes for display module
     use teensy4_bsp::board::Lpi2c1;
     use teensy4_pins::t41::{P18, P19};
@@ -81,7 +83,7 @@ mod app {
         KickerCSn, KickerProg, KickerProgramError, KickerReset, KickerServicingError, PitDelay,
         RFRadio, RadioInitError, RadioInterrupt, SharedSPI, State, BASE_AMPLIFICATION_LEVEL,
         CHANNEL, GPT_1_DIVIDER, GPT_CLOCK_SOURCE, GPT_DIVIDER, GPT_FREQUENCY, RADIO_ADDRESS,
-        ROBOT_ID,
+        ROBOT_ID, DisplayT,
     };
 
     use kicker_controller::{KickTrigger, KickType, Kicker, KickerCommand};
@@ -168,12 +170,8 @@ mod app {
         counter: u32,
         elapsed_time: u32,
 
-        // Display
-        // display: Ssd1306<
-        //     I2CInterface<imxrt_hal::lpi2c::Lpi2c<imxrt_hal::lpi2c::Pins<P19, P18>, 1>>,
-        //     DisplaySize128x64,
-        //     ssd1306::mode::BufferedGraphicsMode<DisplaySize128x64>, 
-        // >,
+        //Display
+        display: DisplayT,
 
         // State
         state: State,
@@ -248,9 +246,13 @@ mod app {
         spi.disabled(|spi| spi.set_mode(FPGA_SPI_MODE));
 
         // Initialize IMU
+        
         let i2c = board::lpi2c(lpi2c1, pins.p19, pins.p18, board::Lpi2cClockSpeed::KHz400);
+        let i2c_bus: &'static _ = shared_bus::new_cortexm!(
+            imxrt_hal::lpi2c::Lpi2c<imxrt_hal::lpi2c::Pins<P19, P18>, 1> = i2c
+        ).expect("Failed to initialize shared I2C bus LPI2C1");
         let pit_delay = Blocking::<_, PERCLK_FREQUENCY>::from_pit(pit2);
-        let imu = IMU::new(i2c);
+        let imu = IMU::new(i2c_bus.acquire_i2c());
 
         // Initialize Shared SPI
         let shared_spi_pins = Pins {
@@ -303,12 +305,12 @@ mod app {
 
         rx_int.clear_triggered();
 
-        // let display_interface = I2CDisplayInterface::new(i2c);
-        // let display: Ssd1306<I2CInterface<imxrt_hal::lpi2c::Lpi2c<imxrt_hal::lpi2c::Pins<P19, P18>, 1>>, DisplaySize128x64, BufferedGraphicsMode<DisplaySize128x64>> = Ssd1306::new(
-        //     display_interface,
-        //     DisplaySize128x64,
-        //     DisplayRotation::Rotate0,
-        // ).into_buffered_graphics_mode();
+        let display_interface = I2CDisplayInterface::new(i2c_bus.acquire_i2c());
+        let display: DisplayT = Ssd1306::new(
+            display_interface,
+            DisplaySize128x64,
+            DisplayRotation::Rotate0,
+        ).into_buffered_graphics_mode();
 
         initialize_imu::spawn().ok();
 
@@ -331,7 +333,7 @@ mod app {
                 kicker_programmer: None,
                 kicker_controller: Some(kicker_controller),
                 fake_spi,
-                //display,
+                display,
                 state: State::default(),
 
                 // Errors
