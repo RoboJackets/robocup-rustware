@@ -45,6 +45,7 @@ mod app {
         let board::Resources {
             pins,
             usb,
+            mut gpio1,
             mut gpio2,
             mut gpio4,
             pit: (_pit0, _pit1, _pit2, pit3),
@@ -55,13 +56,13 @@ mod app {
 
         let systick_token = rtic_monotonics::create_systick_token!();
         Systick::start(ctx.core.SYST, 600_000_000, systick_token);
-        let kicker = Kicker::new(gpio4.output(pins.p5), gpio2.output(pins.p6));
+        let kicker = Kicker::new(gpio1.output(pins.p38), gpio2.output(pins.p37));
 
         let pit_delay = Blocking::<_, PERCLK_FREQUENCY>::from_pit(pit3);
         let fake_spi = FakeSpi::new(
-            gpio4.output(pins.p2),
-            gpio4.output(pins.p3),
-            gpio4.input(pins.p4),
+            gpio1.output(pins.p27),
+            gpio1.output(pins.p26),
+            gpio1.input(pins.p39),
             pit_delay,
         );
 
