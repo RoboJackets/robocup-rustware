@@ -20,6 +20,8 @@ use teensy4_bsp::hal::{
 use icm42605_driver::IMU;
 use kicker_programmer::KickerProgrammer;
 
+use ssd1306::{prelude::*, I2CDisplayInterface, Ssd1306};
+
 use super::GPT_FREQUENCY;
 //See spi.rs for the fake SPI for kicker
 /// Radio Spi
@@ -31,7 +33,7 @@ pub type RadioCSN = Output<P14>; //Changed from P14
 /// The Interrupt for the Radio
 pub type RadioInterrupt = Input<P9>; //Changed from P15
 /// The Radio
-pub type RFRadio = rtic_nrf24l01::Radio<RadioCE, RadioCSN, RadioSPI, Infallible, LpspiError>; 
+pub type RFRadio = rtic_nrf24l01::Radio<RadioCE, RadioCSN, RadioSPI, Infallible, LpspiError>;
 /// The Delay used by the FPGA
 pub type Delay1 = Blocking<Gpt1, GPT_FREQUENCY>;
 /// The general-purpose delay shared by different peripherals
@@ -54,3 +56,9 @@ pub type KickerReset = Output<P37>; //Changed from P6
 pub type KickerCSn = Output<P38>; //Changed from P5
 /// The Kicker Programmer
 pub type KickerProg = KickerProgrammer<KickerCSn, KickerReset>;
+// The Display
+pub type Display = Ssd1306<
+    I2CInterface<imxrt_hal::lpi2c::Lpi2c<imxrt_hal::lpi2c::Pins<P19, P18>, 1>>,
+    DisplaySize128x64,
+    ssd1306::mode::BufferedGraphicsMode<DisplaySize128x64>,
+>;
