@@ -57,7 +57,7 @@ mod app {
     };
 
     use robojackets_robocup_control::{
-        Delay2, RFRadio, SharedSPI, CHANNEL, GPT_CLOCK_SOURCE, GPT_DIVIDER, GPT_FREQUENCY,
+        Delay2, RFRadio, RadioSPI, CHANNEL, GPT_CLOCK_SOURCE, GPT_DIVIDER, GPT_FREQUENCY,
         RADIO_ADDRESS,
     };
 
@@ -72,7 +72,7 @@ mod app {
     #[shared]
     struct Shared {
         radio: RFRadio,
-        shared_spi: SharedSPI,
+        shared_spi: RadioSPI,
         delay2: Delay2,
         robot_status: RobotStatusMessage,
     }
@@ -89,6 +89,7 @@ mod app {
             mut gpio1,
             usb,
             mut gpt2,
+            lpspi4,
             ..
         } = board::t41(ctx.device);
 
@@ -103,13 +104,12 @@ mod app {
         let mut delay2 = Blocking::<_, GPT_FREQUENCY>::from_gpt(gpt2);
 
         let shared_spi_pins = Pins {
-            pcs0: pins.p38,
-            sck: pins.p27,
-            sdo: pins.p26,
-            sdi: pins.p39,
+            pcs0: pins.p10,
+            sck: pins.p13,
+            sdo: pins.p11,
+            sdi: pins.p12,
         };
-        let shared_spi_block = unsafe { LPSPI3::instance() };
-        let mut shared_spi = Lpspi::new(shared_spi_block, shared_spi_pins);
+        let mut shared_spi = hal::lpspi::Lpspi::new(lpspi4, shared_spi_pins);
 
         shared_spi.disabled(|spi| {
             spi.set_clock_hz(LPSPI_FREQUENCY, 1_000_000u32);
@@ -117,7 +117,7 @@ mod app {
         });
 
         let radio_cs = gpio1.output(pins.p14);
-        let ce = gpio1.output(pins.p20);
+        let ce = gpio1.output(pins.p41);
 
         let mut radio = Radio::new(ce, radio_cs);
 

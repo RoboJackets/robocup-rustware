@@ -195,7 +195,7 @@ mod app {
 
         // Setup Rx Interrupt
         let rx_int = gpio2.input(pins.p9);
-        gpio1.set_interrupt(&rx_int, None);
+        gpio2.set_interrupt(&rx_int, None);
 
         // Initialize IMU
         let pit_delay = Blocking::<_, PERCLK_FREQUENCY>::from_pit(pit2);
@@ -214,7 +214,7 @@ mod app {
             spi.set_mode(MODE_0);
         });
 
-        // Init radio cs pin and ce pin
+        // Init radio cs pin and ce pin.
         let radio_cs = gpio1.output(pins.p14);
         let ce = gpio1.output(pins.p41);
 
