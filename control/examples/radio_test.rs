@@ -24,7 +24,7 @@ mod app {
     use bsp::board;
     use teensy4_bsp as bsp;
 
-    use teensy4_bsp::ral::lpspi::LPSPI3;
+    use teensy4_bsp::ral::lpspi::LPSPI4;
 
     use bsp::hal;
     use hal::timer::Blocking;
@@ -32,7 +32,7 @@ mod app {
     use rtic_monotonics::systick::*;
 
     use robojackets_robocup_control::{
-        Delay2, RadioCE, RadioCSN, SharedSPI, GPT_CLOCK_SOURCE, GPT_DIVIDER, GPT_FREQUENCY,
+        Delay2, RadioCE, RadioCSN, RadioSPI, GPT_CLOCK_SOURCE, GPT_DIVIDER, GPT_FREQUENCY,
     };
 
     const HEAP_SIZE: usize = 1024;
@@ -40,7 +40,7 @@ mod app {
 
     #[local]
     struct Local {
-        spi: SharedSPI,
+        spi: RadioSPI,
         delay: Delay2,
         ce: Option<RadioCE>,
         csn: Option<RadioCSN>,
@@ -79,12 +79,12 @@ mod app {
 
         // Initialize Shared SPI
         let shared_spi_pins = Pins {
-            pcs0: pins.p38,
-            sck: pins.p27,
-            sdo: pins.p26,
-            sdi: pins.p39,
+            pcs0: pins.p10,
+            sck: pins.p13,
+            sdo: pins.p11,
+            sdi: pins.p12,
         };
-        let shared_spi_block = unsafe { LPSPI3::instance() };
+        let shared_spi_block = unsafe { LPSPI4::instance() };
         let mut shared_spi = Lpspi::new(shared_spi_block, shared_spi_pins);
 
         shared_spi.disabled(|spi| {
@@ -94,7 +94,7 @@ mod app {
 
         // Init radio cs pin and ce pin
         let radio_cs = gpio1.output(pins.p14);
-        let ce = gpio1.output(pins.p20);
+        let ce = gpio1.output(pins.p41);
 
         // init fake CS pin (TEMPORARY) and required reset pin
 
