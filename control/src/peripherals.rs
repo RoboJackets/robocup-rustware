@@ -4,8 +4,10 @@
 //! time.
 //!
 
+use core::cell::RefCell;
 use core::convert::Infallible;
 
+use shared_bus::I2cProxy;
 use teensy4_pins::t41::*;
 
 use teensy4_bsp::board::{self, Lpi2c1, PERCLK_FREQUENCY};
@@ -49,7 +51,7 @@ pub type Gpio3 = Port<3>;
 /// The fourth GPIO port
 pub type Gpio4 = Port<4>;
 /// The IMU
-pub type Imu = IMU<Lpi2c1>;
+pub type Imu = IMU<I2cProxy<'static, shared_bus::cortex_m::interrupt::Mutex<RefCell<Lpi2c1>>>>;
 /// The Kicker RESET pin
 pub type KickerReset = Output<P37>; //Changed from P6
 /// The Kicker Chip Select
@@ -58,7 +60,7 @@ pub type KickerCSn = Output<P38>; //Changed from P5
 pub type KickerProg = KickerProgrammer<KickerCSn, KickerReset>;
 // The Display
 pub type Display = Ssd1306<
-    I2CInterface<imxrt_hal::lpi2c::Lpi2c<imxrt_hal::lpi2c::Pins<P19, P18>, 1>>,
+    I2CInterface<I2cProxy<'static, shared_bus::cortex_m::interrupt::Mutex<RefCell<Lpi2c1>>>>,
     DisplaySize128x64,
     ssd1306::mode::BufferedGraphicsMode<DisplaySize128x64>,
 >;
