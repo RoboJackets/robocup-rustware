@@ -65,9 +65,8 @@ mod app {
 
     use icm42605_driver::IMU;
 
-    //Replace the FPGA stuff
     use robojackets_robocup_control::{
-        spi::FakeSpi, Delay2, FPGAInitError, FPGAProgError, Gpio1, Imu, ImuInitError,
+        spi::FakeSpi, Delay2, Gpio1, Imu, ImuInitError,
         KickerCSn, KickerProg, KickerProgramError, KickerReset, KickerServicingError, PitDelay,
         RFRadio, RadioInitError, RadioInterrupt, RadioSPI, State, BASE_AMPLIFICATION_LEVEL,
         CHANNEL, GPT_1_DIVIDER, GPT_CLOCK_SOURCE, GPT_DIVIDER, GPT_FREQUENCY, RADIO_ADDRESS,
