@@ -86,6 +86,8 @@ mod app {
         btn_down: Input<P9>,
         btn_left: Input<P6>,
         btn_right: Input<P8>,
+        btn_a: Input<P10>,
+        btn_b: Input<P11>,
     }
 
     #[shared]
@@ -170,12 +172,16 @@ mod app {
         let btn_down = gpio2.input(pins.p9);
         let btn_left = gpio2.input(pins.p6);
         let btn_right = gpio2.input(pins.p8);
+        let btn_a = gpio2.input(pins.p10);
+        let btn_b = gpio2.input(pins.p11);
 
         //set interrupt for buttons
         gpio2.set_interrupt(&btn_up, Some(Trigger::EitherEdge));
         gpio2.set_interrupt(&btn_down, Some(Trigger::EitherEdge));
         gpio2.set_interrupt(&btn_left, Some(Trigger::EitherEdge));
         gpio2.set_interrupt(&btn_right, Some(Trigger::EitherEdge));
+        gpio2.set_interrupt(&btn_a, Some(Trigger::EitherEdge));
+        gpio2.set_interrupt(&btn_b, Some(Trigger::EitherEdge));
 
         let inputs = IOInputs {
             adc: adc1,
@@ -187,6 +193,8 @@ mod app {
             btn_down,
             btn_left,
             btn_right,
+            btn_a,
+            btn_b,
         };
 
         let modules: [Box<dyn ControllerModule>; MODULE_COUNT] = [
@@ -274,6 +282,8 @@ mod app {
                 inputs.btn_right.clear_triggered();
                 inputs.btn_up.clear_triggered();
                 inputs.btn_down.clear_triggered();
+                inputs.btn_a.clear_triggered();
+                inputs.btn_b.clear_triggered();
 
                 //debounce
 
@@ -284,12 +294,17 @@ mod app {
                 let btn_right = inputs.btn_right.is_set();
                 let btn_up = inputs.btn_up.is_set();
                 let btn_down = inputs.btn_down.is_set();
+                let btn_a = inputs.btn_a.is_set();
+                let btn_b = inputs.btn_b.is_set();
 
                 let state_update = InputStateUpdate {
                     btn_left: Some(btn_left),
                     btn_right: Some(btn_right),
                     btn_up: Some(btn_up),
                     btn_down: Some(btn_down),
+                    btn_a: Some(btn_a),
+                    btn_b: Some(btn_b),
+
                     joy_lx: None,
                     joy_ly: None,
                     joy_rx: None,
@@ -317,6 +332,8 @@ mod app {
                 let btn_right = inputs.btn_right.is_set();
                 let btn_up = inputs.btn_up.is_set();
                 let btn_down = inputs.btn_down.is_set();
+                let btn_a = inputs.btn_a.is_set();
+                let btn_b = inputs.btn_b.is_set();
 
                 //update joysticks
                 let joy_lx = 1024 - inputs.adc.read_blocking(&mut inputs.joy_lx);
@@ -329,6 +346,9 @@ mod app {
                     btn_right: Some(btn_right),
                     btn_up: Some(btn_up),
                     btn_down: Some(btn_down),
+                    btn_a: Some(btn_a),
+                    btn_b: Some(btn_b),
+
                     joy_lx: Some(joy_lx),
                     joy_ly: Some(joy_ly),
                     joy_rx: Some(joy_rx),

@@ -318,9 +318,9 @@ impl DriveMod {
                     self.state.current_screen = Screen::MainReceiv;
                 } else if self.btn_rising(old_state, buttons, Button::Up) {
                     self.state.current_screen = Screen::Options;
-                } else if self.btn_rising(old_state, buttons, Button::Left) {
+                } else if self.btn_rising(old_state, buttons, Button::A) {
                     self.state.dribbler_enabled = !self.state.dribbler_enabled;
-                } else if self.btn_rising(old_state, buttons, Button::Down) {
+                } else if self.btn_rising(old_state, buttons, Button::B) {
                     self.state.kicker_state = if self.state.kicker_state == 0 { 1 } else { 0 };
                 }
             }
@@ -497,12 +497,16 @@ impl ControllerModule for DriveMod {
             && inputs.btn_right.is_some()
             && inputs.btn_up.is_some()
             && inputs.btn_down.is_some()
+            && inputs.btn_a.is_some()
+            && inputs.btn_b.is_some()
         {
             let new_state = encode_btn_state(
                 inputs.btn_left.unwrap(),
                 inputs.btn_right.unwrap(),
                 inputs.btn_up.unwrap(),
                 inputs.btn_down.unwrap(),
+                inputs.btn_a.unwrap(),
+                inputs.btn_b.unwrap(),
             );
 
             //we don't want edge triggers on the first read

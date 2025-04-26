@@ -13,6 +13,8 @@ pub enum Button {
     Right = 1,
     Up = 2,
     Down = 3,
+    A = 4,
+    B = 5,
 }
 
 pub struct RadioState {
@@ -27,6 +29,8 @@ pub struct InputStateUpdate {
     pub btn_right: Option<bool>,
     pub btn_up: Option<bool>,
     pub btn_down: Option<bool>,
+    pub btn_a: Option<bool>,
+    pub btn_b: Option<bool>,
 
     pub joy_lx: Option<u16>,
     pub joy_ly: Option<u16>,

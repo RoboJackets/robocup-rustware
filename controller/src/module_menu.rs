@@ -231,12 +231,16 @@ impl ControllerModule for MenuMod {
             && inputs.btn_right.is_some()
             && inputs.btn_up.is_some()
             && inputs.btn_down.is_some()
+            && inputs.btn_a.is_some()
+            && inputs.btn_b.is_some()
         {
             let new_state = encode_btn_state(
                 inputs.btn_left.unwrap(),
                 inputs.btn_right.unwrap(),
                 inputs.btn_up.unwrap(),
                 inputs.btn_down.unwrap(),
+                inputs.btn_a.unwrap(),
+                inputs.btn_b.unwrap(),
             );
 
             //we don't want edge triggers on the first read
