@@ -11,7 +11,14 @@ use embedded_graphics::{
 
 use crate::types::{Display, RadioState, TEAM_NAME_MAP};
 
-pub fn encode_btn_state(left: bool, right: bool, up: bool, down: bool) -> u8 {
+pub fn encode_btn_state(
+    left: bool,
+    right: bool,
+    up: bool,
+    down: bool,
+    a_btn: bool,
+    b_btn: bool,
+) -> u8 {
     let mut btn = 0u8;
     if left {
         btn |= 1 << 0;
@@ -24,6 +31,12 @@ pub fn encode_btn_state(left: bool, right: bool, up: bool, down: bool) -> u8 {
     }
     if down {
         btn |= 1 << 3;
+    }
+    if a_btn {
+        btn |= 1 << 4;
+    }
+    if b_btn {
+        btn |= 1 << 5;
     }
     return btn;
 }
