@@ -475,7 +475,6 @@ mod app {
                         Mode::ProgramKickOnBreakbeam => *state = State::ProgramKickOnBreakbeam,
                         Mode::ProgramKicker => *state = State::ProgramKicker,
                         Mode::KickerTest => *state = State::KickerTesting,
-                        Mode::FpgaTest => *state = State::FpgaTesting,
                     }
                     state.clone()
                 });
@@ -550,9 +549,6 @@ mod app {
             }
             State::KickerTesting => {
                 let _ = test_kicker::spawn();
-            }
-            State::FpgaTesting => {
-                let _ = test_fpga_movement::spawn();
             }
         }
         if *ctx.local.iteration % 100 == 0 {
