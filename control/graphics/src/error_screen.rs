@@ -14,7 +14,7 @@ use embedded_graphics::{
 };
 
 pub struct ErrorScreen<'a> {
-    heading: &'a  str,
+    heading: &'a str,
     message: &'a str,
 }
 
