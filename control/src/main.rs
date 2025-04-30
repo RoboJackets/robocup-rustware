@@ -7,6 +7,8 @@
 #![no_main]
 #![feature(type_alias_impl_trait)]
 
+extern crate alloc;
+use alloc::format;
 use embedded_alloc::Heap;
 
 #[global_allocator]
@@ -52,6 +54,11 @@ mod app {
     use ssd1306::{mode::BufferedGraphicsMode, prelude::*, I2CDisplayInterface, Ssd1306};
     use teensy4_bsp::board::Lpi2c1;
     use teensy4_pins::t41::{P18, P19};
+    use graphics::{
+        error_screen::ErrorScreen,
+        main_window::MainWindow,
+        startup_screen::StartScreen,
+    };
 
     use robojackets_robocup_control::robot::{TEAM, TEAM_NUM};
     use robojackets_robocup_rtp::BASE_STATION_ADDRESSES;
@@ -369,9 +376,22 @@ mod app {
                     *imu_init_error = Some(err);
                 }
             });
-
-        initialize_radio::spawn().ok();
+            Systick::delay(1000.millis()).await;
+        initialize_display::spawn().ok();
     }
+
+        /// Initialize the display
+        #[task(shared=[display])]
+        async fn initialize_display(mut ctx: initialize_display::Context) {
+            ctx.shared.display.lock(| display | {
+                display.init().ok();
+                display.clear();
+                let start_scrn = StartScreen::new(Point::new(0, 0), Point::new(24, 8));
+                start_scrn.draw(display);
+                display.flush();
+            });
+            initialize_radio::spawn().ok();
+        }
 
     /// Initialize the nRF24l01 Radio
     #[task(
@@ -562,10 +582,11 @@ mod app {
             radio_init_error,
             kicker_program_error,
             kicker_service_error,
+            display,
         ],
         priority = 1
     )]
-    async fn error_report(ctx: error_report::Context) {
+    async fn error_report(mut ctx: error_report::Context) {
         let (
             imu_init_error,
             fpga_prog_error,
@@ -587,7 +608,7 @@ mod app {
                  fpga_init_error,
                  radio_init_error,
                  kicker_program_error,
-                 kicker_service_error| {
+                 kicker_service_error,| {
                     (
                         imu_init_error.take(),
                         fpga_prog_error.take(),
@@ -599,22 +620,65 @@ mod app {
                 },
             );
 
-        for _ in 0..5 {
-            log::error!("IMU-INIT: {:?}", imu_init_error);
-            log::error!("FPGA-PROG: {:?}", fpga_prog_error);
-            log::error!("FPGA-INIT: {:?}", fpga_init_error);
-            log::error!("RADIO-INIT: {:?}", radio_init_error);
-            log::error!("KICKER-PROG: {:?}", kicker_program_error);
-            log::error!("KICKER-SERVICE: {:?}", kicker_service_error);
-            Systick::delay(1_000u32.millis()).await;
-        }
-
         log::error!("IMU-INIT: {:?}", imu_init_error);
         log::error!("FPGA-PROG: {:?}", fpga_prog_error);
         log::error!("FPGA-INIT: {:?}", fpga_init_error);
         log::error!("RADIO-INIT: {:?}", radio_init_error);
         log::error!("KICKER-PROG: {:?}", kicker_program_error);
-        panic!("KICKER-SERVICE: {:?}", kicker_service_error);
+        log::error!("KICKER-SERVICE: {:?}", kicker_service_error);
+        
+            loop {
+            ctx.shared.display.lock(| display | {
+            let err_txt = &format!("{:?}", imu_init_error);
+            let err_scrn = ErrorScreen::new("IMU Init Error", err_txt);
+            display.clear();
+            err_scrn.draw(display);
+            display.flush().ok();
+            });
+            Systick::delay(3000u32.millis()).await;
+        
+            ctx.shared.display.lock(| display | {
+            let err_txt = &format!("{:?}", fpga_prog_error);
+            let err_scrn = ErrorScreen::new("FPGA Prog Error", err_txt);
+            display.clear();
+            err_scrn.draw(display);
+            display.flush().ok();
+        });
+        Systick::delay(3000u32.millis()).await;
+            ctx.shared.display.lock(| display | {
+            let err_txt = &format!("{:?}", fpga_init_error);
+            let err_scrn = ErrorScreen::new("FPGA Init Error", err_txt);
+            display.clear();
+            err_scrn.draw(display);
+            display.flush().ok();
+        });
+        Systick::delay(3000u32.millis()).await;
+            ctx.shared.display.lock(| display | {
+            let err_txt = &format!("{:?}", radio_init_error);
+            let err_scrn = ErrorScreen::new("Radio Init Error", err_txt);
+            display.clear();
+            err_scrn.draw(display);
+            display.flush().ok();
+        });
+        Systick::delay(3000u32.millis()).await;
+            ctx.shared.display.lock(| display | {
+            let err_txt = &format!("{:?}", kicker_program_error);
+            let err_scrn = ErrorScreen::new("Kicker Prog Error", err_txt);
+            display.clear();
+            err_scrn.draw(display);
+            display.flush().ok();
+        });
+        Systick::delay(3000u32.millis()).await;
+            ctx.shared.display.lock(| display | {
+            let err_txt = &format!("{:?}", kicker_service_error);
+            let err_scrn = ErrorScreen::new("Kicker Serv Error", err_txt);
+            display.clear();
+            err_scrn.draw(display);
+            display.flush().ok();
+        });
+        Systick::delay(3000u32.millis()).await;
+    }
+        
     }
 
     /// Have the radio start listening for incoming commands

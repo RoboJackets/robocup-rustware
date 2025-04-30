@@ -14,7 +14,7 @@ use embedded_graphics::{
 };
 
 pub struct ErrorScreen<'a> {
-    heading: &'a str,
+    heading: &'a  str,
     message: &'a str,
 }
 
@@ -43,6 +43,11 @@ impl<'a> ErrorScreen<'a> {
             strs.push(text[(iters * 24)..].into());
             return strs;
         }
+    }
+
+    pub fn update(&mut self, heading: &'a str, message: &'a str) {
+        self.heading = heading;
+        self.message = message;
     }
 }
 
