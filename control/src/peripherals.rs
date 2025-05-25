@@ -8,8 +8,9 @@ use core::convert::Infallible;
 
 use teensy4_pins::t41::*;
 
-use teensy4_bsp::board::{self, Lpi2c1, PERCLK_FREQUENCY};
+use teensy4_bsp::board::{self, Lpi2c1, Lpi2c3, PERCLK_FREQUENCY};
 use teensy4_bsp::hal::{
+    adc::AnalogInput,
     gpio::{Input, Output, Port},
     gpt::{Gpt1, Gpt2},
     lpspi::{Lpspi, LpspiError},
@@ -17,13 +18,23 @@ use teensy4_bsp::hal::{
     timer::Blocking,
 };
 
+use battery_sense_rs::BatterySense;
 use icm42605_driver::IMU;
+use imxrt_hal::adc::Adc;
+use io_expander_rs::IoExpander;
 use kicker_programmer::KickerProgrammer;
+use rotary_switch_rs::RotarySwitch;
 
 use super::GPT_FREQUENCY;
 //See spi.rs for the fake SPI for kicker
 /// Radio Spi
 pub type RadioSPI = Lpspi<board::LpspiPins<P11, P12, P13, P10>, 4>;
+// i2c for the io expander
+pub type IoI2C = Lpi2c3;
+// io expander
+pub type Expander = IoExpander<IoI2C, imxrt_hal::lpi2c::ControllerStatus>;
+// rotary switch
+pub type Rotary = RotarySwitch<IoI2C, imxrt_hal::lpi2c::ControllerStatus>;
 /// The Chip Enable for the Radio
 pub type RadioCE = Output<P41>; //Changed from P20
 /// The Chip Select for the Radio
@@ -54,3 +65,11 @@ pub type KickerReset = Output<P37>; //Changed from P6
 pub type KickerCSn = Output<P38>; //Changed from P5
 /// The Kicker Programmer
 pub type KickerProg = KickerProgrammer<KickerCSn, KickerReset>;
+
+// Adc Port used by BatterySense
+pub type AdcP = AnalogInput<P41, 1>;
+
+/// One of two ADCs defined under Teensy 4.1 docs
+pub type Adc1 = Adc<1>;
+// Alias of BatterySense
+pub type BatterySenseT = BatterySense<Adc1, u16, AdcP, Infallible>;

@@ -473,7 +473,7 @@ mod app {
                         Mode::KickerTest => *state = State::KickerTesting,
                         _ => (),
                     }
-                    state.clone()
+                    *state
                 });
                 log::info!("New State: {:?}", new_state);
                 *command = Some(control_message);

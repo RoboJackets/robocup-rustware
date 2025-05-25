@@ -167,7 +167,7 @@ mod app {
         if (ctx.shared.rx_int, ctx.shared.gpio1).lock(|rx_int, gpio1| {
             if rx_int.is_triggered() {
                 rx_int.clear_triggered();
-                gpio1.set_interrupt(&rx_int, None);
+                gpio1.set_interrupt(rx_int, None);
                 return true;
             }
             false
@@ -204,7 +204,7 @@ mod app {
 
         (ctx.shared.rx_int, ctx.shared.gpio1).lock(|rx_int, gpio1| {
             rx_int.clear_triggered();
-            gpio1.set_interrupt(&rx_int, Some(Trigger::FallingEdge));
+            gpio1.set_interrupt(rx_int, Some(Trigger::FallingEdge));
         });
 
         log::info!("Received {} Total Packets", *ctx.local.total_packets);
