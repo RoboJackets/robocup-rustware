@@ -106,7 +106,9 @@ members = [
     "drivers/rotary_switch",
     "tools",
     "drivers/kicker-programmer",
-    "drivers/kicker-controller", "drivers/battery_sense", "graphics",
+    "drivers/kicker-controller",
+    "drivers/battery_sense",
+    "graphics",
 ]
 
 # overrides the release build optimization level
