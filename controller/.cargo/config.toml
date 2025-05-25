@@ -1,0 +1,17 @@
+# You can specify a default target by uncommenting the following lines.
+# However, because we're compiling the runner.rs which uses the default debug target,
+# we cannot specify a default target for this project
+# [build]
+# target = thumbv7em-none-eabihf
+
+# flags and configurations for the specific target
+[target.thumbv7em-none-eabihf]
+rustflags = [
+    # spcifies the linker to be used after compilig
+    "-C", "link-arg=-Tt4link.x",
+]
+
+# runner executes after compiling the root package
+# runner converts the target file into hex and flashes using teensy_loader_cli
+# read the tools package for more info on runner
+runner = ["cargo", "run", "--package",  "tools", "--bin", "runner", "--"] 

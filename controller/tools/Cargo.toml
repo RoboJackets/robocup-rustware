@@ -1,0 +1,9 @@
+[package]
+name = "tools"
+version = "0.1.0"
+authors = ["celcius-plus-273 <kelvinandreshau@gmail.com>"]
+edition = "2021"
+
+[[bin]]
+name = "runner"
+path = "runner.rs"

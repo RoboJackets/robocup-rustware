@@ -58,7 +58,7 @@ mod app {
 
         let board::Resources {
             mut pins,
-            mut gpio4,
+            mut gpio1,
             usb,
             pit: (_pit0, _pit1, _pit2, pit3),
             ..
@@ -73,11 +73,10 @@ mod app {
 
         let miso_config = Config::zero().set_pull_keeper(Some(PullKeeper::Pullup22k));
         configure(&mut pins.p4, miso_config);
-        let fake_csn = gpio4.output(pins.p5);
         let fake_spi = FakeSpi::new(
-            gpio4.output(pins.p2),
-            gpio4.output(pins.p3),
-            gpio4.input(pins.p4),
+            gpio1.output(pins.p27),
+            gpio1.output(pins.p26),
+            gpio1.input(pins.p39),
             pit_delay,
         );
 
@@ -86,7 +85,7 @@ mod app {
         (
             Shared {
                 fake_spi,
-                kicker_csn: fake_csn,
+                kicker_csn: gpio1.output(pins.p38),
             },
             Local {},
         )

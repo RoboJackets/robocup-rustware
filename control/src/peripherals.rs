@@ -20,7 +20,6 @@ use teensy4_bsp::hal::{
 
 use battery_sense_rs::BatterySense;
 use core::cell::RefCell;
-use fpga_rs::FPGA;
 use icm42605_driver::IMU;
 use imxrt_hal::adc::Adc;
 use io_expander_rs::IoExpander;
@@ -33,28 +32,23 @@ use ssd1306::size::DisplaySize128x64;
 use ssd1306::Ssd1306;
 
 use super::GPT_FREQUENCY;
-
-/// SPI that is used for the FPGA
-pub type FpgaSpi = Lpspi<board::LpspiPins<P11, P12, P13, P10>, 4>;
-/// The FPGA
-pub type Fpga = FPGA<FpgaSpi, Output<P9>, P29, Output<P28>, P30, LpspiError, Infallible>;
+//See spi.rs for the fake SPI for kicker
+/// Radio Spi
+pub type RadioSPI = Lpspi<board::LpspiPins<P11, P12, P13, P10>, 4>;
 // i2c for the io expander
 pub type IoI2C = Lpi2c3;
 // io expander
 pub type Expander = IoExpander<IoI2C, imxrt_hal::lpi2c::ControllerStatus>;
 // rotary switch
 pub type Rotary = RotarySwitch<IoI2C, imxrt_hal::lpi2c::ControllerStatus>;
-
-/// Shared Spi
-pub type SharedSPI = Lpspi<board::LpspiPins<P26, P39, P27, P38>, 3>;
 /// The Chip Enable for the Radio
-pub type RadioCE = Output<P20>;
+pub type RadioCE = Output<P41>; //Changed from P20
 /// The Chip Select for the Radio
-pub type RadioCSN = Output<P14>;
+pub type RadioCSN = Output<P14>; //Changed from P14
 /// The Interrupt for the Radio
-pub type RadioInterrupt = Input<P15>;
+pub type RadioInterrupt = Input<P9>; //Changed from P15
 /// The Radio
-pub type RFRadio = rtic_nrf24l01::Radio<RadioCE, RadioCSN, SharedSPI, Infallible, LpspiError>;
+pub type RFRadio = rtic_nrf24l01::Radio<RadioCE, RadioCSN, RadioSPI, Infallible, LpspiError>;
 /// The Delay used by the FPGA
 pub type Delay1 = Blocking<Gpt1, GPT_FREQUENCY>;
 /// The general-purpose delay shared by different peripherals
@@ -72,13 +66,13 @@ pub type Gpio4 = Port<4>;
 /// The IMU
 pub type Imu = IMU<I2cProxy<'static, shared_bus::cortex_m::interrupt::Mutex<RefCell<Lpi2c1>>>>;
 /// The Kicker RESET pin
-pub type KickerReset = Output<P6>;
+pub type KickerReset = Output<P37>; //Changed from P6
 /// The Kicker Chip Select
-pub type KickerCSn = Output<P5>;
+pub type KickerCSn = Output<P38>; //Changed from P5
 /// The Kicker Programmer
 pub type KickerProg = KickerProgrammer<KickerCSn, KickerReset>;
 /// The display
-pub type DisplayT = Ssd1306<
+pub type Display = Ssd1306<
     I2CInterface<
         shared_bus::I2cProxy<'static, cortex_m::interrupt::Mutex<core::cell::RefCell<Lpi2c1>>>,
     >,

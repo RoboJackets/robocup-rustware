@@ -49,6 +49,7 @@ mod app {
     #[init]
     fn init(cx: init::Context) -> (Shared, Local) {
         unsafe {
+            #[allow(static_mut_refs)]
             HEAP.init(HEAP_MEM.as_ptr() as usize, HEAP_SIZE);
         }
 
