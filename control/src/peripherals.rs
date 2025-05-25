@@ -19,11 +19,17 @@ use teensy4_bsp::hal::{
 };
 
 use battery_sense_rs::BatterySense;
+use core::cell::RefCell;
 use icm42605_driver::IMU;
 use imxrt_hal::adc::Adc;
 use io_expander_rs::IoExpander;
 use kicker_programmer::KickerProgrammer;
 use rotary_switch_rs::RotarySwitch;
+use shared_bus::I2cProxy;
+use ssd1306::mode::BufferedGraphicsMode;
+use ssd1306::prelude::I2CInterface;
+use ssd1306::size::DisplaySize128x64;
+use ssd1306::Ssd1306;
 
 use super::GPT_FREQUENCY;
 //See spi.rs for the fake SPI for kicker
@@ -58,13 +64,21 @@ pub type Gpio3 = Port<3>;
 /// The fourth GPIO port
 pub type Gpio4 = Port<4>;
 /// The IMU
-pub type Imu = IMU<Lpi2c1>;
+pub type Imu = IMU<I2cProxy<'static, shared_bus::cortex_m::interrupt::Mutex<RefCell<Lpi2c1>>>>;
 /// The Kicker RESET pin
 pub type KickerReset = Output<P37>; //Changed from P6
 /// The Kicker Chip Select
 pub type KickerCSn = Output<P38>; //Changed from P5
 /// The Kicker Programmer
 pub type KickerProg = KickerProgrammer<KickerCSn, KickerReset>;
+/// The display
+pub type Display = Ssd1306<
+    I2CInterface<
+        shared_bus::I2cProxy<'static, cortex_m::interrupt::Mutex<core::cell::RefCell<Lpi2c1>>>,
+    >,
+    DisplaySize128x64,
+    BufferedGraphicsMode<DisplaySize128x64>,
+>;
 
 // Adc Port used by BatterySense
 pub type AdcP = AnalogInput<P41, 1>;

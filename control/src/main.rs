@@ -7,6 +7,8 @@
 #![no_main]
 #![feature(type_alias_impl_trait)]
 
+extern crate alloc;
+use alloc::format;
 use embedded_alloc::Heap;
 
 #[global_allocator]
@@ -28,6 +30,7 @@ mod app {
     use bsp::board::PERCLK_FREQUENCY;
     use bsp::board::{self, LPSPI_FREQUENCY};
     use nalgebra::{Vector3, Vector4};
+    use robojackets_robocup_control::RadioSPI;
     use teensy4_bsp as bsp;
 
     use hal::gpio::Trigger;
@@ -40,6 +43,14 @@ mod app {
     use rtic_monotonics::systick::*;
 
     use ncomm_utils::packing::Packable;
+
+    use shared_bus;
+
+    // Includes for display module
+    use embedded_graphics::prelude::*;
+    use graphics::{error_screen::ErrorScreen, startup_screen::StartScreen};
+    use ssd1306::{prelude::*, I2CDisplayInterface, Ssd1306};
+    use teensy4_pins::t41::{P18, P19};
 
     use robojackets_robocup_control::robot::{TEAM, TEAM_NUM};
     use robojackets_robocup_rtp::BASE_STATION_ADDRESSES;
@@ -61,9 +72,9 @@ mod app {
     use icm42605_driver::IMU;
 
     use robojackets_robocup_control::{
-        spi::FakeSpi, Delay2, Gpio1, Imu, ImuInitError, KickerCSn, KickerProg, KickerProgramError,
-        KickerReset, KickerServicingError, PitDelay, RFRadio, RadioInitError, RadioInterrupt,
-        RadioSPI, State, BASE_AMPLIFICATION_LEVEL, CHANNEL, GPT_1_DIVIDER, GPT_CLOCK_SOURCE,
+        spi::FakeSpi, Delay2, Display, Gpio1, Imu, ImuInitError, KickerCSn, KickerProg,
+        KickerProgramError, KickerReset, KickerServicingError, PitDelay, RFRadio, RadioInitError,
+        RadioInterrupt, State, BASE_AMPLIFICATION_LEVEL, CHANNEL, GPT_1_DIVIDER, GPT_CLOCK_SOURCE,
         GPT_DIVIDER, GPT_FREQUENCY, RADIO_ADDRESS, ROBOT_ID,
     };
 
@@ -150,6 +161,9 @@ mod app {
         counter: u32,
         elapsed_time: u32,
 
+        //Display
+        display: Display,
+
         // State
         state: State,
 
@@ -206,9 +220,14 @@ mod app {
         gpio2.set_interrupt(&rx_int, None);
 
         // Initialize IMU
+
         let i2c = board::lpi2c(lpi2c1, pins.p19, pins.p18, board::Lpi2cClockSpeed::KHz400);
+        let i2c_bus: &'static _ = shared_bus::new_cortexm!(
+            imxrt_hal::lpi2c::Lpi2c<imxrt_hal::lpi2c::Pins<P19, P18>, 1> = i2c
+        )
+        .expect("Failed to initialize shared I2C bus LPI2C1");
         let pit_delay = Blocking::<_, PERCLK_FREQUENCY>::from_pit(pit2);
-        let imu = IMU::new(i2c);
+        let imu = IMU::new(i2c_bus.acquire_i2c());
 
         // Initialize Shared SPI
         let shared_spi_pins = Pins {
@@ -246,6 +265,14 @@ mod app {
 
         rx_int.clear_triggered();
 
+        let display_interface = I2CDisplayInterface::new(i2c_bus.acquire_i2c());
+        let display: Display = Ssd1306::new(
+            display_interface,
+            DisplaySize128x64,
+            DisplayRotation::Rotate0,
+        )
+        .into_buffered_graphics_mode();
+
         initialize_imu::spawn().ok();
 
         (
@@ -266,6 +293,7 @@ mod app {
                 kicker_programmer: None,
                 kicker_controller: Some(kicker_controller),
                 fake_spi,
+                display,
                 state: State::default(),
 
                 // Errors
@@ -297,7 +325,20 @@ mod app {
                     *imu_init_error = Some(err);
                 }
             });
+        Systick::delay(1000.millis()).await;
+        initialize_display::spawn().ok();
+    }
 
+    /// Initialize the display
+    #[task(shared=[display])]
+    async fn initialize_display(mut ctx: initialize_display::Context) {
+        ctx.shared.display.lock(|display| {
+            display.init().ok();
+            display.clear();
+            let start_scrn = StartScreen::new(Point::new(0, 0), Point::new(24, 8));
+            let _ = start_scrn.draw(display);
+            let _ = display.flush();
+        });
         initialize_radio::spawn().ok();
     }
 
@@ -447,10 +488,11 @@ mod app {
             radio_init_error,
             kicker_program_error,
             kicker_service_error,
+            display,
         ],
         priority = 1
     )]
-    async fn error_report(ctx: error_report::Context) {
+    async fn error_report(mut ctx: error_report::Context) {
         let (imu_init_error, radio_init_error, kicker_program_error, kicker_service_error) = (
             ctx.shared.imu_init_error,
             ctx.shared.radio_init_error,
@@ -468,18 +510,47 @@ mod app {
                 },
             );
 
-        for _ in 0..5 {
-            log::error!("IMU-INIT: {:?}", imu_init_error);
-            log::error!("RADIO-INIT: {:?}", radio_init_error);
-            log::error!("KICKER-PROG: {:?}", kicker_program_error);
-            log::error!("KICKER-SERVICE: {:?}", kicker_service_error);
-            Systick::delay(1_000u32.millis()).await;
-        }
-
         log::error!("IMU-INIT: {:?}", imu_init_error);
         log::error!("RADIO-INIT: {:?}", radio_init_error);
         log::error!("KICKER-PROG: {:?}", kicker_program_error);
-        panic!("KICKER-SERVICE: {:?}", kicker_service_error);
+        log::error!("KICKER-SERVICE: {:?}", kicker_service_error);
+
+        loop {
+            ctx.shared.display.lock(|display| {
+                let err_txt = &format!("{:?}", imu_init_error);
+                let err_scrn = ErrorScreen::new("IMU Init Error", err_txt);
+                display.clear();
+                let _ = err_scrn.draw(display);
+                display.flush().ok();
+            });
+            Systick::delay(3000u32.millis()).await;
+
+            Systick::delay(3000u32.millis()).await;
+            ctx.shared.display.lock(|display| {
+                let err_txt = &format!("{:?}", radio_init_error);
+                let err_scrn = ErrorScreen::new("Radio Init Error", err_txt);
+                display.clear();
+                let _ = err_scrn.draw(display);
+                display.flush().ok();
+            });
+            Systick::delay(3000u32.millis()).await;
+            ctx.shared.display.lock(|display| {
+                let err_txt = &format!("{:?}", kicker_program_error);
+                let err_scrn = ErrorScreen::new("Kicker Prog Error", err_txt);
+                display.clear();
+                let _ = err_scrn.draw(display);
+                display.flush().ok();
+            });
+            Systick::delay(3000u32.millis()).await;
+            ctx.shared.display.lock(|display| {
+                let err_txt = &format!("{:?}", kicker_service_error);
+                let err_scrn = ErrorScreen::new("Kicker Serv Error", err_txt);
+                display.clear();
+                let _ = err_scrn.draw(display);
+                display.flush().ok();
+            });
+            Systick::delay(3000u32.millis()).await;
+        }
     }
 
     /// Have the radio start listening for incoming commands

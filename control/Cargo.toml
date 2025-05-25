@@ -19,6 +19,9 @@ defmt = "0.3.5"
 libm = "0.2.8"
 fixed-queue = "0.5.1"
 battery_sense_rs = { version = "0.1.0", path = "drivers/battery_sense" }
+embedded-graphics = "0.7.0"
+graphics = {path = "drivers/graphics"}
+ssd1306 = "0.7.1"
 
 [dependencies.rtic-nrf24l01]
 git = "https://github.com/N8BWert/rtic-nrf24l01.git"
@@ -29,6 +32,10 @@ features = ["embedded-hal-02"]
 version = "0.33.0"
 default-features = false
 features = ["libm", "nalgebra-macros", "alloc"]
+
+[dependencies.shared-bus]
+version = "0.3.1"
+features = ["cortex-m"]
 
 [dependencies.ncomm-utils]
 version = "1.0.0"
@@ -99,7 +106,9 @@ members = [
     "drivers/rotary_switch",
     "tools",
     "drivers/kicker-programmer",
-    "drivers/kicker-controller", "drivers/battery_sense",
+    "drivers/kicker-controller",
+    "drivers/battery_sense",
+    "drivers/graphics",
 ]
 
 # overrides the release build optimization level

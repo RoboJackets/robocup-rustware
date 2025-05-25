@@ -41,6 +41,8 @@ mod app {
 
     use robojackets_robocup_control::{Imu, PitDelay};
 
+    use teensy4_pins::t41::{P18, P19};
+
     #[local]
     struct Local {}
 
@@ -72,12 +74,16 @@ mod app {
         bsp::LoggingFrontend::default_log().register_usb(usb);
 
         let i2c = board::lpi2c(lpi2c1, pins.p19, pins.p18, board::Lpi2cClockSpeed::KHz400);
+        let i2c_bus: &'static _ = shared_bus::new_cortexm!(
+            imxrt_hal::lpi2c::Lpi2c<imxrt_hal::lpi2c::Pins<P19, P18>, 1> = i2c
+        )
+        .expect("Failed to initialize shared I2C bus LPI2C1");
 
         let systick_token = rtic_monotonics::create_systick_token!();
         Systick::start(ctx.core.SYST, 600_000_000, systick_token);
 
         let delay = Blocking::<_, PERCLK_FREQUENCY>::from_pit(pit2);
-        let imu = IMU::new(i2c);
+        let imu = IMU::new(i2c_bus.acquire_i2c());
 
         initialize_imu::spawn().ok();
 
