@@ -47,7 +47,6 @@ mod app {
             usb,
             mut gpio1,
             mut gpio2,
-            mut gpio4,
             pit: (_pit0, _pit1, _pit2, pit3),
             ..
         } = board::t41(ctx.device);

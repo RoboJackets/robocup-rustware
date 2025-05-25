@@ -57,7 +57,6 @@ mod app {
             pins,
             mut gpio1,
             mut gpio2,
-            mut gpio4,
             usb,
             mut gpt2,
             pit: (_pit0, _pit1, _pit2, pit3),

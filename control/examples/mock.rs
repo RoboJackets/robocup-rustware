@@ -31,12 +31,8 @@ mod app {
     use teensy4_bsp as bsp;
 
     use hal::gpio::Trigger;
-    use hal::lpspi::{Lpspi, Pins};
     use hal::timer::Blocking;
     use teensy4_bsp::hal;
-
-    use bsp::ral;
-    use ral::lpspi::LPSPI3;
 
     use rtic_nrf24l01::Radio;
 
@@ -475,6 +471,7 @@ mod app {
                         Mode::ProgramKickOnBreakbeam => *state = State::ProgramKickOnBreakbeam,
                         Mode::ProgramKicker => *state = State::ProgramKicker,
                         Mode::KickerTest => *state = State::KickerTesting,
+                        _ => (),
                     }
                     state.clone()
                 });

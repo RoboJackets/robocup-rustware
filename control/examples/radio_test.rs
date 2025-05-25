@@ -19,12 +19,10 @@ mod app {
     use rtic_nrf24l01::{config::*, Radio};
 
     use teensy4_bsp::board::LPSPI_FREQUENCY;
-    use teensy4_bsp::hal::lpspi::{Lpspi, Pins};
+    use teensy4_bsp::hal::lpspi::Pins;
 
     use bsp::board;
     use teensy4_bsp as bsp;
-
-    use teensy4_bsp::ral::lpspi::LPSPI3;
 
     use bsp::hal;
     use hal::timer::Blocking;

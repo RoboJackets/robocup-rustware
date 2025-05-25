@@ -31,7 +31,7 @@ pub type RadioCSN = Output<P14>; //Changed from P14
 /// The Interrupt for the Radio
 pub type RadioInterrupt = Input<P9>; //Changed from P15
 /// The Radio
-pub type RFRadio = rtic_nrf24l01::Radio<RadioCE, RadioCSN, RadioSPI, Infallible, LpspiError>; 
+pub type RFRadio = rtic_nrf24l01::Radio<RadioCE, RadioCSN, RadioSPI, Infallible, LpspiError>;
 /// The Delay used by the FPGA
 pub type Delay1 = Blocking<Gpt1, GPT_FREQUENCY>;
 /// The general-purpose delay shared by different peripherals

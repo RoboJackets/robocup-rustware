@@ -22,7 +22,6 @@ mod app {
 
     use imxrt_hal::gpt::Gpt;
     use imxrt_hal::pit::Pit;
-    use imxrt_iomuxc::prelude::*;
 
     use embedded_hal::{blocking::delay::DelayMs, spi::MODE_0};
 
@@ -32,12 +31,9 @@ mod app {
     use teensy4_bsp as bsp;
 
     use hal::gpio::Trigger;
-    use hal::lpspi::{Lpspi, Pins};
+    use hal::lpspi::Pins;
     use hal::timer::Blocking;
     use teensy4_bsp::hal;
-
-    use bsp::ral;
-    use ral::lpspi::LPSPI3;
 
     use rtic_nrf24l01::Radio;
 
@@ -49,7 +45,6 @@ mod app {
     use robojackets_robocup_rtp::BASE_STATION_ADDRESSES;
     use robojackets_robocup_rtp::{
         control_message::Mode,
-        control_test_message::{ControlTestMessage, CONTROL_TEST_MESSAGE_SIZE},
         imu_test_message::{ImuTestMessage, IMU_MESSAGE_SIZE},
         kicker_program_message::{KickerProgramMessage, KICKER_PROGRAM_MESSAGE},
         kicker_testing::{KickerTestingMessage, KICKER_TESTING_SIZE},
@@ -66,11 +61,10 @@ mod app {
     use icm42605_driver::IMU;
 
     use robojackets_robocup_control::{
-        spi::FakeSpi, Delay2, Gpio1, Imu, ImuInitError,
-        KickerCSn, KickerProg, KickerProgramError, KickerReset, KickerServicingError, PitDelay,
-        RFRadio, RadioInitError, RadioInterrupt, RadioSPI, State, BASE_AMPLIFICATION_LEVEL,
-        CHANNEL, GPT_1_DIVIDER, GPT_CLOCK_SOURCE, GPT_DIVIDER, GPT_FREQUENCY, RADIO_ADDRESS,
-        ROBOT_ID,
+        spi::FakeSpi, Delay2, Gpio1, Imu, ImuInitError, KickerCSn, KickerProg, KickerProgramError,
+        KickerReset, KickerServicingError, PitDelay, RFRadio, RadioInitError, RadioInterrupt,
+        RadioSPI, State, BASE_AMPLIFICATION_LEVEL, CHANNEL, GPT_1_DIVIDER, GPT_CLOCK_SOURCE,
+        GPT_DIVIDER, GPT_FREQUENCY, RADIO_ADDRESS, ROBOT_ID,
     };
 
     use kicker_controller::{KickTrigger, KickType, Kicker, KickerCommand};
@@ -176,11 +170,9 @@ mod app {
 
         // Grab the board peripherals
         let board::Resources {
-            mut pins,
+            pins,
             mut gpio1,
             mut gpio2,
-            mut gpio3,
-            mut gpio4,
             usb,
             lpi2c1,
             lpspi4,
@@ -212,7 +204,6 @@ mod app {
         // Setup Rx Interrupt
         let rx_int = gpio2.input(pins.p9);
         gpio2.set_interrupt(&rx_int, None);
-
 
         // Initialize IMU
         let i2c = board::lpi2c(lpi2c1, pins.p19, pins.p18, board::Lpi2cClockSpeed::KHz400);
@@ -434,10 +425,7 @@ mod app {
             ctx.shared.kicker_service_error,
         )
             .lock(
-                |imu_init_error,
-                 radio_init_error,
-                 kicker_program_error,
-                 kicker_service_error| {
+                |imu_init_error, radio_init_error, kicker_program_error, kicker_service_error| {
                     imu_init_error.is_some()
                         || radio_init_error.is_some()
                         || kicker_program_error.is_some()
@@ -463,22 +451,14 @@ mod app {
         priority = 1
     )]
     async fn error_report(ctx: error_report::Context) {
-        let (
-            imu_init_error,
-            radio_init_error,
-            kicker_program_error,
-            kicker_service_error,
-        ) = (
+        let (imu_init_error, radio_init_error, kicker_program_error, kicker_service_error) = (
             ctx.shared.imu_init_error,
             ctx.shared.radio_init_error,
             ctx.shared.kicker_program_error,
             ctx.shared.kicker_service_error,
         )
             .lock(
-                |imu_init_error,
-                 radio_init_error,
-                 kicker_program_error,
-                 kicker_service_error| {
+                |imu_init_error, radio_init_error, kicker_program_error, kicker_service_error| {
                     (
                         imu_init_error.take(),
                         radio_init_error.take(),
@@ -581,6 +561,7 @@ mod app {
                     Mode::ProgramKickOnBreakbeam => *state = State::ProgramKickOnBreakbeam,
                     Mode::ProgramKicker => *state = State::ProgramKicker,
                     Mode::KickerTest => *state = State::KickerTesting,
+                    _ => (),
                 });
                 *command = Some(control_message);
 
@@ -671,7 +652,7 @@ mod app {
             *ctx.local.last_time = ctx.shared.gpt.lock(|gpt| gpt.count());
         }
 
-        let (mut body_velocities, dribbler_enabled) =
+        let (mut body_velocities, _dribbler_enabled) =
             ctx.shared
                 .control_message
                 .lock(|control_message| match control_message {
@@ -704,7 +685,7 @@ mod app {
             log::info!("DEAD: {}", elapsed_time);
         }
 
-        let wheel_velocities = ctx.local.motion_controller.control_update(
+        let _wheel_velocities = ctx.local.motion_controller.control_update(
             Vector3::new(-accel_y, accel_x, gyro),
             *ctx.local.last_encoders,
             body_velocities,
@@ -712,7 +693,7 @@ mod app {
         );
 
         #[cfg(feature = "debug")]
-        log::info!("Moving at {:?}", wheel_velocities);
+        log::info!("Moving at {:?}", _wheel_velocities);
 
         // Service the kicker
         if *ctx.local.iteration % KICKER_SERVICE_DELAY_TICKS == 0 {

@@ -20,9 +20,6 @@ mod app {
     use bsp::hal;
     use hal::timer::Blocking;
 
-    use bsp::ral;
-    use ral::lpspi::LPSPI3;
-
     use rtic_monotonics::systick::*;
 
     use robojackets_robocup_control::robot::TEAM_NUM;
@@ -49,7 +46,6 @@ mod app {
         let board::Resources {
             pins,
             mut gpio1,
-            mut gpio2,
             usb,
             mut gpt2,
             lpspi4,

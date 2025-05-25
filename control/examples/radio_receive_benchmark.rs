@@ -29,12 +29,9 @@ mod app {
     use teensy4_bsp as bsp;
 
     use hal::gpio::Trigger;
-    use hal::lpspi::{Lpspi, Pins};
+    use hal::lpspi::Pins;
     use hal::timer::Blocking;
     use teensy4_bsp::hal;
-
-    use bsp::ral;
-    use ral::lpspi::LPSPI3;
 
     use rtic_nrf24l01::Radio;
 
