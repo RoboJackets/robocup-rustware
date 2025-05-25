@@ -1,67 +1,39 @@
 //!
-//! Library of Constants and Definitions to make it
-//! a bit easier to tweak the performance of the robots
-//!
+//! Helper functions for working with the motor board
+//! 
 
-#![no_std]
-#![feature(type_alias_impl_trait)]
-
-extern crate alloc;
-
-pub mod radio;
 use imxrt_hal::lpuart::{self, Lpuart};
-pub use radio::*;
-
-pub mod clock;
-pub use clock::*;
-
-pub mod robot;
-pub use robot::robot_config::*;
-
-pub mod peripherals;
-pub use peripherals::*;
-
-pub mod errors;
-pub use errors::*;
-
-pub mod motors;
-
 use rtic::Mutex;
-use rtic_sync::channel::Receiver;
+use rtic_sync::channel::{Receiver, Sender};
 
-pub mod spi;
-
-/// The current state of the program.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum State {
-    /// Default Operation
-    Default,
-    /// Idling
-    Idle,
-    /// Testing the IMU
-    IMUTesting,
-    /// Benchmarking the radio receive
-    ReceiveBenchmark,
-    /// Benchmarking the radio sending
-    SendBenchmark,
-    /// Programming the kicker with kick-on-breakbeam
-    ProgramKickOnBreakbeam,
-    /// Programming the kicker with normal operations
-    ProgramKicker,
-    /// Testing the Kicker
-    KickerTesting,
-    /// Testing the FPGA Movement
-    FpgaTesting,
-}
-
-impl Default for State {
-    fn default() -> Self {
-        Self::Default
+#[inline]
+/// Send a command over a motor's uart
+pub fn send_command<
+    PINS,
+    const INTERFACE: u8
+>(
+    setpoint: i32,
+    tx: &mut Sender<'static, [u8; 4], 3>,
+    uart: &mut Lpuart<PINS, INTERFACE>,
+    motor: u8
+) {
+    let mut command = [0u8; 4];
+    command[..].copy_from_slice(&setpoint.to_le_bytes());
+    let _ = tx.try_send(command);
+    uart.disable(|uart| uart.set_interrupts(lpuart::Interrupts::TRANSMIT_COMPLETE));
+    uart.clear_status(lpuart::Status::W1C);
+    match motor {
+        0 => uart.write_byte(0x11),
+        1 => uart.write_byte(0x22),
+        2 => uart.write_byte(0x33),
+        3 => uart.write_byte(0x44),
+        4 => uart.write_byte(0x55),
+        _ => (),
     }
 }
 
-/// Interrupt Handler for the Motor Uarts
 #[inline]
+/// Interrupt Handler for the Motor Uarts
 pub fn motor_interrupt<
     UART: Mutex<T=Lpuart<PINS, INTERFACE>>,
     VELOCITY: Mutex<T=i32>,

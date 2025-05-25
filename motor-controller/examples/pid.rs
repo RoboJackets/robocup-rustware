@@ -12,10 +12,8 @@ use defmt_rtt as _;
 
 #[rtic::app(device = stm32f0xx_hal::pac, peripherals = true, dispatchers = [TSC])]
 mod app {
-    use common::{dribbler::{DribblerCommand, DRIBBLER_COMMAND_SIZE}, motor::{MotorMoveResponse, MOTOR_MOVE_RESPONSE_SIZE}};
-    use ncomm_utils::packing::Packable;
-    use stm32f0xx_hal::{pac::{TIM1, TIM2, TIM3}, prelude::*, pwm::{self, ComplementaryPwm, PwmChannels, C1, C1N, C2, C2N, C3, C3N}, qei::Qei, serial::{self, Serial}, timers::{Event, Timer}};
-    use motor_controller::{hall_to_phases, pid::Pid, OvercurrentComparator, Phase, HS1, HS2, HS3, SerialInterface};
+    use stm32f0xx_hal::{pac::{TIM1, TIM2, TIM3}, prelude::*, pwm::{self, ComplementaryPwm, PwmChannels, C1, C1N, C2, C2N, C3, C3N}, qei::{Direction, Qei}, timers::{Timer, Event}};
+    use motor_controller::{hall_to_phases, pid::Pid, OvercurrentComparator, Phase, HS1, HS2, HS3};
 
     /// The maximum PWM that is sendable to the motors
     pub const MAXIMUM_OUTPUT: u16 = 100;
@@ -54,21 +52,16 @@ mod app {
 
         // Overcurrent Comparator
         overcurrent_comparator: OvercurrentComparator,
-        // Timer 2 (used to schedule the motion control updates)
+        /// Timer 2 (used to schedule the motion control updates)
         tim2: Timer<TIM2>,
-        // The pid controller
+        /// The pid controller
         pid: Pid,
-
-        // The usart serial interface to talk to the Teensy
-        usart: SerialInterface,
     }
 
     #[shared]
     struct Shared {
-        // The target number of ticks per second to move the motor at
-        setpoint: u8,
-        // The current velocity (in ticks per second) of the motor
-        current_velocity: i32,
+        /// The target number of ticks per second to move the motor at
+        setpoint: i32,
     }
 
     #[init]
@@ -142,22 +135,12 @@ mod app {
         overcurrent_comparator.set_interrupt(&syscfg, &exti);
         overcurrent_comparator.clear_interrupt(&exti);
 
-        let (tx, rx) = cortex_m::interrupt::free(|cs| (
-            gpioa.pa14.into_alternate_af1(cs),
-            gpioa.pa15.into_alternate_af1(cs),
-        ));
-        let mut usart = Serial::usart1(ctx.device.USART1, (tx, rx), 115_200.bps(), &mut rcc);
-
         let mut tim2 = Timer::tim2(ctx.device.TIM2, 2_000.hz(), &mut rcc);
-
-        // Start Interrupts
-        usart.listen(serial::Event::Rxne);
         tim2.listen(Event::TimeOut);
 
         (
             Shared {
-                setpoint: 0,
-                current_velocity: 0,
+                setpoint: 2500 * 2,
             },
             Local {
                 encoders,
@@ -177,8 +160,7 @@ mod app {
                     unsafe { KP },
                     unsafe { KI },
                     unsafe { KD }
-                ),
-                usart,
+                )
             }
         )
     }
@@ -210,21 +192,48 @@ mod app {
         ],
         shared = [
             setpoint,
-            current_velocity,
         ],
         binds = TIM2,
         priority = 1
     )]
     /// Update the speed of the motors.  The timer calls an interrupt every 1ms
     fn motion_control_update(mut ctx: motion_control_update::Context) {
-        let setpoint = ctx.shared.setpoint.lock(|setpoint| *setpoint);
-        let pwm = ctx.local.ch1.get_max_duty() / 8 * (setpoint as u16) / 100;
+        let encoder_count = ctx.local.encoders.count();
+        let elapsed_encoders = if encoder_count < 1000 && *ctx.local.last_encoders_value > u16::MAX - 1000 {
+            // Overflow
+            (u16::MAX - *ctx.local.last_encoders_value + encoder_count) as i32
+        } else if *ctx.local.last_encoders_value < 1000 && encoder_count > u16::MAX - 1000 {
+            // Underflow
+            -((*ctx.local.last_encoders_value + u16::MAX - encoder_count) as i32)
+        } else {
+            // Normal
+            (encoder_count as i32) - (*ctx.local.last_encoders_value as i32)
+        };
+        let ticks_per_second = elapsed_encoders * 2_000;
+
+        if *ctx.local.iteration % 100 == 0 {
+            defmt::info!("Ticks Per Second: {}", ticks_per_second);
+        }
+        *ctx.local.last_encoders_value = encoder_count;
+
+        let pwm = ctx.local.ch1.get_max_duty() / 5;
+        let clockwise = true;
+
+        // let setpoint = ctx.shared.setpoint.lock(|setpoint| *setpoint);
+
+        // let (pwm, clockwise) = ctx.local.pid.update(
+        //     setpoint,
+        //     ticks_per_second
+        // );
+        // if *ctx.local.iteration % 2 == 0 {
+        //     ctx.local.errors[*ctx.local.iteration as usize / 2] = ctx.local.pid.last_error();
+        // }
 
         let phases = hall_to_phases(
             ctx.local.hs1.is_high().unwrap(),
             ctx.local.hs2.is_high().unwrap(),
             ctx.local.hs3.is_high().unwrap(),
-            true
+            clockwise
         );
 
         match phases[0] {
@@ -280,48 +289,5 @@ mod app {
 
         *ctx.local.iteration += 1;
         ctx.local.tim2.clear_irq();
-    }
-
-    #[task(
-        local = [
-            usart,
-        ],
-        shared = [
-            setpoint,
-            current_velocity,
-        ],
-        binds = USART1,
-        priority = 1
-    )]
-    fn usart_interrupt(mut ctx: usart_interrupt::Context) {
-        ctx.local.usart.unlisten(serial::Event::Rxne);
-
-        let mut command = [0u8; DRIBBLER_COMMAND_SIZE];
-        for i in 0..DRIBBLER_COMMAND_SIZE {
-            command[i] = nb::block!(ctx.local.usart.read()).unwrap();
-        }
-
-        let dribbler_command = DribblerCommand::unpack(&command).unwrap();
-        match dribbler_command {
-            DribblerCommand::Move { percent } => {
-                ctx.shared.setpoint.lock(|setpoint| *setpoint = percent);
-
-                let velocity = ctx.shared.current_velocity.lock(|velocity| *velocity);
-
-                let response = MotorMoveResponse {
-                    ticks_per_second: velocity,
-                };
-                let mut buffer = [0u8; MOTOR_MOVE_RESPONSE_SIZE];
-                response.pack(&mut buffer).unwrap();
-
-                for byte in buffer {
-                    nb::block!(ctx.local.usart.write(byte)).unwrap();
-                }
-                nb::block!(ctx.local.usart.flush()).unwrap();
-            },
-            DribblerCommand::Unknown => (),
-        }
-
-        ctx.local.usart.listen(serial::Event::Rxne);
     }
 }

@@ -21,6 +21,14 @@ common = { path = "../common" }
 [dependencies.stm32f0xx-hal]
 # I'm working on getting the qei changes merged into the upstream stm32f0xx-hal.  Until then, I'm going
 # to use my working fork
+git = "https://github.com/n8bwert/stm32f0xx-hal.git"
 # git = "https://github.com/stm32-rs/stm32f0xx-hal.git"
-path = "../../stm32f0xx-hal"
+# path = "../../stm32f0xx-hal"
 features = ["stm32f031"]
+
+[features]
+default = []
+motor-1 = []
+motor-2 = []
+motor-3 = []
+motor-4 = []

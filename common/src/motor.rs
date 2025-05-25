@@ -18,7 +18,7 @@ pub const PID_RESPONSE_SIZE: usize = 4000;
 pub enum MotorCommand {
     /// Move the motor at `ticks_per_second` ticks per second, where a tick
     /// is a singular encoder tick
-    Move { ticks_per_second: u32 },
+    Move { ticks_per_second: i32 },
     /// Set the PID Values for the motor driver
     SetPid {
         // the kp value for the motor driver
@@ -30,6 +30,12 @@ pub enum MotorCommand {
     },
     /// Unknown command
     Unknown,
+}
+
+impl Default for MotorCommand {
+    fn default() -> Self {
+        Self::Move { ticks_per_second: 0 }
+    }
 }
 
 impl Packable for MotorCommand {
@@ -66,7 +72,7 @@ impl Packable for MotorCommand {
 
         match data[0] {
             0x01 => Ok(Self::Move {
-                ticks_per_second: u32::from_le_bytes(data[1..5].try_into().unwrap()),
+                ticks_per_second: i32::from_le_bytes(data[1..5].try_into().unwrap()),
             }),
             0x02 => Ok(Self::SetPid {
                 kp: f32::from_le_bytes(data[1..5].try_into().unwrap()),
@@ -84,7 +90,7 @@ pub struct MotorMoveResponse {
     // TODO: Add status byte to tell the status of the motor board
 
     /// The number of ticks per second the motor is actually moving at
-    pub ticks_per_second: u32,
+    pub ticks_per_second: i32,
 }
 
 impl Packable for MotorMoveResponse {
@@ -107,8 +113,9 @@ impl Packable for MotorMoveResponse {
             return Err(PackingError::InvalidBufferSize);
         }
         
+        
         Ok(Self {
-            ticks_per_second: u32::from_le_bytes(data[1..5].try_into().unwrap()),
+            ticks_per_second: i32::from_le_bytes(data[1..5].try_into().unwrap()),
         })
     }
 }

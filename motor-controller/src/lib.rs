@@ -9,12 +9,29 @@
 
 use core::fmt::Debug;
 
-use stm32f0xx_hal::{gpio::{gpioa::{PA0, PA1, PA11, PA2}, gpiob::PB12, gpiof::{PF6, PF7}, Floating, Input, Output, PullDown, PullUp, PushPull}, pac::{EXTI, SYSCFG}};
+use stm32f0xx_hal::{gpio::{gpioa::{PA0, PA1, PA11, PA14, PA15, PA2}, gpiob::PB12, gpiof::{PF6, PF7}, Alternate, Floating, Input, Output, PullDown, PullUp, PushPull, AF1}, pac::{EXTI, SYSCFG, USART1}, serial::Serial};
 use stm32f0xx_hal::prelude::*;
 use embedded_hal::PwmPin;
 use defmt::Format;
 
 pub mod encoder;
+pub mod pid;
+
+#[cfg(any(
+    all(not(feature = "motor-2"), not(feature = "motor-3"), not(feature = "motor-4")),
+    feature = "motor-1"
+))]
+/// The command name of a command for motor one
+pub const MOTOR_COMMAND: u8 = 0x11;
+#[cfg(feature = "motor-2")]
+/// The command name of a command for motor two
+pub const MOTOR_COMMAND: u8 = 0x22;
+#[cfg(feature = "motor-3")]
+/// The command name of a command for motor three
+pub const MOTOR_COMMAND: u8 = 0x33;
+#[cfg(feature = "motor-4")]
+/// The command name of a command for motor four
+pub const MOTOR_COMMAND: u8 = 0x44;
 
 /// The frequency of tim2 clock
 pub const TIM2_CLOCK_HZ: u32 = 8_000_000;
@@ -27,6 +44,13 @@ pub type HS1 = PA0<Input<PullDown>>;
 pub type HS2 = PA1<Input<PullDown>>;
 /// The third hal sensor
 pub type HS3 = PA2<Input<PullDown>>;
+
+/// The usart TX Pin
+pub type UsartTx = PA14<Alternate<AF1>>;
+/// The usart RX Pin
+pub type UsartRx = PA15<Alternate<AF1>>;
+/// The USART Peripheral
+pub type SerialInterface = Serial<USART1, UsartTx, UsartRx>;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Format)]
 /// At what voltage should the overcurrent threshold be tripped

@@ -15,22 +15,24 @@ use teensy4_panic as _;
 
 #[rtic::app(device = teensy4_bsp, peripherals = true, dispatchers = [GPT2])]
 mod app {
-    use embedded_hal::blocking::serial::Write;
-    use embedded_hal::serial::Read;
-    use imxrt_hal::lpuart::{self, Direction};
-    use teensy4_bsp::{self as bsp, board::Lpuart2};
+    use core::num::NonZero;
+
+    use embedded_hal::serial::{Write, Read};
+    use imxrt_hal::lpuart;
+    use robojackets_robocup_control::MotorOneUart;
+    use teensy4_bsp::{self as bsp, board::UART_FREQUENCY};
     use bsp::board;
 
     use rtic_monotonics::systick::*;
 
     #[local]
     struct Local {
-
+        
     }
 
     #[shared]
     struct Shared {
-        uart: Lpuart2,
+        uart: MotorOneUart,
     }
 
     #[init]
@@ -38,7 +40,8 @@ mod app {
         let board::Resources {
             pins,
             usb,
-            lpuart2,
+            mut gpio4,
+            lpuart6,
             ..
         } = board::t41(ctx.device);
 
@@ -47,20 +50,22 @@ mod app {
         let systick_token = rtic_monotonics::create_systick_token!();
         Systick::start(ctx.core.SYST, 600_000_000, systick_token);
 
+        let trigger = gpio4.output(pins.p2);
+        trigger.set();
+
         let mut uart = board::lpuart(
-            lpuart2,
-            pins.p14,
-            pins.p15,
-            115_200,
+            lpuart6,
+            pins.p1,
+            pins.p0,
+            9600
         );
         uart.disable(|uart| {
-            uart.disable_fifo(Direction::Rx);
-            uart.disable_fifo(Direction::Tx);
-            uart.set_interrupts(lpuart::Interrupts::RECEIVE_FULL);
+            uart.disable_fifo(lpuart::Direction::Tx);
+            uart.disable_fifo(lpuart::Direction::Rx);
             uart.set_parity(None);
         });
 
-        send_data::spawn().ok();
+        start_delay::spawn().ok();
 
         (
             Shared {
@@ -79,30 +84,69 @@ mod app {
         }
     }
 
-    #[task(
-        shared = [uart],
-        priority = 1
-    )]
-    async fn send_data(mut ctx: send_data::Context) {
-        ctx.shared.uart.lock(|uart| {
-            uart.bwrite_all(&[0x00, 0x01, 0x02, 0x03, 0x04, 0x05]).unwrap();
-        });
-        log::info!("Finished Writing");
+    #[task(priority = 1)]
+    async fn start_delay(_ctx: start_delay::Context) {
+        Systick::delay(2_000u32.millis()).await;
+        transfer_data::spawn().ok();
     }
 
     #[task(
         shared = [uart],
         priority = 1,
-        binds = LPUART2
     )]
-    fn receive_data(mut ctx: receive_data::Context) {
+    async fn transfer_data(mut ctx: transfer_data::Context) {
+        let command = 24_000i32.to_le_bytes();
         ctx.shared.uart.lock(|uart| {
-            let mut buffer = [0x00; 2];
-            for i in 0..buffer.len() {
-                buffer[i] = uart.read().unwrap();
+            for i in 0..4 {
+                nb::block!(uart.write(command[i])).unwrap();
+                nb::block!(uart.flush()).unwrap();
             }
-            log::info!("Received: {:?}", buffer);
         });
-        send_data::spawn().unwrap();
+
+        wait_to_transfer::spawn().ok();
     }
+
+    #[task(priority = 1)]
+    async fn wait_to_transfer(ctx: wait_to_transfer::Context) {
+        Systick::delay(100u32.millis()).await;
+        transfer_data::spawn().ok();
+    }
+
+    // #[task(
+    //     shared = [uart],
+    //     priority = 1
+    // )]
+    // async fn send_data(mut ctx: send_data::Context) {
+    //     ctx.shared.uart.lock(|uart| {
+    //         uart.bwrite_all(&(2400i32.to_le_bytes())).unwrap();
+    //     });
+    //     log::info!("Finished Writing");
+    //     wait_to_send_data::spawn().ok();
+    // }
+
+    // #[task(priority = 1)]
+    // async fn wait_to_send_data(_ctx: wait_to_send_data::Context) {
+    //     Systick::delay(50u32.millis()).await;
+    //     send_data::spawn().ok();
+    // }
+
+    // #[task(
+    //     shared = [uart],
+    //     binds = LPUART6,
+    //     priority = 2,
+    // )]
+    // fn receive_data(mut ctx: receive_data::Context) {
+    //     let ticks_per_second = ctx.shared.uart.lock(|uart| {
+    //         uart.clear_status(lpuart::Status::W1C);
+
+    //         let mut buffer = [0u8; 4];
+    //         for i in 0..4 {
+    //             let data = uart.read_data();
+    //             buffer[i] = data.into();
+    //         }
+    //         i32::from_le_bytes(buffer)
+    //     });
+
+    //     log::info!("Ticks Per Second: {}", ticks_per_second);
+    // }
 }

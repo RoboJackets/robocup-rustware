@@ -94,7 +94,7 @@ mod app {
             ctx.device.TIM1,
             channels,
             &mut rcc,
-            1u32.khz()
+            4u32.khz()
         );
 
         let (
