@@ -20,7 +20,7 @@ libm = "0.2.8"
 fixed-queue = "0.5.1"
 battery_sense_rs = { version = "0.1.0", path = "drivers/battery_sense" }
 embedded-graphics = "0.7.0"
-graphics = {path = "graphics"}
+graphics = {path = "drivers/graphics"}
 ssd1306 = "0.7.1"
 
 [dependencies.rtic-nrf24l01]
@@ -108,7 +108,7 @@ members = [
     "drivers/kicker-programmer",
     "drivers/kicker-controller",
     "drivers/battery_sense",
-    "graphics",
+    "drivers/graphics",
 ]
 
 # overrides the release build optimization level
