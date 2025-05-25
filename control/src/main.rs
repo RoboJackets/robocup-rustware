@@ -48,9 +48,7 @@ mod app {
 
     // Includes for display module
     use embedded_graphics::prelude::*;
-    use graphics::{
-        error_screen::ErrorScreen, startup_screen::StartScreen,
-    };
+    use graphics::{error_screen::ErrorScreen, startup_screen::StartScreen};
     use ssd1306::{prelude::*, I2CDisplayInterface, Ssd1306};
     use teensy4_pins::t41::{P18, P19};
 
@@ -74,11 +72,10 @@ mod app {
     use icm42605_driver::IMU;
 
     use robojackets_robocup_control::{
-        spi::FakeSpi, Delay2, Display, Gpio1, Imu,
-        ImuInitError, KickerCSn, KickerProg, KickerProgramError, KickerReset, KickerServicingError,
-        PitDelay, RFRadio, RadioInitError, RadioInterrupt, State,
-        BASE_AMPLIFICATION_LEVEL, CHANNEL, GPT_1_DIVIDER, GPT_CLOCK_SOURCE, GPT_DIVIDER,
-        GPT_FREQUENCY, RADIO_ADDRESS, ROBOT_ID,
+        spi::FakeSpi, Delay2, Display, Gpio1, Imu, ImuInitError, KickerCSn, KickerProg,
+        KickerProgramError, KickerReset, KickerServicingError, PitDelay, RFRadio, RadioInitError,
+        RadioInterrupt, State, BASE_AMPLIFICATION_LEVEL, CHANNEL, GPT_1_DIVIDER, GPT_CLOCK_SOURCE,
+        GPT_DIVIDER, GPT_FREQUENCY, RADIO_ADDRESS, ROBOT_ID,
     };
 
     use kicker_controller::{KickTrigger, KickType, Kicker, KickerCommand};
