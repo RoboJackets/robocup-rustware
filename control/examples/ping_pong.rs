@@ -20,16 +20,13 @@ mod app {
     use bsp::hal;
     use hal::timer::Blocking;
 
-    use bsp::ral;
-    use ral::lpspi::LPSPI3;
-
     use rtic_monotonics::systick::*;
 
     use robojackets_robocup_control::robot::TEAM_NUM;
     use robojackets_robocup_rtp::BASE_STATION_ADDRESSES;
 
     use robojackets_robocup_control::{
-        Delay2, RFRadio, SharedSPI, BASE_AMPLIFICATION_LEVEL, CHANNEL, GPT_CLOCK_SOURCE,
+        Delay2, RFRadio, RadioSPI, BASE_AMPLIFICATION_LEVEL, CHANNEL, GPT_CLOCK_SOURCE,
         GPT_DIVIDER, GPT_FREQUENCY, RADIO_ADDRESS,
     };
 
@@ -40,7 +37,7 @@ mod app {
 
     #[shared]
     struct Shared {
-        shared_spi: SharedSPI,
+        shared_spi: RadioSPI,
         delay: Delay2,
     }
 
@@ -51,6 +48,7 @@ mod app {
             mut gpio1,
             usb,
             mut gpt2,
+            lpspi4,
             ..
         } = board::t41(ctx.device);
 
@@ -68,21 +66,20 @@ mod app {
         let mut delay = Blocking::<_, GPT_FREQUENCY>::from_gpt(gpt2);
 
         let spi_pins = hal::lpspi::Pins {
-            pcs0: pins.p38,
-            sck: pins.p27,
-            sdo: pins.p26,
-            sdi: pins.p39,
+            pcs0: pins.p10,
+            sck: pins.p13,
+            sdo: pins.p11,
+            sdi: pins.p12,
         };
-        let shared_spi_block = unsafe { LPSPI3::instance() };
-        let mut shared_spi = hal::lpspi::Lpspi::new(shared_spi_block, spi_pins);
+        let mut shared_spi = hal::lpspi::Lpspi::new(lpspi4, spi_pins);
 
         shared_spi.disabled(|spi| {
             spi.set_clock_hz(LPSPI_FREQUENCY, 5_000_000);
             spi.set_mode(MODE_0);
         });
 
-        let ce = gpio1.output(pins.p20);
-        let csn = gpio1.output(pins.p14);
+        let ce = gpio1.output(pins.p41);
+        let csn = gpio1.output(pins.p14); //put this to random pin (this is dummy pin)
 
         // Initialize the Radio
         let mut radio = Radio::new(ce, csn);

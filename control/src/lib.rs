@@ -44,8 +44,6 @@ pub enum State {
     ProgramKicker,
     /// Testing the Kicker
     KickerTesting,
-    /// Testing the FPGA Movement
-    FpgaTesting,
 }
 
 impl Default for State {

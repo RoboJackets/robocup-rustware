@@ -31,18 +31,18 @@ use embedded_hal::blocking::spi::{Transfer, Write};
 ///
 /// Note: The frequency for this fake SPI is 100 KHz.
 pub struct FakeSpi {
-    pub clk: Output<P2>,
-    pub mosi: Output<P3>,
-    pub miso: Input<P4>,
+    pub clk: Output<P27>,
+    pub mosi: Output<P26>,
+    pub miso: Input<P39>,
     pub delay: Blocking<Pit3, PERCLK_FREQUENCY>,
 }
 
 impl FakeSpi {
     /// Create a new Fake SPI driver
     pub fn new(
-        clk: Output<P2>,
-        mosi: Output<P3>,
-        miso: Input<P4>,
+        clk: Output<P27>,
+        mosi: Output<P26>,
+        miso: Input<P39>,
         delay: Blocking<Pit3, PERCLK_FREQUENCY>,
     ) -> Self {
         clk.clear();
@@ -60,9 +60,9 @@ impl FakeSpi {
     pub fn free(
         self,
     ) -> (
-        Output<P2>,
-        Output<P3>,
-        Input<P4>,
+        Output<P27>,
+        Output<P26>,
+        Input<P39>,
         Blocking<Pit3, PERCLK_FREQUENCY>,
     ) {
         (self.clk, self.mosi, self.miso, self.delay)
