@@ -1,6 +1,6 @@
 //!
 //! Test for using dma with the uart peripherals on the teensy
-//! 
+//!
 
 #![no_std]
 #![no_main]
@@ -18,7 +18,10 @@ mod app {
     use core::{mem::MaybeUninit, num::NonZero};
 
     use cortex_m::prelude::_embedded_hal_blocking_serial_Write;
-    use imxrt_hal::{dma::channel::{self, Channel}, lpuart::{self, Interrupts, Status}};
+    use imxrt_hal::{
+        dma::channel::{self, Channel},
+        lpuart::{self, Interrupts, Status},
+    };
     use rtic_monotonics::systick::*;
     use teensy4_bsp::board::{self, Lpuart4, Lpuart6};
 
@@ -28,8 +31,7 @@ mod app {
     static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
 
     #[local]
-    struct Local {
-    }
+    struct Local {}
 
     #[shared]
     struct Shared {
@@ -40,7 +42,9 @@ mod app {
     #[init]
     fn init(ctx: init::Context) -> (Shared, Local) {
         #[allow(static_mut_refs)]
-        unsafe { HEAP.init(HEAP_MEM.as_ptr() as usize, HEAP_SIZE); }
+        unsafe {
+            HEAP.init(HEAP_MEM.as_ptr() as usize, HEAP_SIZE);
+        }
 
         let board::Resources {
             pins,
@@ -55,12 +59,7 @@ mod app {
         let systick_token = rtic_monotonics::create_systick_token!();
         Systick::start(ctx.core.SYST, 600_000_000, systick_token);
 
-        let mut uart = board::lpuart(
-            lpuart6,
-            pins.p1,
-            pins.p0,
-            115200
-        );
+        let mut uart = board::lpuart(lpuart6, pins.p1, pins.p0, 115200);
         uart.disable(|uart| {
             uart.disable_fifo(lpuart::Direction::Tx);
             uart.disable_fifo(lpuart::Direction::Rx);
@@ -68,12 +67,7 @@ mod app {
             uart.set_interrupts(Interrupts::RECEIVE_FULL);
         });
 
-        let mut receive_uart = board::lpuart(
-            lpuart4,
-            pins.p8,
-            pins.p7,
-            115200
-        );
+        let mut receive_uart = board::lpuart(lpuart4, pins.p8, pins.p7, 115200);
         receive_uart.disable(|uart| {
             uart.disable_fifo(lpuart::Direction::Tx);
             uart.disable_fifo(lpuart::Direction::Rx);
@@ -84,14 +78,7 @@ mod app {
 
         send_uart::spawn().ok();
 
-        (
-            Shared {
-                uart,
-                receive_uart,
-            },
-            Local {
-            }
-        )
+        (Shared { uart, receive_uart }, Local {})
     }
 
     #[idle]

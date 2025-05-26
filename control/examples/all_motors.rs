@@ -21,22 +21,29 @@ use teensy4_panic as _;
 #[rtic::app(device = teensy4_bsp, peripherals = true, dispatchers = [GPIO1_INT0, GPIO1_INT1])]
 mod app {
     use bsp::board;
-    use embedded_hal::{digital::v2::OutputPin, serial::Read};
-    use common::{dribbler::{DribblerCommand, DRIBBLER_COMMAND_SIZE, DRIBBLER_RESPONSE_SIZE}, motor::{MotorCommand, MotorMoveResponse, MOTOR_COMMAND_SIZE, MOTOR_MOVE_RESPONSE_SIZE}};
+    use common::{
+        dribbler::{DribblerCommand, DRIBBLER_COMMAND_SIZE, DRIBBLER_RESPONSE_SIZE},
+        motor::{MotorCommand, MotorMoveResponse, MOTOR_COMMAND_SIZE, MOTOR_MOVE_RESPONSE_SIZE},
+    };
     use cortex_m::prelude::_embedded_hal_blocking_serial_Write;
+    use embedded_hal::{digital::v2::OutputPin, serial::Read};
     use imxrt_hal::lpuart;
-    use teensy4_bsp::{self as bsp, ral};
     use ncomm_utils::packing::Packable;
+    use teensy4_bsp::{self as bsp, ral};
 
     use robojackets_robocup_control::peripherals::*;
     use rtic_monotonics::systick::*;
 
     const TARGET_SPEED: i32 = 24_000;
 
-    fn get_motor_commands(motor: u8) -> ([[u8; MOTOR_COMMAND_SIZE]; 4], [u8; DRIBBLER_COMMAND_SIZE]) {
+    fn get_motor_commands(
+        motor: u8,
+    ) -> ([[u8; MOTOR_COMMAND_SIZE]; 4], [u8; DRIBBLER_COMMAND_SIZE]) {
         let mut commands = [MotorCommand::default(); 5];
         if motor != 5 {
-            commands[motor as usize] = MotorCommand::Move { ticks_per_second: 500 };
+            commands[motor as usize] = MotorCommand::Move {
+                ticks_per_second: 500,
+            };
         }
 
         let mut buffers = ([[0u8; MOTOR_COMMAND_SIZE]; 4], [0u8; DRIBBLER_COMMAND_SIZE]);
@@ -48,7 +55,7 @@ mod app {
             let command = DribblerCommand::Move { percent: 50 };
             command.pack(&mut buffers.1).unwrap();
         }
-    
+
         buffers
     }
 
@@ -90,12 +97,7 @@ mod app {
         let mut kill_n = gpio2.output(pins.p36);
 
         // Motor One Interface
-        let mut motor_one_uart = board::lpuart(
-            lpuart6,
-            pins.p1,
-            pins.p0,
-            115_200
-        );
+        let mut motor_one_uart = board::lpuart(lpuart6, pins.p1, pins.p0, 115_200);
         motor_one_uart.disable(|uart| {
             uart.disable_fifo(lpuart::Direction::Rx);
             uart.disable_fifo(lpuart::Direction::Tx);
@@ -104,12 +106,7 @@ mod app {
         });
 
         // Motor two interface
-        let mut motor_two_uart = board::lpuart(
-            lpuart4,
-            pins.p8,
-            pins.p7,
-            115_200,
-        );
+        let mut motor_two_uart = board::lpuart(lpuart4, pins.p8, pins.p7, 115_200);
         motor_two_uart.disable(|uart| {
             uart.disable_fifo(lpuart::Direction::Rx);
             uart.disable_fifo(lpuart::Direction::Tx);
@@ -122,7 +119,7 @@ mod app {
             unsafe { ral::lpuart::LPUART1::instance() },
             pins.p24,
             pins.p25,
-            115_200
+            115_200,
         );
         motor_three_uart.disable(|uart| {
             uart.disable_fifo(lpuart::Direction::Rx);
@@ -146,12 +143,7 @@ mod app {
         });
 
         // Dribbler interface
-        let mut dribbler_uart = board::lpuart(
-            lpuart8,
-            pins.p20,
-            pins.p21,
-            115_200
-        );
+        let mut dribbler_uart = board::lpuart(lpuart8, pins.p20, pins.p21, 115_200);
         dribbler_uart.disable(|uart| {
             uart.disable_fifo(lpuart::Direction::Rx);
             uart.disable_fifo(lpuart::Direction::Tx);
@@ -177,7 +169,7 @@ mod app {
             Local {
                 _motor_en: motor_en,
                 _kill_n: kill_n,
-            }
+            },
         )
     }
 
@@ -209,7 +201,9 @@ mod app {
         // ctx.shared.motor_one_uart.lock(|uart| {
         //     uart.bwrite_all(&commands.0[0]).unwrap();
         // });
-        let command = MotorCommand::Move { ticks_per_second: 0 };
+        let command = MotorCommand::Move {
+            ticks_per_second: 0,
+        };
         let mut buffer = [0u8; MOTOR_COMMAND_SIZE];
         command.pack(&mut buffer).unwrap();
         ctx.shared.motor_two_uart.lock(|uart| {
@@ -306,7 +300,7 @@ mod app {
                         Err(_err) => {
                             success = false;
                             break;
-                        },
+                        }
                     }
                 }
             }

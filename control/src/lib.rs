@@ -50,8 +50,6 @@ pub enum State {
     ProgramKicker,
     /// Testing the Kicker
     KickerTesting,
-    /// Testing the FPGA Movement
-    FpgaTesting,
 }
 
 impl Default for State {
@@ -63,10 +61,10 @@ impl Default for State {
 /// Interrupt Handler for the Motor Uarts
 #[inline]
 pub fn motor_interrupt<
-    UART: Mutex<T=Lpuart<PINS, INTERFACE>>,
-    VELOCITY: Mutex<T=i32>,
+    UART: Mutex<T = Lpuart<PINS, INTERFACE>>,
+    VELOCITY: Mutex<T = i32>,
     PINS,
-    const INTERFACE: u8
+    const INTERFACE: u8,
 >(
     mut uart: UART,
     mut velocity: VELOCITY,

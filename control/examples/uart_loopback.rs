@@ -1,6 +1,6 @@
 //!
 //! Test for communicating with the new motor boards via UART
-//! 
+//!
 
 #![no_std]
 #![no_main]
@@ -17,19 +17,17 @@ use teensy4_panic as _;
 mod app {
     use core::num::NonZero;
 
+    use bsp::board;
     use cortex_m::prelude::_embedded_hal_blocking_serial_Write;
-    use embedded_hal::serial::{Write, Read};
+    use embedded_hal::serial::{Read, Write};
     use imxrt_hal::lpuart;
     use robojackets_robocup_control::MotorOneUart;
     use teensy4_bsp as bsp;
-    use bsp::board;
 
     use rtic_monotonics::systick::*;
 
     #[local]
-    struct Local {
-        
-    }
+    struct Local {}
 
     #[shared]
     struct Shared {
@@ -54,12 +52,7 @@ mod app {
         let trigger = gpio4.output(pins.p2);
         trigger.set();
 
-        let mut uart = board::lpuart(
-            lpuart6,
-            pins.p1,
-            pins.p0,
-            9600
-        );
+        let mut uart = board::lpuart(lpuart6, pins.p1, pins.p0, 9600);
         uart.disable(|uart| {
             uart.disable_fifo(lpuart::Direction::Tx);
             uart.enable_fifo(lpuart::Watermark::rx(NonZero::new(2).unwrap()));
@@ -70,14 +63,7 @@ mod app {
 
         send_data::spawn().ok();
 
-        (
-            Shared {
-                uart,
-            },
-            Local {
-
-            }
-        )
+        (Shared { uart }, Local {})
     }
 
     #[idle]

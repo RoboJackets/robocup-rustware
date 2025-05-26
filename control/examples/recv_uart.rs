@@ -27,7 +27,7 @@ mod app {
     use embedded_hal::serial::Read;
     use robojackets_robocup_control::MotorOneUart;
     use teensy4_bsp as bsp;
-    
+
     use teensy4_bsp::hal::lpuart;
 
     use rtic_monotonics::systick::*;
@@ -43,10 +43,7 @@ mod app {
     #[init]
     fn init(ctx: init::Context) -> (Shared, Local) {
         let board::Resources {
-            pins,
-            usb,
-            lpuart6,
-            ..
+            pins, usb, lpuart6, ..
         } = board::t41(ctx.device);
 
         bsp::LoggingFrontend::default_log().register_usb(usb);
@@ -54,12 +51,7 @@ mod app {
         let systick_token = rtic_monotonics::create_systick_token!();
         Systick::start(ctx.core.SYST, 600_000_000, systick_token);
 
-        let mut motor_one_uart = board::lpuart(
-            lpuart6,
-            pins.p1,
-            pins.p0,
-            9600
-        );
+        let mut motor_one_uart = board::lpuart(lpuart6, pins.p1, pins.p0, 9600);
         motor_one_uart.disable(|uart| {
             uart.disable_fifo(lpuart::Direction::Tx);
             uart.disable_fifo(lpuart::Direction::Rx);

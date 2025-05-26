@@ -1,6 +1,6 @@
 //!
 //! Test for receiving data via uart
-//! 
+//!
 
 #![no_std]
 #![no_main]
@@ -18,9 +18,9 @@ mod app {
     use super::*;
     use core::mem::MaybeUninit;
 
+    use imxrt_hal::lpuart;
     use rtic_monotonics::systick::*;
     use teensy4_bsp::board;
-    use imxrt_hal::lpuart;
 
     use robojackets_robocup_control::peripherals::*;
 
@@ -28,9 +28,7 @@ mod app {
     static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
 
     #[local]
-    struct Local {
-
-    }
+    struct Local {}
 
     #[shared]
     struct Shared {
@@ -40,7 +38,9 @@ mod app {
     #[init]
     fn init(ctx: init::Context) -> (Shared, Local) {
         #[allow(static_mut_refs)]
-        unsafe { HEAP.init(HEAP_MEM.as_ptr() as usize, HEAP_SIZE); }
+        unsafe {
+            HEAP.init(HEAP_MEM.as_ptr() as usize, HEAP_SIZE);
+        }
 
         let board::Resources {
             pins,
@@ -56,12 +56,7 @@ mod app {
         let systick_token = rtic_monotonics::create_systick_token!();
         Systick::start(ctx.core.SYST, 600_000_000, systick_token);
 
-        let mut motor_one_uart = board::lpuart(
-            lpuart6,
-            pins.p1,
-            pins.p0,
-            9600
-        );
+        let mut motor_one_uart = board::lpuart(lpuart6, pins.p1, pins.p0, 9600);
         motor_one_uart.disable(|uart| {
             uart.disable_fifo(lpuart::Direction::Tx);
             uart.disable_fifo(lpuart::Direction::Rx);
@@ -70,14 +65,7 @@ mod app {
         });
         motor_one_uart.clear_status(lpuart::Status::W1C);
 
-        (
-            Shared {
-                motor_one_uart,
-            },
-            Local {
-
-            }
-        )
+        (Shared { motor_one_uart }, Local {})
     }
 
     #[idle]

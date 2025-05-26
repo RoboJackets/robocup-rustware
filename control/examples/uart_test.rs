@@ -1,6 +1,6 @@
 //!
 //! Test for sending data to one of the motors via uart
-//! 
+//!
 
 #![no_std]
 #![no_main]
@@ -18,13 +18,18 @@ mod app {
     use super::*;
     use core::mem::MaybeUninit;
 
-    use rtic_monotonics::systick::*;
-    use rtic_sync::{channel::{Sender, Receiver}, make_channel};
-    use teensy4_bsp::{board, ral as ral};
     use imxrt_hal::lpuart;
+    use rtic_monotonics::systick::*;
+    use rtic_sync::{
+        channel::{Receiver, Sender},
+        make_channel,
+    };
+    use teensy4_bsp::{board, ral};
 
-    use robojackets_robocup_control::{motors::{motor_interrupt, send_command}, peripherals::*};
-
+    use robojackets_robocup_control::{
+        motors::{motor_interrupt, send_command},
+        peripherals::*,
+    };
 
     const HEAP_SIZE: usize = 4096;
     static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
@@ -78,7 +83,9 @@ mod app {
     #[init]
     fn init(ctx: init::Context) -> (Shared, Local) {
         #[allow(static_mut_refs)]
-        unsafe { HEAP.init(HEAP_MEM.as_ptr() as usize, HEAP_SIZE); }
+        unsafe {
+            HEAP.init(HEAP_MEM.as_ptr() as usize, HEAP_SIZE);
+        }
 
         let board::Resources {
             pins,
@@ -94,12 +101,7 @@ mod app {
         let systick_token = rtic_monotonics::create_systick_token!();
         Systick::start(ctx.core.SYST, 600_000_000, systick_token);
 
-        let mut motor_one_uart = board::lpuart(
-            lpuart6,
-            pins.p1,
-            pins.p0,
-            9600
-        );
+        let mut motor_one_uart = board::lpuart(lpuart6, pins.p1, pins.p0, 9600);
         motor_one_uart.disable(|uart| {
             uart.disable_fifo(lpuart::Direction::Tx);
             uart.disable_fifo(lpuart::Direction::Rx);
@@ -108,12 +110,7 @@ mod app {
         motor_one_uart.clear_status(lpuart::Status::W1C);
         let (motor_one_tx, motor_one_rx) = make_channel!([u8; 4], 3);
 
-        let mut motor_two_uart = board::lpuart(
-            lpuart4,
-            pins.p8,
-            pins.p7,
-            9600
-        );
+        let mut motor_two_uart = board::lpuart(lpuart4, pins.p8, pins.p7, 9600);
         motor_two_uart.disable(|uart| {
             uart.disable_fifo(lpuart::Direction::Tx);
             uart.disable_fifo(lpuart::Direction::Rx);
@@ -126,7 +123,7 @@ mod app {
             unsafe { ral::lpuart::LPUART1::instance() },
             pins.p24,
             pins.p25,
-            9600
+            9600,
         );
         motor_three_uart.disable(|uart| {
             uart.disable_fifo(lpuart::Direction::Tx);
@@ -150,12 +147,7 @@ mod app {
         motor_four_uart.clear_status(lpuart::Status::W1C);
         let (motor_four_tx, motor_four_rx) = make_channel!([u8; 4], 3);
 
-        let mut dribbler_uart = board::lpuart(
-            lpuart8,
-            pins.p20,
-            pins.p21,
-            9600,
-        );
+        let mut dribbler_uart = board::lpuart(lpuart8, pins.p20, pins.p21, 9600);
         dribbler_uart.disable(|uart| {
             uart.disable_fifo(lpuart::Direction::Tx);
             uart.disable_fifo(lpuart::Direction::Rx);
@@ -191,7 +183,7 @@ mod app {
                 motor_four_tx,
                 dribbler_tx,
                 dribbler_rx,
-            }
+            },
         )
     }
 
@@ -251,11 +243,21 @@ mod app {
     )]
     async fn send_motor_move_commands(mut ctx: send_motor_move_commands::Context) {
         loop {
-            ctx.shared.motor_one_uart.lock(|uart| send_command(2400, ctx.local.motor_one_tx, uart, 0));
-            ctx.shared.motor_two_uart.lock(|uart| send_command(2400, ctx.local.motor_two_tx, uart, 1));
-            ctx.shared.motor_three_uart.lock(|uart| send_command(2400, ctx.local.motor_three_tx, uart, 2));
-            ctx.shared.motor_four_uart.lock(|uart| send_command(2400, ctx.local.motor_four_tx, uart, 3));
-            ctx.shared.dribbler_uart.lock(|uart| send_command(2400, ctx.local.dribbler_tx, uart, 4));
+            ctx.shared
+                .motor_one_uart
+                .lock(|uart| send_command(2400, ctx.local.motor_one_tx, uart, 0));
+            ctx.shared
+                .motor_two_uart
+                .lock(|uart| send_command(2400, ctx.local.motor_two_tx, uart, 1));
+            ctx.shared
+                .motor_three_uart
+                .lock(|uart| send_command(2400, ctx.local.motor_three_tx, uart, 2));
+            ctx.shared
+                .motor_four_uart
+                .lock(|uart| send_command(2400, ctx.local.motor_four_tx, uart, 3));
+            ctx.shared
+                .dribbler_uart
+                .lock(|uart| send_command(2400, ctx.local.dribbler_tx, uart, 4));
 
             Systick::delay(200u32.millis()).await;
         }
@@ -282,7 +284,7 @@ mod app {
             ctx.local.motor_one_rx,
             ctx.local.idx,
             ctx.local.reading,
-            ctx.local.buffer
+            ctx.local.buffer,
         );
     }
 
@@ -306,7 +308,7 @@ mod app {
             ctx.local.motor_two_rx,
             ctx.local.idx,
             ctx.local.reading,
-            ctx.local.buffer
+            ctx.local.buffer,
         );
     }
 
@@ -330,7 +332,7 @@ mod app {
             ctx.local.motor_three_rx,
             ctx.local.idx,
             ctx.local.reading,
-            ctx.local.buffer
+            ctx.local.buffer,
         );
     }
 

@@ -1,6 +1,6 @@
 //!
 //! Helper functions for working with the motor board
-//! 
+//!
 
 use imxrt_hal::lpuart::{self, Lpuart};
 use rtic::Mutex;
@@ -8,14 +8,11 @@ use rtic_sync::channel::{Receiver, Sender};
 
 #[inline]
 /// Send a command over a motor's uart
-pub fn send_command<
-    PINS,
-    const INTERFACE: u8
->(
+pub fn send_command<PINS, const INTERFACE: u8>(
     setpoint: i32,
     tx: &mut Sender<'static, [u8; 4], 3>,
     uart: &mut Lpuart<PINS, INTERFACE>,
-    motor: u8
+    motor: u8,
 ) {
     let mut command = [0u8; 4];
     command[..].copy_from_slice(&setpoint.to_le_bytes());
@@ -35,10 +32,10 @@ pub fn send_command<
 #[inline]
 /// Interrupt Handler for the Motor Uarts
 pub fn motor_interrupt<
-    UART: Mutex<T=Lpuart<PINS, INTERFACE>>,
-    VELOCITY: Mutex<T=i32>,
+    UART: Mutex<T = Lpuart<PINS, INTERFACE>>,
+    VELOCITY: Mutex<T = i32>,
     PINS,
-    const INTERFACE: u8
+    const INTERFACE: u8,
 >(
     mut uart: UART,
     mut velocity: VELOCITY,

@@ -11,6 +11,8 @@ cortex-m = "0.7" # basic hal package for cortex m microcontroller boards
 log = "0.4" # allows for the logging feautre (a.k.a printing to the serial port)
 teensy4-pins = "0.3.1"
 icm42605-driver = { path = "./drivers/icm42605-driver" }
+rotary_switch_rs = { path = "drivers/rotary_switch" }
+io_expander_rs = { path = "drivers/io_expander" }
 imxrt-iomuxc = "0.2.2"
 embedded-alloc = "0.5.0"
 defmt = "0.3.5"
@@ -20,6 +22,10 @@ rtic-sync = "1.3.2"
 common = { path = "../common" }
 nb = "1.1.0"
 embedded-io = "0.6.1"
+battery_sense_rs = { version = "0.1.0", path = "drivers/battery_sense" }
+embedded-graphics = "0.7.0"
+graphics = {path = "drivers/graphics"}
+ssd1306 = "0.7.1"
 
 [dependencies.rtic-nrf24l01]
 git = "https://github.com/N8BWert/rtic-nrf24l01.git"
@@ -30,6 +36,10 @@ features = ["embedded-hal-02"]
 version = "0.33.0"
 default-features = false
 features = ["libm", "nalgebra-macros", "alloc"]
+
+[dependencies.shared-bus]
+version = "0.3.1"
+features = ["cortex-m"]
 
 [dependencies.ncomm-utils]
 version = "1.0.0"
@@ -96,8 +106,13 @@ members = [
     "drivers/motion",
     "drivers/controller",
     "drivers/icm42605-driver",
+    "drivers/io_expander",
+    "drivers/rotary_switch",
+    "tools",
     "drivers/kicker-programmer",
     "drivers/kicker-controller",
+    "drivers/battery_sense",
+    "drivers/graphics",
 ]
 
 # overrides the release build optimization level
