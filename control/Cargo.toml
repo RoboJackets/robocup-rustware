@@ -23,7 +23,6 @@ embedded-graphics = "0.7.0"
 graphics = {path = "drivers/graphics"}
 ssd1306 = "0.7.1"
 usb-device = "0.2.9"
-usbd-hid = "0.6.2"
 imxrt-usbd = "0.2.2"
 usbd-serial = "0.1.1"
 

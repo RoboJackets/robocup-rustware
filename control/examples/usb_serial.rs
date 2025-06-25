@@ -1,7 +1,4 @@
-//! Demonstrates a USB keypress using RTIC.
-//!
-//! Flash your board with this example. Your device will occasionally
-//! send some kind of keypress to your host.
+//! Demonstrates a bare-bones "parroting" application using serial over USB.
 
 #![no_std]
 #![no_main]
@@ -26,10 +23,7 @@ mod app {
         bus::UsbBusAllocator,
         device::{UsbDevice, UsbDeviceBuilder, UsbDeviceState, UsbVidPid},
     };
-    use usbd_hid::{
-        descriptor::{KeyboardReport, SerializedDescriptor as _},
-        hid_class::HIDClass,
-    };
+    use usbd_serial::{SerialPort, UsbError};
 
     /// Change me if you want to play with a full-speed USB device.
     const SPEED: Speed = Speed::High;
@@ -48,18 +42,13 @@ mod app {
     /// of endpoints; we're not using all the endpoints in this example.
     static EP_STATE: EndpointState = EndpointState::max_endpoints();
 
-    use core::{iter::Cycle, slice::Iter};
-    type MessageIter = Cycle<Iter<'static, u8>>;
-    const MESSAGE: &[u8] = b"Ia! Ia! Cthulhu fhtagn!  ";
-
     type Bus = BusAdapter;
 
     #[local]
     struct Local {
-        class: HIDClass<'static, Bus>,
+        class: SerialPort<'static, Bus>,
         device: UsbDevice<'static, Bus>,
         led: board::Led,
-        message: MessageIter,
     }
 
     #[shared]
@@ -91,31 +80,22 @@ mod app {
         let bus = ctx.local.bus.insert(UsbBusAllocator::new(bus));
         // Note that "4" correlates to a 1ms polling interval. Since this is a high speed
         // device, bInterval is computed differently.
-        let class = HIDClass::new(bus, KeyboardReport::desc(), 4);
+        let class = SerialPort::new(bus);
         let device = UsbDeviceBuilder::new(bus, VID_PID)
             .device_class(usbd_serial::USB_CLASS_CDC)
             .max_packet_size_0(64)
             .build();
 
-        (
-            Shared {},
-            Local {
-                class,
-                device,
-                led,
-                message: MESSAGE.iter().cycle(),
-            },
-        )
+        (Shared {}, Local { class, device, led })
     }
 
-    #[task(binds = USB_OTG1, local = [device, class, led, message, configured: bool = false], priority = 2)]
+    #[task(binds = USB_OTG1, local = [device, class, led, configured: bool = false], priority = 2)]
     fn usb1(ctx: usb1::Context) {
         let usb1::LocalResources {
             class,
             device,
             led,
             configured,
-            message,
             ..
         } = ctx.local;
 
@@ -140,42 +120,26 @@ mod app {
             });
 
             if elapsed {
-                led.toggle();
-                let code = *message.next().unwrap();
-                if let Some(report) = translate_char(code) {
-                    class.push_input(&report).ok();
-                }
-            }
-        }
-    }
+                let mut buf = [0u8; 64];
+                let mut to_write = 0;
 
-    fn translate_char(ch: u8) -> Option<KeyboardReport> {
-        fn simple_kr(modifier: u8, keycodes: [u8; 6]) -> Option<KeyboardReport> {
-            Some(KeyboardReport {
-                modifier,
-                reserved: 0,
-                leds: 0,
-                keycodes,
-            })
-        }
+                match class.read(&mut buf[..]) {
+                    Ok(count) => {
+                        // count bytes were read to &buf[..count]
+                        led.toggle();
+                        to_write = count;
+                    }
+                    Err(UsbError::WouldBlock) => {} // No data received
+                    Err(_err) => {}                 // An error occurred
+                };
 
-        match ch {
-            b'a'..=b'z' => {
-                let code = ch - b'a' + 4;
-                simple_kr(0, [code, 0, 0, 0, 0, 0])
-            }
-            b'A'..=b'Z' => {
-                let code = ch - b'A' + 4;
-                simple_kr(2, [code, 0, 0, 0, 0, 0])
-            }
-            b'!'..=b')' => {
-                let code = ch - b'!' + 0x1e;
-                simple_kr(2, [code, 0, 0, 0, 0, 0])
-            }
-            b' ' => simple_kr(0, [0x2c, 0, 0, 0, 0, 0]),
-            _ => {
-                log::error!("Unsupported character '{}'", ch);
-                None
+                match class.write(&buf[0 .. to_write]) {
+                    Ok(_count) => {
+                        // count bytes were written
+                    }
+                    Err(UsbError::WouldBlock) => {} // No data could be written (buffers full)
+                    Err(_err) => {}                 // An error occurred
+                };
             }
         }
     }
