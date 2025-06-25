@@ -62,7 +62,13 @@ KERNEL=="hidraw*", ATTRS{idVendor}=="1fc9", ATTRS{idProduct}=="013*", MODE:="066
 SUBSYSTEMS=="usb", ATTRS{idVendor}=="1fc9", ATTRS{idProduct}=="013*", MODE:="0666"
 ```
 
-2. Disconnect and reconnect the Teensy to your computer.
+2. Add yourself to the `dialout` group
+```sh
+sudo usermod -aG dialout [username]
+```
+
+3. Disconnect and reconnect the Teensy to your computer.
+
 
 
 ## New Members Project
