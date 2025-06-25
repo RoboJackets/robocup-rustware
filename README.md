@@ -47,18 +47,23 @@ cargo docs --open
 
 ### Troubleshooting
 
-#### \[Linux (maybe MacOS)\] "Unable to claim interface, check USB permissions"
-1. Run:
-> This add you to the `dialout` group, which allows you to access serial communication devices
+#### \[Linux\] "Unable to claim interface, check USB permissions"
+
+[Original Source](https://www.pjrc.com/teensy/00-teensy.rules)
+
+1. Create a file called `00-teensy.rules` in `/etc/udev/rules.d/` with the following content:
 ```sh
-sudo usermod -a -G dialout $USERNAME
+ATTRS{idVendor}=="16c0", ATTRS{idProduct}=="04*", ENV{ID_MM_DEVICE_IGNORE}="1", ENV{ID_MM_PORT_IGNORE}="1"
+ATTRS{idVendor}=="16c0", ATTRS{idProduct}=="04[789a]*", ENV{MTP_NO_PROBE}="1"
+KERNEL=="ttyACM*", ATTRS{idVendor}=="16c0", ATTRS{idProduct}=="04*", MODE:="0666", RUN:="/bin/stty -F /dev/%k raw -echo"
+KERNEL=="hidraw*", ATTRS{idVendor}=="16c0", ATTRS{idProduct}=="04*", MODE:="0666"
+SUBSYSTEMS=="usb", ATTRS{idVendor}=="16c0", ATTRS{idProduct}=="04*", MODE:="0666"
+KERNEL=="hidraw*", ATTRS{idVendor}=="1fc9", ATTRS{idProduct}=="013*", MODE:="0666"
+SUBSYSTEMS=="usb", ATTRS{idVendor}=="1fc9", ATTRS{idProduct}=="013*", MODE:="0666"
 ```
-2. Check if it works. If not, proceed to step 3.
-3. Run:
-> This allows everyone to access USB devices
-```sh
-sudo chmod 777 /dev/bus/usb
-```
+
+2. Disconnect and reconnect the Teensy to your computer.
+
 
 ## New Members Project
 
