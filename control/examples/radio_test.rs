@@ -63,6 +63,8 @@ mod app {
             ..
         } = board::t41(ctx.device);
 
+        let led = board::Led;
+
         // usb logging setup
         bsp::LoggingFrontend::default_log().register_usb(usb);
 

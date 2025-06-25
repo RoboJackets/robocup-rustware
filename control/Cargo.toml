@@ -22,6 +22,10 @@ battery_sense_rs = { version = "0.1.0", path = "drivers/battery_sense" }
 embedded-graphics = "0.7.0"
 graphics = {path = "drivers/graphics"}
 ssd1306 = "0.7.1"
+usb-device = "0.2.9"
+usbd-hid = "0.6.2"
+imxrt-usbd = "0.2.2"
+usbd-serial = "0.1.1"
 
 [dependencies.rtic-nrf24l01]
 git = "https://github.com/N8BWert/rtic-nrf24l01.git"
@@ -64,9 +68,7 @@ version = "=0.4.5"
 features = [
     # Use the BSP's runtime. This lets you write your
     # `main()` function.
-    "rt",
-    # Remove me if you don't want logging.
-    "usb-logging",
+    "rt"
 ]
 
 [dependencies.imxrt-hal]
