@@ -24,7 +24,7 @@ rustup component add llvm-tools-preview
 
 # Linux Needs libusb-dev
 if type apt-get > /dev/null 2>&1; then
-	sudo apt-get update && apt-get install -y libusb-dev
+	sudo apt-get update && sudo apt-get install -y libusb-dev
 elif type brew > /dev/null 2>&1; then
 	brew install libusb libusb-compat
 fi
