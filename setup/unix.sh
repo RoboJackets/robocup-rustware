@@ -24,10 +24,12 @@ rustup component add llvm-tools-preview
 
 # Linux Needs libusb-dev
 if type apt-get > /dev/null 2>&1; then
-	sudo apt-get update && apt-get install -y libusb-dev
+	echo "sudo is required to install required packages"
+	sudo -v
+	sudo apt-get update && sudo apt-get install -y libusb-dev
 elif type brew > /dev/null 2>&1; then
 	brew install libusb libusb-compat
 fi
 
 # unzip the teensy loader
-unzip "${currentDir}/setup/teensy_loader_cli.zip" -d "${currentDir}/control"
+unzip -o "${currentDir}/setup/teensy_loader_cli.zip" -d "${currentDir}/control"
