@@ -22,7 +22,7 @@ mod app {
 
     use rtic_monotonics::systick::*;
 
-    use robojackets_robocup_control::robot::TEAM_NUM;
+    use robojackets_robocup_control::{robot::TEAM_NUM, Killn, MotorEn};
     use robojackets_robocup_rtp::BASE_STATION_ADDRESSES;
 
     use robojackets_robocup_control::{
@@ -30,9 +30,12 @@ mod app {
         GPT_DIVIDER, GPT_FREQUENCY, RADIO_ADDRESS,
     };
 
+    use embedded_hal::blocking::delay::DelayMs;
+
     #[local]
     struct Local {
         radio: RFRadio,
+        poller: imxrt_log::Poller,
     }
 
     #[shared]
@@ -46,6 +49,7 @@ mod app {
         let board::Resources {
             pins,
             mut gpio1,
+            mut gpio2,
             usb,
             mut gpt2,
             lpspi4,
@@ -53,7 +57,7 @@ mod app {
         } = board::t41(ctx.device);
 
         // usb logging setup
-        bsp::LoggingFrontend::default_log().register_usb(usb);
+        let poller = imxrt_log::log::usbd(usb, imxrt_log::Interrupts::Enabled).unwrap();
 
         // systic setup
         let systick_token = rtic_monotonics::create_systick_token!();
@@ -64,6 +68,13 @@ mod app {
         gpt2.set_divider(GPT_DIVIDER);
         gpt2.set_clock_source(GPT_CLOCK_SOURCE);
         let mut delay = Blocking::<_, GPT_FREQUENCY>::from_gpt(gpt2);
+
+        let motor_en: MotorEn = gpio1.output(pins.p23);
+        motor_en.set();
+        let kill_n: Killn = gpio2.output(pins.p36);
+        kill_n.set();
+
+        delay.delay_ms(500u32);
 
         let spi_pins = hal::lpspi::Pins {
             pcs0: pins.p10,
@@ -99,7 +110,7 @@ mod app {
 
         ping_pong::spawn().unwrap();
 
-        (Shared { shared_spi, delay }, Local { radio })
+        (Shared { shared_spi, delay }, Local { radio, poller })
     }
 
     #[idle]
@@ -149,6 +160,13 @@ mod app {
         }
 
         wait_one_second::spawn().ok();
+    }
+
+    /// This task runs when the USB1 interrupt activates.
+    /// Simply poll the logger to control the logging process.
+    #[task(binds = USB_OTG1, local = [poller])]
+    fn usb_interrupt(cx: usb_interrupt::Context) {
+        cx.local.poller.poll();
     }
 }
 

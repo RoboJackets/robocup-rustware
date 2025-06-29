@@ -26,6 +26,9 @@ battery_sense_rs = { version = "0.1.0", path = "drivers/battery_sense" }
 embedded-graphics = "0.7.0"
 graphics = {path = "drivers/graphics"}
 ssd1306 = "0.7.1"
+usb-device = "0.2.9"
+usbd-serial = "0.1.1"
+imxrt-log = "0.1.2"
 
 [dependencies.rtic-nrf24l01]
 git = "https://github.com/N8BWert/rtic-nrf24l01.git"
@@ -64,13 +67,12 @@ features = ["cortex-m-systick"]
 
 # teensy4-bsp is the board support package for teensy 4.0/4.1
 [dependencies.teensy4-bsp]
-version = "^0.4"
+# version = "0.5.1"
+git = "https://github.com/mciantyre/teensy4-rs"
 features = [
     # Use the BSP's runtime. This lets you write your
     # `main()` function.
     "rt",
-    # Remove me if you don't want logging.
-    "usb-logging",
 ]
 
 [dependencies.imxrt-hal]

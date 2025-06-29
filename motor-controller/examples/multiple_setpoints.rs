@@ -12,16 +12,29 @@ use defmt_rtt as _;
 
 #[rtic::app(device = stm32f0xx_hal::pac, peripherals = true, dispatchers = [TSC])]
 mod app {
-    use stm32f0xx_hal::{gpio::{gpiob::PB1, Output, PushPull}, pac::{TIM1, TIM2}, prelude::*, pwm::{self, ComplementaryPwm, PwmChannels, C1, C1N, C2, C2N, C3, C3N}, serial::{self, Serial}, timers::{Event, Timer}};
-    use motor_controller::{hall_to_phases, OvercurrentComparator, Phase, SerialInterface, HS1, HS2, HS3, MOTION_CONTROL_FREQUENCY, VELOCITY_TO_PWM_MAPING};
+    use motion_control::MotionController;
+    use stm32f0xx_hal::{gpio::{gpiob::PB1, Output, PushPull}, pac::{TIM1, TIM14, TIM2, TIM3}, prelude::*, pwm::{self, ComplementaryPwm, PwmChannels, C1, C1N, C2, C2N, C3, C3N}, qei::Qei, timers::{Event, Timer}};
+    use motor_controller::{hall_to_phases, pid::Pid, OvercurrentComparator, Phase, HS1, HS2, HS3};
 
     /// The maximum PWM that is sendable to the motors
     pub const MAXIMUM_OUTPUT: u16 = 100;
     /// The timeout (in milliseconds)
     pub const TIMEOUT_MS: u32 = 100;
+    /// The frequency of the motion control loop
+    pub const MOTION_CONTROL_FREQUENCY: u32 = 1000;
+
+    /// The kp constant for the pid controller
+    static mut KP: f32 = 1.0;
+    /// The ki constant for the pid controller
+    static mut KI: f32 = 0.0;
+    /// the kd constant for the pid controller
+    static mut KD: f32 = 0.0;
 
     #[local]
     struct Local {
+        // The quadrature encoder interface
+        encoders: Qei<TIM3>,
+
         // Hall Sensor 1
         hs1: HS1,
         // Hall Sensor 2
@@ -46,12 +59,16 @@ mod app {
         overcurrent_comparator: OvercurrentComparator,
         // Timer 2 (used to schedule the motion control updates)
         tim2: Timer<TIM2>,
+        // The pid controller
+        pid: Pid,
 
         // The motor board led
         led: PB1<Output<PushPull>>,
+        // The tim14 peripheral
+        tim14: Timer<TIM14>,
 
-        // The usart serial interface to talk to the Teensy
-        usart: SerialInterface,
+        // The motion control module
+        motion_controller: MotionController,
     }
 
     #[shared]
@@ -96,7 +113,7 @@ mod app {
             mut ch3n,
         ) = pwm;
 
-        ch1.set_dead_time(pwm::DTInterval::DT_5);
+        ch1.set_dead_time(pwm::DTInterval::DT_7);
         ch1.set_duty(0);
         ch2.set_duty(0);
         ch3.set_duty(0);
@@ -106,6 +123,14 @@ mod app {
         ch2n.disable();
         ch3.disable();
         ch3n.disable();
+
+        let qei_pins = cortex_m::interrupt::free(move |cs| {
+            (
+                gpioa.pa6.into_alternate_af1(cs),
+                gpioa.pa7.into_alternate_af1(cs),
+            )
+        });
+        let encoders = Qei::tim3(ctx.device.TIM3, qei_pins, &mut rcc);
 
         let mut led = cortex_m::interrupt::free(|cs| gpiob.pb1.into_push_pull_output(cs));
         led.set_high().unwrap();
@@ -128,17 +153,12 @@ mod app {
         overcurrent_comparator.set_interrupt(&syscfg, &exti);
         overcurrent_comparator.clear_interrupt(&exti);
 
-        let (tx, rx) = cortex_m::interrupt::free(|cs| (
-            gpioa.pa14.into_alternate_af1(cs),
-            gpioa.pa15.into_alternate_af1(cs),
-        ));
-        let mut usart = Serial::usart1(ctx.device.USART1, (tx, rx), 9600.bps(), &mut rcc);
-
         let mut tim2 = Timer::tim2(ctx.device.TIM2, MOTION_CONTROL_FREQUENCY.hz(), &mut rcc);
+        let mut tim14 = Timer::tim14(ctx.device.TIM14, 1.hz(), &mut rcc);
 
         // Start Interrupts
-        usart.listen(serial::Event::Rxne);
         tim2.listen(Event::TimeOut);
+        tim14.listen(Event::TimeOut);
 
         (
             Shared {
@@ -146,6 +166,7 @@ mod app {
                 current_velocity: 0,
             },
             Local {
+                encoders,
                 hs1,
                 hs2,
                 hs3,
@@ -158,7 +179,14 @@ mod app {
                 overcurrent_comparator,
                 tim2,
                 led,
-                usart,
+                pid: Pid::new(
+                    MAXIMUM_OUTPUT,
+                    unsafe { KP },
+                    unsafe { KI },
+                    unsafe { KD }
+                ),
+                tim14,
+                motion_controller: MotionController::new(MOTION_CONTROL_FREQUENCY),
             }
         )
     }
@@ -172,6 +200,51 @@ mod app {
 
     #[task(
         local = [
+            tim14,
+            led,
+            last_led_state: bool = true,
+            downcounting: bool = true, 
+        ],
+        shared = [
+            setpoint,
+        ],
+        binds = TIM14
+    )]
+    fn setpoint_update(mut ctx: setpoint_update::Context) {
+        if *ctx.local.last_led_state {
+            ctx.local.led.set_low().unwrap();
+            *ctx.local.last_led_state = false;
+        } else {
+            ctx.local.led.set_high().unwrap();
+            *ctx.local.last_led_state = true;
+        }
+
+        ctx.shared.setpoint.lock(|setpoint| {
+            match *setpoint {
+                12400 => {
+                    *ctx.local.downcounting = true;
+                    *setpoint = 6200;
+                },
+                6200 => if *ctx.local.downcounting { *setpoint = 0 } else { *setpoint = 12400 },
+                0 => if *ctx.local.downcounting { *setpoint = -6200 } else { *setpoint = 6200 },
+                -6200 => if *ctx.local.downcounting { *setpoint = -12400 } else { *setpoint = 0 },
+                -12400 => {
+                    *ctx.local.downcounting = false;
+                    *setpoint = -6200;
+                },
+                _ => {
+                    *ctx.local.downcounting = true;
+                    *setpoint = 6200;
+                },
+            }
+            defmt::info!("New Setpoint: {}", *setpoint);
+        });
+        ctx.local.tim14.clear_irq();
+    }
+
+    #[task(
+        local = [
+            encoders,
             hs1,
             hs2,
             hs3,
@@ -182,14 +255,9 @@ mod app {
             ch3,
             ch3n,
             tim2,
-            last_encoders_value: u16 = 0,
-            iteration: u32 = 0,
-            errors: [f32; 500] = [0.0; 500],
-            last_setpoint: i32 = 0,
-            last_received_iteration: u32 = 0,
-
-            led,
-            last_led: bool = false,
+            pid,
+            motion_controller,
+            overcurrent_comparator,
         ],
         shared = [
             setpoint,
@@ -200,23 +268,15 @@ mod app {
     )]
     /// Update the speed of the motors.  The timer calls an interrupt every 1ms
     fn motion_control_update(mut ctx: motion_control_update::Context) {
-        if *ctx.local.iteration % 500 == 0 {
-            if *ctx.local.last_led {
-                ctx.local.led.set_low().unwrap();
-                *ctx.local.last_led = false;
-            } else {
-                ctx.local.led.set_high().unwrap();
-                *ctx.local.last_led = true;
-            }
-        }
         // Setpoint in ticks per second
-        let setpoint = ctx.shared.setpoint.lock(|setpoint| *setpoint as f32);
+        let setpoint = ctx.shared.setpoint.lock(|setpoint| *setpoint);
 
-        let (pwm, clockwise) = if setpoint == 0.0 {
-            (0, true)
-        } else {
-            (ctx.local.ch1.get_max_duty() / 8, false)
-        };
+        let (pwm, clockwise) = ctx.local.motion_controller.update(
+            ctx.local.encoders.count(),
+            setpoint
+        );
+
+        ctx.shared.current_velocity.lock(|velocity| *velocity = ctx.local.motion_controller.current_velocity);
 
         let phases = hall_to_phases(
             ctx.local.hs1.is_high().unwrap(),
@@ -276,49 +336,6 @@ mod app {
             },
         }
 
-        *ctx.local.iteration += 1;
         ctx.local.tim2.clear_irq();
-    }
-
-    #[task(
-        local = [
-            usart,
-            buffer: [u8; 4] = [0u8; 4],
-            idx: usize = 0,
-            done: bool = false,
-            sending: bool = false,
-        ],
-        shared = [
-            setpoint,
-            current_velocity,
-        ],
-        binds = USART1,
-        priority = 1
-    )]
-    fn usart_interrupt(mut ctx: usart_interrupt::Context) {
-        ctx.local.usart.unlisten(serial::Event::Rxne);
-        match nb::block!(ctx.local.usart.read()) {
-            Ok(data) => {
-                if data == 0x11 {
-                    *ctx.local.idx = 0;
-                } else {
-                    ctx.local.buffer[*ctx.local.idx] = data;
-                    *ctx.local.idx += 1;
-                }
-            },
-            Err(_err) => defmt::error!("Error Reading"),
-        }
-        if *ctx.local.idx == ctx.local.buffer.len() {
-            let setpoint = i32::from_le_bytes(*ctx.local.buffer);
-            ctx.shared.setpoint.lock(|s| *s = setpoint);
-
-            ctx.shared.current_velocity.lock(|velocity| ctx.local.buffer.copy_from_slice(&velocity.to_le_bytes()));
-            for idx in 0..4 {
-                nb::block!(ctx.local.usart.write(ctx.local.buffer[idx])).unwrap();
-                nb::block!(ctx.local.usart.flush()).unwrap();
-            }
-            *ctx.local.idx = 0;
-        }
-        ctx.local.usart.listen(serial::Event::Rxne);
     }
 }

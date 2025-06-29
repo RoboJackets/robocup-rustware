@@ -12,20 +12,14 @@ use defmt_rtt as _;
 
 #[rtic::app(device = stm32f0xx_hal::pac, peripherals = true, dispatchers = [TSC])]
 mod app {
+    use motion_control::MotionController;
     use stm32f0xx_hal::{gpio::{gpiob::PB1, Output, PushPull}, pac::{TIM1, TIM2, TIM3}, prelude::*, pwm::{self, ComplementaryPwm, PwmChannels, C1, C1N, C2, C2N, C3, C3N}, qei::Qei, serial::{self, Serial}, timers::{Event, Timer}};
-    use motor_controller::{hall_to_phases, pid::Pid, OvercurrentComparator, Phase, HS1, HS2, HS3, SerialInterface};
+    use motor_controller::{hall_to_phases, OvercurrentComparator, Phase, HS1, HS2, HS3, SerialInterface, MOTION_CONTROL_FREQUENCY};
 
     /// The maximum PWM that is sendable to the motors
     pub const MAXIMUM_OUTPUT: u16 = 100;
     /// The timeout (in milliseconds)
     pub const TIMEOUT_MS: u32 = 100;
-
-    /// The kp constant for the pid controller
-    static mut KP: f32 = 1.0;
-    /// The ki constant for the pid controller
-    static mut KI: f32 = 0.0;
-    /// the kd constant for the pid controller
-    static mut KD: f32 = 0.0;
 
     #[local]
     struct Local {
@@ -56,14 +50,14 @@ mod app {
         overcurrent_comparator: OvercurrentComparator,
         // Timer 2 (used to schedule the motion control updates)
         tim2: Timer<TIM2>,
-        // The pid controller
-        pid: Pid,
 
         // The motor board led
         led: PB1<Output<PushPull>>,
 
         // The usart serial interface to talk to the Teensy
         usart: SerialInterface,
+        // The motion controller
+        motion_controller: MotionController,
     }
 
     #[shared]
@@ -96,7 +90,7 @@ mod app {
             ctx.device.TIM1,
             pwm_channels,
             &mut rcc,
-            30u32.khz()
+            6u32.khz()
         );
 
         let (
@@ -154,7 +148,7 @@ mod app {
         ));
         let mut usart = Serial::usart1(ctx.device.USART1, (tx, rx), 9600.bps(), &mut rcc);
 
-        let mut tim2 = Timer::tim2(ctx.device.TIM2, 2_000.hz(), &mut rcc);
+        let mut tim2 = Timer::tim2(ctx.device.TIM2, MOTION_CONTROL_FREQUENCY.hz(), &mut rcc);
 
         // Start Interrupts
         usart.listen(serial::Event::Rxne);
@@ -179,13 +173,8 @@ mod app {
                 overcurrent_comparator,
                 tim2,
                 led,
-                pid: Pid::new(
-                    MAXIMUM_OUTPUT,
-                    unsafe { KP },
-                    unsafe { KI },
-                    unsafe { KD }
-                ),
                 usart,
+                motion_controller: MotionController::new(MOTION_CONTROL_FREQUENCY),
             }
         )
     }
@@ -210,12 +199,17 @@ mod app {
             ch3,
             ch3n,
             tim2,
-            pid,
             last_encoders_value: u16 = 0,
             iteration: u32 = 0,
             errors: [f32; 500] = [0.0; 500],
             last_setpoint: i32 = 0,
             last_received_iteration: u32 = 0,
+            velocity_buffer: [i32; 100] = [0i32; 100],
+            velocity_idx: usize = 0,
+            motion_controller,
+
+            led,
+            last_led: bool = false,
         ],
         shared = [
             setpoint,
@@ -225,44 +219,25 @@ mod app {
         priority = 1
     )]
     /// Update the speed of the motors.  The timer calls an interrupt every 1ms
-    fn motion_control_update(mut ctx: motion_control_update::Context) {    
-        let encoder_count = ctx.local.encoders.count();
-        let elapsed_encoders = if encoder_count < 1000 && *ctx.local.last_encoders_value > u16::MAX - 1000 {
-            // Overflow
-            (u16::MAX - *ctx.local.last_encoders_value + encoder_count) as i32
-        } else if *ctx.local.last_encoders_value < 1000 && encoder_count > u16::MAX - 1000 {
-            // Underflow
-            -((*ctx.local.last_encoders_value + u16::MAX - encoder_count) as i32)
-        } else {
-            // Normal
-            (encoder_count as i32) - (*ctx.local.last_encoders_value as i32)
-        };
-        let ticks_per_second = elapsed_encoders * 2_000;
-        ctx.shared.current_velocity.lock(|velocity| *velocity = ticks_per_second);
-        let current_pwm = (ticks_per_second as f32) / 24_000.0;
-        *ctx.local.last_encoders_value = encoder_count;
-
-        // Check for timeout protection
-        let setpoint = ctx.shared.setpoint.lock(|setpoint| {
-            if *setpoint != *ctx.local.last_setpoint {
-                *ctx.local.last_received_iteration = *ctx.local.iteration;
-                *ctx.local.last_setpoint = *setpoint;
+    fn motion_control_update(mut ctx: motion_control_update::Context) {
+        if *ctx.local.iteration % 1_000 == 0 {
+            if *ctx.local.last_led {
+                ctx.local.led.set_low().unwrap();
+                *ctx.local.last_led = false;
+            } else {
+                ctx.local.led.set_high().unwrap();
+                *ctx.local.last_led = true;
             }
-            *setpoint
-        });
-        let target = if *ctx.local.iteration - *ctx.local.last_received_iteration > TIMEOUT_MS * 2 {
-            0.0
-        } else {
-            (setpoint as f32) / 24_000.0
-        };
+        }
+        // Setpoint in ticks per second
+        let setpoint = ctx.shared.setpoint.lock(|setpoint| *setpoint);
 
-        let pwm = (target + current_pwm) / 2.0;
+        let (pwm, clockwise) = ctx.local.motion_controller.update(
+            ctx.local.encoders.count(),
+            setpoint
+        );
 
-        let (pwm, clockwise) = if pwm > 0.0 {
-            ((unsafe { (ctx.local.ch1.get_max_duty() as f32 * pwm).to_int_unchecked::<u16>()}), true)
-        } else {
-            ((unsafe { (ctx.local.ch1.get_max_duty() as f32 * pwm.abs()).to_int_unchecked::<u16>()}), false)
-        };
+        ctx.shared.current_velocity.lock(|velocity| *velocity = ctx.local.motion_controller.current_velocity);
 
         let phases = hall_to_phases(
             ctx.local.hs1.is_high().unwrap(),
@@ -329,8 +304,10 @@ mod app {
     #[task(
         local = [
             usart,
-            led_state: bool = true,
-            led,
+            buffer: [u8; 4] = [0u8; 4],
+            idx: usize = 0,
+            done: bool = false,
+            sending: bool = false,
         ],
         shared = [
             setpoint,
@@ -341,25 +318,28 @@ mod app {
     )]
     fn usart_interrupt(mut ctx: usart_interrupt::Context) {
         ctx.local.usart.unlisten(serial::Event::Rxne);
-
-        let mut command = [0u8; 4];
-        for i in 0..4 {
-            command[i] = nb::block!(ctx.local.usart.read()).unwrap();
+        match nb::block!(ctx.local.usart.read()) {
+            Ok(data) => {
+                if data == 0x11 {
+                    *ctx.local.idx = 0;
+                } else {
+                    ctx.local.buffer[*ctx.local.idx] = data;
+                    *ctx.local.idx += 1;
+                }
+            },
+            Err(_err) => defmt::error!("Error Reading"),
         }
+        if *ctx.local.idx == ctx.local.buffer.len() {
+            let setpoint = i32::from_le_bytes(*ctx.local.buffer);
+            ctx.shared.setpoint.lock(|s| *s = setpoint);
 
-        for byte in command {
-            nb::block!(ctx.local.usart.write(byte)).unwrap();
+            ctx.shared.current_velocity.lock(|velocity| ctx.local.buffer.copy_from_slice(&velocity.to_le_bytes()));
+            for idx in 0..4 {
+                nb::block!(ctx.local.usart.write(ctx.local.buffer[idx])).unwrap();
+                nb::block!(ctx.local.usart.flush()).unwrap();
+            }
+            *ctx.local.idx = 0;
         }
-
-        if *ctx.local.led_state {
-            ctx.local.led.set_low().unwrap();
-            *ctx.local.led_state = false;
-        } else {
-            ctx.local.led.set_high().unwrap();
-            *ctx.local.led_state = true;
-        }
-
-        ctx.shared.setpoint.lock(|setpoint| *setpoint = i32::from_le_bytes(command));
         ctx.local.usart.listen(serial::Event::Rxne);
     }
 }

@@ -9,7 +9,7 @@
 
 use core::fmt::Debug;
 
-use stm32f0xx_hal::{gpio::{gpioa::{PA0, PA1, PA11, PA14, PA15, PA2}, gpiob::PB12, gpiof::{PF6, PF7}, Alternate, Floating, Input, Output, PullDown, PullUp, PushPull, AF1}, pac::{EXTI, SYSCFG, USART1}, serial::Serial};
+use stm32f0xx_hal::{gpio::{gpioa::{PA0, PA1, PA11, PA14, PA15, PA2}, gpiob::PB12, gpiof::{PF6, PF7}, Alternate, Input, Output, PullDown, PushPull, AF1}, pac::{EXTI, SYSCFG, USART1}, serial::Serial};
 use stm32f0xx_hal::prelude::*;
 use embedded_hal::PwmPin;
 use defmt::Format;
@@ -37,6 +37,10 @@ pub const MOTOR_COMMAND: u8 = 0x44;
 pub const TIM2_CLOCK_HZ: u32 = 8_000_000;
 /// The frequency of tim3 clock
 pub const TIM3_CLOCK_HZ: u32 = 8_000_000;
+/// There is roughly 187 pwm counts per rotation (i.e. 6200 encoder ticks)
+pub const VELOCITY_TO_PWM_MAPING: f32 = 187.0 / 6200.0;
+/// The frequency (in hertz) of the motion control loop
+pub const MOTION_CONTROL_FREQUENCY: u32 = 1000;
 
 /// The first hal sensor
 pub type HS1 = PA0<Input<PullDown>>;

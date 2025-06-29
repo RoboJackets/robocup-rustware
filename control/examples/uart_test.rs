@@ -18,18 +18,19 @@ mod app {
     use super::*;
     use core::mem::MaybeUninit;
 
-    use imxrt_hal::lpuart;
+    use imxrt_hal::{lpuart, timer::Blocking};
     use rtic_monotonics::systick::*;
     use rtic_sync::{
         channel::{Receiver, Sender},
         make_channel,
     };
-    use teensy4_bsp::{board, ral};
+    use teensy4_bsp::board;
 
     use robojackets_robocup_control::{
-        motors::{motor_interrupt, send_command},
-        peripherals::*,
+        motors::{motor_interrupt, send_command}, peripherals::*, GPT_CLOCK_SOURCE, GPT_DIVIDER, GPT_FREQUENCY
     };
+
+    use embedded_hal::blocking::delay::DelayMs;
 
     const HEAP_SIZE: usize = 4096;
     static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
@@ -55,6 +56,9 @@ mod app {
         // Dribbler
         dribbler_tx: Sender<'static, [u8; 4], 3>,
         dribbler_rx: Receiver<'static, [u8; 4], 3>,
+
+        // The logging poller
+        poller: imxrt_log::Poller,
     }
 
     #[shared]
@@ -89,17 +93,35 @@ mod app {
 
         let board::Resources {
             pins,
+            mut gpio1,
+            mut gpio2,
+            mut gpt2,
+            lpuart1,
             lpuart4,
             lpuart6,
             lpuart8,
+            lpuart7,
             usb,
             ..
         } = board::t41(ctx.device);
 
-        teensy4_bsp::LoggingFrontend::default_log().register_usb(usb);
+        let poller = imxrt_log::log::usbd(usb, imxrt_log::Interrupts::Enabled).unwrap();
 
         let systick_token = rtic_monotonics::create_systick_token!();
         Systick::start(ctx.core.SYST, 600_000_000, systick_token);
+
+        // Gpt 2 as blocking delay
+        gpt2.disable();
+        gpt2.set_divider(GPT_DIVIDER);
+        gpt2.set_clock_source(GPT_CLOCK_SOURCE);
+        let mut delay2 = Blocking::<_, GPT_FREQUENCY>::from_gpt(gpt2);
+
+        let motor_en: MotorEn = gpio1.output(pins.p23);
+        motor_en.set();
+        let kill_n: Killn = gpio2.output(pins.p36);
+        kill_n.set();
+
+        delay2.delay_ms(500u32);
 
         let mut motor_one_uart = board::lpuart(lpuart6, pins.p1, pins.p0, 9600);
         motor_one_uart.disable(|uart| {
@@ -120,7 +142,7 @@ mod app {
         let (motor_two_tx, motor_two_rx) = make_channel!([u8; 4], 3);
 
         let mut motor_three_uart = board::lpuart(
-            unsafe { ral::lpuart::LPUART1::instance() },
+            lpuart1,
             pins.p24,
             pins.p25,
             9600,
@@ -134,7 +156,7 @@ mod app {
         let (motor_three_tx, motor_three_rx) = make_channel!([u8; 4], 3);
 
         let mut motor_four_uart = board::lpuart(
-            unsafe { ral::lpuart::LPUART7::instance() },
+            lpuart7,
             pins.p29,
             pins.p28,
             9600,
@@ -183,6 +205,7 @@ mod app {
                 motor_four_tx,
                 dribbler_tx,
                 dribbler_rx,
+                poller,
             },
         )
     }
@@ -242,23 +265,46 @@ mod app {
         priority = 1
     )]
     async fn send_motor_move_commands(mut ctx: send_motor_move_commands::Context) {
+        let mut iteration = 0u32;
+        let mut setpoint = 6200; 
+        let mut downcounting = true;
         loop {
+            if iteration % 5 == 0 {
+                setpoint = match setpoint {
+                    6200 => {
+                        downcounting = true;
+                        3100
+                    },
+                    3100 => if downcounting { 0 } else { 6200 },
+                    0 => if downcounting { -3100 } else { 3100 },
+                    -3100 => if downcounting { -6200 } else { 0 },
+                    -6200 => {
+                        downcounting = false;
+                        -3100
+                    },
+                    _ => {
+                        downcounting = true;
+                        3100
+                    },
+                }
+            }
             ctx.shared
                 .motor_one_uart
-                .lock(|uart| send_command(2400, ctx.local.motor_one_tx, uart, 0));
+                .lock(|uart| send_command(setpoint, ctx.local.motor_one_tx, uart, 0));
             ctx.shared
                 .motor_two_uart
-                .lock(|uart| send_command(2400, ctx.local.motor_two_tx, uart, 1));
+                .lock(|uart| send_command(setpoint, ctx.local.motor_two_tx, uart, 0));
             ctx.shared
                 .motor_three_uart
-                .lock(|uart| send_command(2400, ctx.local.motor_three_tx, uart, 2));
+                .lock(|uart| send_command(setpoint, ctx.local.motor_three_tx, uart, 0));
             ctx.shared
                 .motor_four_uart
-                .lock(|uart| send_command(2400, ctx.local.motor_four_tx, uart, 3));
+                .lock(|uart| send_command(setpoint, ctx.local.motor_four_tx, uart, 0));
             ctx.shared
                 .dribbler_uart
-                .lock(|uart| send_command(2400, ctx.local.dribbler_tx, uart, 4));
+                .lock(|uart| send_command(setpoint, ctx.local.dribbler_tx, uart, 0));
 
+            iteration = iteration.wrapping_add(1);
             Systick::delay(200u32.millis()).await;
         }
     }
@@ -382,5 +428,12 @@ mod app {
             ctx.local.reading,
             ctx.local.buffer,
         );
+    }
+
+    /// This task runs when the USB1 interrupt activates.
+    /// Simply poll the logger to control the logging process.
+    #[task(binds = USB_OTG1, local = [poller])]
+    fn usb_interrupt(cx: usb_interrupt::Context) {
+        cx.local.poller.poll();
     }
 }

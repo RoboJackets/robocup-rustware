@@ -44,6 +44,7 @@ mod app {
         main_window: MainWindow<'static>,
         error_screen: ErrorScreen<'static>,
         latency_placeholder: u16,
+        poller: imxrt_log::Poller,
     }
 
     #[init]
@@ -57,7 +58,7 @@ mod app {
             pins, lpi2c1, usb, ..
         } = board::t41(cx.device);
 
-        bsp::LoggingFrontend::default_log().register_usb(usb);
+        let poller = imxrt_log::log::usbd(usb, imxrt_log::Interrupts::Enabled).unwrap();
 
         let systick_token = rtic_monotonics::create_systick_token!();
         Systick::start(cx.core.SYST, 36_000_000, systick_token);
@@ -86,6 +87,7 @@ mod app {
                 main_window,
                 error_screen,
                 latency_placeholder,
+                poller,
             },
         )
     }
@@ -140,5 +142,12 @@ mod app {
         });
         Systick::delay(250000000.micros()).await;
         main_window_test::spawn().ok();
+    }
+
+    /// This task runs when the USB1 interrupt activates.
+    /// Simply poll the logger to control the logging process.
+    #[task(binds = USB_OTG1, local = [poller])]
+    fn usb_interrupt(cx: usb_interrupt::Context) {
+        cx.local.poller.poll();
     }
 }

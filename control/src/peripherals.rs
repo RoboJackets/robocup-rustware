@@ -6,10 +6,9 @@
 
 use core::convert::Infallible;
 
-use imxrt_hal::lpuart::{self, Lpuart};
 use teensy4_pins::t41::*;
 
-use teensy4_bsp::board::{self, lpi2c3, Lpi2c1, Lpuart4, Lpuart6, Lpuart8, PERCLK_FREQUENCY};
+use teensy4_bsp::board::{self, Lpi2c3, Lpi2c1, Lpuart1, Lpuart4, Lpuart6, Lpuart7, Lpuart8, PERCLK_FREQUENCY};
 use teensy4_bsp::hal::{
     adc::AnalogInput,
     gpio::{Input, Output, Port},
@@ -85,11 +84,11 @@ pub type MotorTwoUart = Lpuart4;
 /// The prog pin connected to the second motor
 pub type MotorTwoProg = Output<P6>;
 /// The uart interface connected to the third motor
-pub type MotorThreeUart = Lpuart<lpuart::Pins<P24, P25>, 1>;
+pub type MotorThreeUart = Lpuart1;
 /// The prog pin connected to the third motor
 pub type MotorThreeProg = Output<P31>;
 /// The uart interface connected to the fourth motor
-pub type MotorFourUart = Lpuart<lpuart::Pins<P29, P28>, 7>;
+pub type MotorFourUart = Lpuart7;
 /// The prog pin connected to the fourth motor
 pub type MotorFourProg = Output<P30>;
 /// The uart interface connnected to the dribbler motor

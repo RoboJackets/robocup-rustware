@@ -162,7 +162,7 @@ mod app {
 
         match phases[0] {
             Phase::Positive => {
-                ctx.local.ch1.set_duty(ctx.local.ch1.get_max_duty() / 16);
+                ctx.local.ch1.set_duty(ctx.local.ch1.get_max_duty() / 8);
                 ctx.local.ch1.enable();
                 ctx.local.ch1n.enable();
             },
@@ -179,7 +179,7 @@ mod app {
 
         match phases[1] {
             Phase::Positive => {
-                ctx.local.ch2.set_duty(ctx.local.ch1.get_max_duty() / 16);
+                ctx.local.ch2.set_duty(ctx.local.ch1.get_max_duty() / 8);
                 ctx.local.ch2.enable();
                 ctx.local.ch2n.enable();
             },
@@ -196,7 +196,7 @@ mod app {
 
         match phases[2] {
             Phase::Positive => {
-                ctx.local.ch3.set_duty(ctx.local.ch1.get_max_duty() / 16);
+                ctx.local.ch3.set_duty(ctx.local.ch1.get_max_duty() / 8);
                 ctx.local.ch3.enable();
                 ctx.local.ch3n.enable();
             },

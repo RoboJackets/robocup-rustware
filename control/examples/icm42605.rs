@@ -44,7 +44,9 @@ mod app {
     use teensy4_pins::t41::{P18, P19};
 
     #[local]
-    struct Local {}
+    struct Local {
+        poller: imxrt_log::Poller,
+    }
 
     #[shared]
     struct Shared {
@@ -71,9 +73,9 @@ mod app {
             ..
         } = board::t41(ctx.device);
 
-        bsp::LoggingFrontend::default_log().register_usb(usb);
+        let poller = imxrt_log::log::usbd(usb, imxrt_log::Interrupts::Enabled).unwrap();
 
-        let i2c = board::lpi2c(lpi2c1, pins.p19, pins.p18, board::Lpi2cClockSpeed::KHz400);
+        let i2c = board::lpi2c(lpi2c1, pins.p19, pins.p18, board::Lpi2cClockSpeed::MHz1);
         let i2c_bus: &'static _ = shared_bus::new_cortexm!(
             imxrt_hal::lpi2c::Lpi2c<imxrt_hal::lpi2c::Pins<P19, P18>, 1> = i2c
         )
@@ -93,7 +95,9 @@ mod app {
                 pit_delay: delay,
                 imu_init_error: None,
             },
-            Local {},
+            Local {
+                poller,
+            },
         )
     }
 
@@ -182,5 +186,12 @@ mod app {
         }
 
         panic!("IMU-INIT: {:?}", imu_initialization_error);
+    }
+
+    /// This task runs when the USB1 interrupt activates.
+    /// Simply poll the logger to control the logging process.
+    #[task(binds = USB_OTG1, local = [poller])]
+    fn usb_interrupt(cx: usb_interrupt::Context) {
+        cx.local.poller.poll();
     }
 }

@@ -30,12 +30,13 @@ mod app {
     use bsp::board::PERCLK_FREQUENCY;
     use bsp::board::{self, LPSPI_FREQUENCY};
     use nalgebra::{Vector3, Vector4};
-    use robojackets_robocup_control::RadioSPI;
+    use robojackets_robocup_control::{Gpio2, Killn, MotorEn, RadioSPI};
     use teensy4_bsp as bsp;
 
     use hal::gpio::Trigger;
     use hal::lpspi::Pins;
     use hal::timer::Blocking;
+    use hal::lpuart;
     use teensy4_bsp::hal;
 
     use rtic_nrf24l01::Radio;
@@ -75,17 +76,23 @@ mod app {
         spi::FakeSpi, Delay2, Display, Gpio1, Imu, ImuInitError, KickerCSn, KickerProg,
         KickerProgramError, KickerReset, KickerServicingError, PitDelay, RFRadio, RadioInitError,
         RadioInterrupt, State, BASE_AMPLIFICATION_LEVEL, CHANNEL, GPT_1_DIVIDER, GPT_CLOCK_SOURCE,
-        GPT_DIVIDER, GPT_FREQUENCY, RADIO_ADDRESS, ROBOT_ID,
+        GPT_DIVIDER, GPT_FREQUENCY, RADIO_ADDRESS, ROBOT_ID, MotorOneUart, MotorTwoUart,
+        MotorThreeUart, MotorFourUart, DribblerUart, motors::{motor_interrupt, send_command}
     };
 
     use kicker_controller::{KickTrigger, KickType, Kicker, KickerCommand};
     use kicker_programmer::KickerProgrammer;
 
+    use rtic_sync::{
+        channel::{Receiver, Sender},
+        make_channel,
+    };
+
     const HEAP_SIZE: usize = 1024;
     static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
 
     /// The amount of time (in ms) between each motion control delay
-    const MOTION_CONTROL_DELAY_MS: u32 = 1;
+    const MOTION_CONTROL_DELAY_MS: u32 = 1_000_000 / 60;
     /// The amount of time (in ms) between servicing the kicker
     const KICKER_SERVICE_DELAY_MS: u32 = 50;
     /// The number of motion control updates between servicing the kicker
@@ -99,13 +106,13 @@ mod app {
     pub fn disable_radio_interrupts(
         message_size: usize,
         rx_int: &mut RadioInterrupt,
-        gpio1: &mut Gpio1,
+        gpio2: &mut Gpio2,
         radio: &mut RFRadio,
         spi: &mut RadioSPI,
         radio_delay: &mut Delay2,
     ) {
         rx_int.clear_triggered();
-        gpio1.set_interrupt(rx_int, None);
+        gpio2.set_interrupt(rx_int, None);
         radio.clear_interrupts(spi, radio_delay);
         radio.flush_rx(spi, radio_delay);
         radio.flush_tx(spi, radio_delay);
@@ -117,13 +124,13 @@ mod app {
     /// receiving incoming control messages
     pub fn enable_radio_interrupts(
         rx_int: &mut RadioInterrupt,
-        gpio1: &mut Gpio1,
+        gpio2: &mut Gpio2,
         radio: &mut RFRadio,
         spi: &mut RadioSPI,
         radio_delay: &mut Delay2,
     ) {
         rx_int.clear_triggered();
-        gpio1.set_interrupt(rx_int, Some(Trigger::FallingEdge));
+        gpio2.set_interrupt(rx_int, Some(Trigger::FallingEdge));
         radio.clear_interrupts(spi, radio_delay);
         radio.flush_rx(spi, radio_delay);
         radio.flush_tx(spi, radio_delay);
@@ -134,7 +141,27 @@ mod app {
     #[local]
     struct Local {
         motion_controller: MotionControl,
-        last_encoders: Vector4<f32>,
+        poller: imxrt_log::Poller,
+
+        // Motor 1
+        motor_one_tx: Sender<'static, [u8; 4], 3>,
+        motor_one_rx: Receiver<'static, [u8; 4], 3>,
+
+        // Motor 2
+        motor_two_tx: Sender<'static, [u8; 4], 3>,
+        motor_two_rx: Receiver<'static, [u8; 4], 3>,
+
+        // Motor 3
+        motor_three_tx: Sender<'static, [u8; 4], 3>,
+        motor_three_rx: Receiver<'static, [u8; 4], 3>,
+
+        // Motor 4
+        motor_four_tx: Sender<'static, [u8; 4], 3>,
+        motor_four_rx: Receiver<'static, [u8; 4], 3>,
+
+        // Dribbler
+        dribbler_tx: Sender<'static, [u8; 4], 3>,
+        dribbler_rx: Receiver<'static, [u8; 4], 3>,
     }
 
     #[shared]
@@ -142,10 +169,10 @@ mod app {
         // Peripherals
         pit0: Pit<0>,
         gpt: Gpt<1>,
-        shared_spi: RadioSPI,
+        radio_spi: RadioSPI,
         blocking_delay: Delay2,
         rx_int: RadioInterrupt,
-        gpio1: Gpio1,
+        gpio2: Gpio2,
         pit_delay: PitDelay,
         fake_spi: FakeSpi,
         kicker_programmer: Option<KickerProg>,
@@ -172,6 +199,26 @@ mod app {
         radio_init_error: Option<RadioInitError>,
         kicker_program_error: Option<KickerProgramError>,
         kicker_service_error: Option<KickerServicingError>,
+
+        // Motor 1
+        motor_one_uart: MotorOneUart,
+        motor_one_velocity: i32,
+
+        // Motor 2
+        motor_two_uart: MotorTwoUart,
+        motor_two_velocity: i32,
+
+        // Motor 3
+        motor_three_uart: MotorThreeUart,
+        motor_three_velocity: i32,
+
+        // Motor 4
+        motor_four_uart: MotorFourUart,
+        motor_four_velocity: i32,
+
+        // Dribbler
+        dribbler_uart: DribblerUart,
+        dribbler_velocity: i32,
     }
 
     #[init]
@@ -193,11 +240,17 @@ mod app {
             mut gpt1,
             mut gpt2,
             pit: (pit0, _pit1, pit2, pit3),
+            lpuart1,
+            lpuart4,
+            lpuart6,
+            lpuart7,
+            lpuart8,
             ..
         } = board::t41(ctx.device);
 
-        // Setup USB Logging
-        bsp::LoggingFrontend::default_log().register_usb(usb);
+        let poller = imxrt_log::log::usbd(usb, imxrt_log::Interrupts::Enabled).unwrap();
+
+        // Initialize Timers //
 
         // Initialize Systick Async Delay
         let systick_token = rtic_monotonics::create_systick_token!();
@@ -213,57 +266,87 @@ mod app {
         gpt2.disable();
         gpt2.set_divider(GPT_DIVIDER);
         gpt2.set_clock_source(GPT_CLOCK_SOURCE);
-        let delay2 = Blocking::<_, GPT_FREQUENCY>::from_gpt(gpt2);
+        let mut delay2 = Blocking::<_, GPT_FREQUENCY>::from_gpt(gpt2);
 
-        // Setup Rx Interrupt
-        let rx_int = gpio2.input(pins.p9);
-        gpio2.set_interrupt(&rx_int, None);
+        let pit_delay = Blocking::<_, PERCLK_FREQUENCY>::from_pit(pit2);
+        let fake_spi_delay = Blocking::<_, PERCLK_FREQUENCY>::from_pit(pit3);
 
-        // Initialize IMU
+        // End Initialize Timers //
+
+        // Initialize Motor Board //
+
+        let motor_en: MotorEn = gpio1.output(pins.p23);
+        motor_en.set();
+        let kill_n: Killn = gpio2.output(pins.p36);
+        kill_n.set();
+
+        delay2.delay_ms(500u32);
+
+        let mut motor_one_uart = board::lpuart(lpuart6, pins.p1, pins.p0, 9600);
+        motor_one_uart.disable(|uart| {
+            uart.disable_fifo(lpuart::Direction::Tx);
+            uart.disable_fifo(lpuart::Direction::Rx);
+            uart.set_parity(None);
+        });
+        motor_one_uart.clear_status(lpuart::Status::W1C);
+        let (motor_one_tx, motor_one_rx) = make_channel!([u8; 4], 3);
+
+        let mut motor_two_uart = board::lpuart(lpuart4, pins.p8, pins.p7, 9600);
+        motor_two_uart.disable(|uart| {
+            uart.disable_fifo(lpuart::Direction::Tx);
+            uart.disable_fifo(lpuart::Direction::Rx);
+            uart.set_parity(None);
+        });
+        motor_two_uart.clear_status(lpuart::Status::W1C);
+        let (motor_two_tx, motor_two_rx) = make_channel!([u8; 4], 3);
+
+        let mut motor_three_uart = board::lpuart(
+            lpuart1,
+            pins.p24,
+            pins.p25,
+            9600,
+        );
+        motor_three_uart.disable(|uart| {
+            uart.disable_fifo(lpuart::Direction::Tx);
+            uart.disable_fifo(lpuart::Direction::Rx);
+            uart.set_parity(None);
+        });
+        motor_three_uart.clear_status(lpuart::Status::W1C);
+        let (motor_three_tx, motor_three_rx) = make_channel!([u8; 4], 3);
+
+        let mut motor_four_uart = board::lpuart(
+            lpuart7,
+            pins.p29,
+            pins.p28,
+            9600,
+        );
+        motor_four_uart.disable(|uart| {
+            uart.disable_fifo(lpuart::Direction::Tx);
+            uart.disable_fifo(lpuart::Direction::Rx);
+            uart.set_parity(None);
+        });
+        motor_four_uart.clear_status(lpuart::Status::W1C);
+        let (motor_four_tx, motor_four_rx) = make_channel!([u8; 4], 3);
+
+        let mut dribbler_uart = board::lpuart(lpuart8, pins.p20, pins.p21, 9600);
+        dribbler_uart.disable(|uart| {
+            uart.disable_fifo(lpuart::Direction::Tx);
+            uart.disable_fifo(lpuart::Direction::Rx);
+            uart.set_parity(None);
+        });
+        dribbler_uart.clear_status(lpuart::Status::W1C);
+        let (dribbler_tx, dribbler_rx) = make_channel!([u8; 4], 3);
+
+        // End Initialize Motor Board //
+
+        // Initialize I2C Devices //
 
         let i2c = board::lpi2c(lpi2c1, pins.p19, pins.p18, board::Lpi2cClockSpeed::KHz400);
         let i2c_bus: &'static _ = shared_bus::new_cortexm!(
             imxrt_hal::lpi2c::Lpi2c<imxrt_hal::lpi2c::Pins<P19, P18>, 1> = i2c
         )
         .expect("Failed to initialize shared I2C bus LPI2C1");
-        let pit_delay = Blocking::<_, PERCLK_FREQUENCY>::from_pit(pit2);
         let imu = IMU::new(i2c_bus.acquire_i2c());
-
-        // Initialize Shared SPI
-        let shared_spi_pins = Pins {
-            pcs0: pins.p10,
-            sck: pins.p13,
-            sdo: pins.p11,
-            sdi: pins.p12,
-        };
-        let mut shared_spi = hal::lpspi::Lpspi::new(lpspi4, shared_spi_pins);
-
-        shared_spi.disabled(|spi| {
-            spi.set_clock_hz(LPSPI_FREQUENCY, 5_000_000u32);
-            spi.set_mode(MODE_0);
-        });
-
-        // Init radio cs pin and ce pin
-        let radio_cs = gpio1.output(pins.p14);
-        let ce = gpio1.output(pins.p41);
-
-        // Initialize radio
-        let radio = Radio::new(ce, radio_cs);
-
-        // Set an initial robot status
-        let initial_robot_status = RobotStatusMessageBuilder::new().robot_id(ROBOT_ID).build();
-
-        let fake_spi_delay = Blocking::<_, PERCLK_FREQUENCY>::from_pit(pit3);
-        let fake_spi = FakeSpi::new(
-            gpio1.output(pins.p27),
-            gpio1.output(pins.p26),
-            gpio1.input(pins.p39),
-            fake_spi_delay,
-        );
-
-        let kicker_controller = Kicker::new(gpio1.output(pins.p38), gpio2.output(pins.p37));
-
-        rx_int.clear_triggered();
 
         let display_interface = I2CDisplayInterface::new(i2c_bus.acquire_i2c());
         let display: Display = Ssd1306::new(
@@ -273,17 +356,55 @@ mod app {
         )
         .into_buffered_graphics_mode();
 
+        // End Initialize I2C Devices //
+
+        // Initialize Radio //
+
+        let radio_spi_pins = Pins {
+            pcs0: pins.p10,
+            sck: pins.p13,
+            sdo: pins.p11,
+            sdi: pins.p12,
+        };
+        let mut radio_spi = hal::lpspi::Lpspi::new(lpspi4, radio_spi_pins);
+        radio_spi.disabled(|spi| {
+            spi.set_clock_hz(LPSPI_FREQUENCY, 5_000_000u32);
+            spi.set_mode(MODE_0);
+        });
+        let radio_cs = gpio1.output(pins.p14);
+        let ce = gpio1.output(pins.p41);
+        let radio = Radio::new(ce, radio_cs);
+        let rx_int = gpio2.input(pins.p9);
+        gpio2.set_interrupt(&rx_int, None);
+
+        // End Initialize Radio //
+
+        // Initialize Kicker //
+
+        let fake_spi = FakeSpi::new(
+            gpio1.output(pins.p27),
+            gpio1.output(pins.p26),
+            gpio1.input(pins.p39),
+            fake_spi_delay,
+        );
+
+        let kicker_controller = Kicker::new(gpio1.output(pins.p38), gpio2.output(pins.p37));
+
+        // End Initialize Kicker //
+
+        rx_int.clear_triggered();
+
         initialize_imu::spawn().ok();
 
         (
             Shared {
                 pit0,
                 gpt: gpt1,
-                shared_spi,
+                radio_spi,
                 blocking_delay: delay2,
                 rx_int,
-                gpio1,
-                robot_status: initial_robot_status,
+                gpio2,
+                robot_status: RobotStatusMessageBuilder::new().robot_id(ROBOT_ID).build(),
                 control_message: None,
                 counter: 0,
                 elapsed_time: 0,
@@ -296,6 +417,18 @@ mod app {
                 display,
                 state: State::default(),
 
+                // Motor Board
+                motor_one_uart,
+                motor_one_velocity: 0i32,
+                motor_two_uart,
+                motor_two_velocity: 0i32,
+                motor_three_uart,
+                motor_three_velocity: 0i32,
+                motor_four_uart,
+                motor_four_velocity: 0i32,
+                dribbler_uart,
+                dribbler_velocity: 0i32,
+
                 // Errors
                 imu_init_error: None,
                 radio_init_error: None,
@@ -304,7 +437,17 @@ mod app {
             },
             Local {
                 motion_controller: MotionControl::new(),
-                last_encoders: Vector4::zeros(),
+                poller,
+                motor_one_tx,
+                motor_one_rx,
+                motor_two_tx,
+                motor_two_rx,
+                motor_three_rx,
+                motor_three_tx,
+                motor_four_rx,
+                motor_four_tx,
+                dribbler_tx,
+                dribbler_rx,
             },
         )
     }
@@ -344,13 +487,13 @@ mod app {
 
     /// Initialize the nRF24l01 Radio
     #[task(
-        shared = [radio, shared_spi, blocking_delay, radio_init_error],
+        shared = [radio, radio_spi, blocking_delay, radio_init_error],
         priority = 1
     )]
     async fn initialize_radio(ctx: initialize_radio::Context) {
         (
             ctx.shared.radio,
-            ctx.shared.shared_spi,
+            ctx.shared.radio_spi,
             ctx.shared.blocking_delay,
             ctx.shared.radio_init_error,
         )
@@ -367,6 +510,8 @@ mod app {
                     Err(err) => *radio_init_error = Some(err),
                 },
             );
+
+        check_for_errors::spawn().ok();
     }
 
     /// Initialize the kicker and kicker controller
@@ -516,6 +661,11 @@ mod app {
         log::error!("KICKER-SERVICE: {:?}", kicker_service_error);
 
         loop {
+            log::error!("IMU-INIT: {:?}", imu_init_error);
+            log::error!("RADIO-INIT: {:?}", radio_init_error);
+            log::error!("KICKER-PROG: {:?}", kicker_program_error);
+            log::error!("KICKER-SERVICE: {:?}", kicker_service_error);
+
             ctx.shared.display.lock(|display| {
                 let err_txt = &format!("{:?}", imu_init_error);
                 let err_scrn = ErrorScreen::new("IMU Init Error", err_txt);
@@ -555,20 +705,20 @@ mod app {
 
     /// Have the radio start listening for incoming commands
     #[task(
-        shared = [radio, shared_spi, blocking_delay, gpio1, rx_int, pit0],
+        shared = [radio, radio_spi, blocking_delay, gpio2, rx_int, pit0],
         priority = 1
     )]
     async fn start_listening(mut ctx: start_listening::Context) {
         (
             ctx.shared.radio,
-            ctx.shared.shared_spi,
+            ctx.shared.radio_spi,
             ctx.shared.blocking_delay,
-            ctx.shared.gpio1,
+            ctx.shared.gpio2,
             ctx.shared.rx_int,
         )
-            .lock(|radio, spi, delay, gpio1, rx_int| {
+            .lock(|radio, spi, delay, gpio2, rx_int| {
                 rx_int.clear_triggered();
-                gpio1.set_interrupt(rx_int, Some(Trigger::FallingEdge));
+                gpio2.set_interrupt(rx_int, Some(Trigger::FallingEdge));
                 radio.start_listening(spi, delay);
             });
 
@@ -581,14 +731,14 @@ mod app {
     }
 
     /// Interrupt called when the radio receives new data
-    #[task(binds = GPIO1_COMBINED_16_31, shared = [rx_int, gpio1, elapsed_time], priority = 2)]
+    #[task(binds = GPIO2_COMBINED_0_15, shared = [rx_int, gpio2, elapsed_time], priority = 2)]
     fn radio_interrupt(ctx: radio_interrupt::Context) {
-        if (ctx.shared.rx_int, ctx.shared.gpio1, ctx.shared.elapsed_time).lock(
-            |rx_int, gpio1, elapsed_time| {
+        if (ctx.shared.rx_int, ctx.shared.gpio2, ctx.shared.elapsed_time).lock(
+            |rx_int, gpio2, elapsed_time| {
                 if rx_int.is_triggered() {
                     *elapsed_time = 0;
                     rx_int.clear_triggered();
-                    gpio1.set_interrupt(rx_int, None);
+                    gpio2.set_interrupt(rx_int, None);
                     return true;
                 }
                 false
@@ -601,12 +751,12 @@ mod app {
     /// Task that decodes the command received via the radio.  This task is directly
     /// spawned by the radio_interrupt hardware task.
     #[task(
-        shared = [radio, rx_int, gpio1, shared_spi, blocking_delay, control_message, robot_status, counter, state],
+        shared = [radio, rx_int, gpio2, radio_spi, blocking_delay, control_message, robot_status, counter, state],
         priority = 2
     )]
     async fn receive_command(mut ctx: receive_command::Context) {
         (
-            ctx.shared.shared_spi,
+            ctx.shared.radio_spi,
             ctx.shared.blocking_delay,
             ctx.shared.control_message,
             ctx.shared.robot_status,
@@ -642,20 +792,15 @@ mod app {
                 radio.set_payload_size(ROBOT_STATUS_SIZE as u8, spi, delay);
                 radio.stop_listening(spi, delay);
 
-                for _ in 0..5 {
-                    let report = radio.write(&packed_data, spi, delay);
-                    if report {
-                        break;
-                    }
-                }
+                let _ = radio.write(&packed_data, spi, delay);
 
                 radio.set_payload_size(CONTROL_MESSAGE_SIZE as u8, spi, delay);
                 radio.start_listening(spi, delay);
             });
 
-        (ctx.shared.rx_int, ctx.shared.gpio1).lock(|rx_int, gpio1| {
+        (ctx.shared.rx_int, ctx.shared.gpio2).lock(|rx_int, gpio2| {
             rx_int.clear_triggered();
-            gpio1.set_interrupt(rx_int, Some(Trigger::Low));
+            gpio2.set_interrupt(rx_int, Some(Trigger::Low));
         });
     }
 
@@ -713,8 +858,40 @@ mod app {
     ///
     /// The motion control loop is triggered by the PIT to have maximum reliability
     #[task(
-        shared = [imu, control_message, counter, elapsed_time, rx_int, gpio1, blocking_delay, gpt, kicker_controller, kicker_programmer, robot_status, fake_spi],
-        local = [motion_controller, last_encoders, initialized: bool = false, iteration: u32 = 0, last_time: u32 = 0],
+        shared = [
+            imu,
+            control_message,
+            counter,
+            elapsed_time,
+            rx_int,
+            gpio2,
+            blocking_delay,
+            gpt,
+            kicker_controller,
+            kicker_programmer,
+            robot_status,
+            fake_spi,
+            motor_one_uart,
+            motor_one_velocity,
+            motor_two_uart,
+            motor_two_velocity,
+            motor_three_uart,
+            motor_three_velocity,
+            motor_four_uart,
+            motor_four_velocity,
+            dribbler_uart,
+        ],
+        local = [
+            motor_one_tx,
+            motor_two_tx,
+            motor_three_tx,
+            motor_four_tx,
+            dribbler_tx,
+            motion_controller,
+            initialized: bool = false,
+            iteration: u32 = 0,
+            last_time: u32 = 0
+        ],
         priority = 1,
     )]
     async fn motion_control_loop(mut ctx: motion_control_loop::Context) {
@@ -723,7 +900,7 @@ mod app {
             *ctx.local.last_time = ctx.shared.gpt.lock(|gpt| gpt.count());
         }
 
-        let (mut body_velocities, _dribbler_enabled) =
+        let (mut body_velocities, dribbler_enabled) =
             ctx.shared
                 .control_message
                 .lock(|control_message| match control_message {
@@ -756,56 +933,74 @@ mod app {
             log::info!("DEAD: {}", elapsed_time);
         }
 
-        let _wheel_velocities = ctx.local.motion_controller.control_update(
+        let last_encoders = (
+            ctx.shared.motor_one_velocity,
+            ctx.shared.motor_two_velocity,
+            ctx.shared.motor_three_velocity,
+            ctx.shared.motor_four_velocity,
+        ).lock(|one, two, three, four| Vector4::new(*one, *two, *three, *four));
+
+        let wheel_velocities = ctx.local.motion_controller.control_update(
             Vector3::new(-accel_y, accel_x, gyro),
-            *ctx.local.last_encoders,
+            last_encoders,
             body_velocities,
             delta,
         );
 
+        ctx.shared.dribbler_uart
+            .lock(|uart| send_command(if dribbler_enabled { 6200 } else { 0 }, ctx.local.dribbler_tx, uart, 0));
+        ctx.shared.motor_one_uart
+            .lock(|uart| send_command(wheel_velocities[0], ctx.local.motor_one_tx, uart, 0));
+        ctx.shared.motor_two_uart
+            .lock(|uart| send_command(wheel_velocities[1], ctx.local.motor_two_tx, uart, 0));
+        ctx.shared.motor_three_uart
+            .lock(|uart| send_command(wheel_velocities[2], ctx.local.motor_three_tx, uart, 0));
+        ctx.shared.motor_four_uart
+            .lock(|uart| send_command(wheel_velocities[3], ctx.local.motor_four_tx, uart, 0));
+
         #[cfg(feature = "debug")]
-        log::info!("Moving at {:?}", _wheel_velocities);
+        log::info!("Moving at {:?}", wheel_velocities);
 
         // Service the kicker
-        if *ctx.local.iteration % KICKER_SERVICE_DELAY_TICKS == 0 {
-            let kicker_command = ctx.shared.control_message.lock(|control_message| {
-                if let Some(control_message) = control_message {
-                    (*control_message).into()
-                } else {
-                    KickerCommand::default()
-                }
-            });
-            (
-                ctx.shared.kicker_controller,
-                ctx.shared.kicker_programmer,
-                ctx.shared.robot_status,
-                ctx.shared.fake_spi,
-            )
-                .lock(
-                    |controller, programmer, robot_status, fake_spi| match controller.take() {
-                        Some(mut kicker_controller) => {
-                            let state =
-                                kicker_controller.service(kicker_command, fake_spi).unwrap();
-                            robot_status.kick_status =
-                                kicker_command.kick_trigger != KickTrigger::Disabled;
-                            robot_status.ball_sense_status = state.ball_sensed;
-                            robot_status.kick_healthy = state.healthy;
-                            *controller = Some(kicker_controller);
-                        }
-                        None => {
-                            let (cs, reset) = programmer.take().unwrap().destroy();
-                            let mut kicker_controller = Kicker::new(cs, reset);
-                            let state =
-                                kicker_controller.service(kicker_command, fake_spi).unwrap();
-                            robot_status.kick_status =
-                                kicker_command.kick_trigger != KickTrigger::Disabled;
-                            robot_status.ball_sense_status = state.ball_sensed;
-                            robot_status.kick_healthy = state.healthy;
-                            *controller = Some(kicker_controller);
-                        }
-                    },
-                );
-        }
+        // if *ctx.local.iteration % KICKER_SERVICE_DELAY_TICKS == 0 {
+        //     let kicker_command = ctx.shared.control_message.lock(|control_message| {
+        //         if let Some(control_message) = control_message {
+        //             (*control_message).into()
+        //         } else {
+        //             KickerCommand::default()
+        //         }
+        //     });
+        //     (
+        //         ctx.shared.kicker_controller,
+        //         ctx.shared.kicker_programmer,
+        //         ctx.shared.robot_status,
+        //         ctx.shared.fake_spi,
+        //     )
+        //         .lock(
+        //             |controller, programmer, robot_status, fake_spi| match controller.take() {
+        //                 Some(mut kicker_controller) => {
+        //                     let state =
+        //                         kicker_controller.service(kicker_command, fake_spi).unwrap();
+        //                     robot_status.kick_status =
+        //                         kicker_command.kick_trigger != KickTrigger::Disabled;
+        //                     robot_status.ball_sense_status = state.ball_sensed;
+        //                     robot_status.kick_healthy = state.healthy;
+        //                     *controller = Some(kicker_controller);
+        //                 }
+        //                 None => {
+        //                     let (cs, reset) = programmer.take().unwrap().destroy();
+        //                     let mut kicker_controller = Kicker::new(cs, reset);
+        //                     let state =
+        //                         kicker_controller.service(kicker_command, fake_spi).unwrap();
+        //                     robot_status.kick_status =
+        //                         kicker_command.kick_trigger != KickTrigger::Disabled;
+        //                     robot_status.ball_sense_status = state.ball_sensed;
+        //                     robot_status.kick_healthy = state.healthy;
+        //                     *controller = Some(kicker_controller);
+        //                 }
+        //             },
+        //         );
+        // }
 
         *ctx.local.iteration = ctx.local.iteration.wrapping_add(1);
     }
@@ -851,7 +1046,7 @@ mod app {
     /// Test that the IMU on the Teensy is reading reasonable
     /// values
     #[task(
-        shared = [imu, pit_delay, state, radio, rx_int, gpio1, shared_spi, blocking_delay],
+        shared = [imu, pit_delay, state, radio, rx_int, gpio2, radio_spi, blocking_delay],
         priority = 1
     )]
     async fn imu_test(ctx: imu_test::Context) {
@@ -861,17 +1056,17 @@ mod app {
             ctx.shared.state,
             ctx.shared.radio,
             ctx.shared.rx_int,
-            ctx.shared.gpio1,
-            ctx.shared.shared_spi,
+            ctx.shared.gpio2,
+            ctx.shared.radio_spi,
             ctx.shared.blocking_delay,
         )
             .lock(
-                |imu, delay, state, radio, rx_int, gpio1, spi, radio_delay| {
+                |imu, delay, state, radio, rx_int, gpio2, spi, radio_delay| {
                     // Disable Radio Interrupts for Testing
                     disable_radio_interrupts(
                         IMU_MESSAGE_SIZE,
                         rx_int,
-                        gpio1,
+                        gpio2,
                         radio,
                         spi,
                         radio_delay,
@@ -901,7 +1096,7 @@ mod app {
                     *state = State::Idle;
 
                     // Re-enable the radio interrupts
-                    enable_radio_interrupts(rx_int, gpio1, radio, spi, radio_delay);
+                    enable_radio_interrupts(rx_int, gpio2, radio, spi, radio_delay);
                 },
             );
     }
@@ -910,7 +1105,7 @@ mod app {
     /// over the next 5 seconds
     #[task(
         shared = [
-            radio, shared_spi, blocking_delay, gpt, state, rx_int, gpio1,
+            radio, radio_spi, blocking_delay, gpt, state, rx_int, gpio2,
         ],
         priority = 1
     )]
@@ -918,15 +1113,15 @@ mod app {
         log::info!("Listening for packets");
         let received_packets = (
             ctx.shared.radio,
-            ctx.shared.shared_spi,
+            ctx.shared.radio_spi,
             ctx.shared.blocking_delay,
             ctx.shared.gpt,
             ctx.shared.state,
             ctx.shared.rx_int,
-            ctx.shared.gpio1,
+            ctx.shared.gpio2,
         )
-            .lock(|radio, spi, delay, gpt, state, rx_int, gpio1| {
-                disable_radio_interrupts(CONTROL_MESSAGE_SIZE, rx_int, gpio1, radio, spi, delay);
+            .lock(|radio, spi, delay, gpt, state, rx_int, gpio2| {
+                disable_radio_interrupts(CONTROL_MESSAGE_SIZE, rx_int, gpio2, radio, spi, delay);
                 let mut received_packets = 0;
 
                 radio.start_listening(spi, delay);
@@ -961,7 +1156,7 @@ mod app {
                     delay.delay_ms(50u32);
                 }
 
-                enable_radio_interrupts(rx_int, gpio1, radio, spi, delay);
+                enable_radio_interrupts(rx_int, gpio2, radio, spi, delay);
 
                 received_packets
             });
@@ -974,7 +1169,7 @@ mod app {
     /// report the total number of packets acknowledged by the other radio.
     #[task(
         shared = [
-            radio, shared_spi, blocking_delay, state, rx_int, gpio1
+            radio, radio_spi, blocking_delay, state, rx_int, gpio2
         ],
         priority = 1
     )]
@@ -982,17 +1177,17 @@ mod app {
         log::info!("Sending 100 Packets");
         let successful_sends = (
             ctx.shared.radio,
-            ctx.shared.shared_spi,
+            ctx.shared.radio_spi,
             ctx.shared.blocking_delay,
             ctx.shared.state,
             ctx.shared.rx_int,
-            ctx.shared.gpio1,
+            ctx.shared.gpio2,
         )
-            .lock(|radio, spi, delay, state, rx_int, gpio1| {
+            .lock(|radio, spi, delay, state, rx_int, gpio2| {
                 disable_radio_interrupts(
                     RADIO_SEND_BENCHMARK_SIZE,
                     rx_int,
-                    gpio1,
+                    gpio2,
                     radio,
                     spi,
                     delay,
@@ -1044,7 +1239,7 @@ mod app {
                     delay.delay_ms(50u32);
                 }
 
-                enable_radio_interrupts(rx_int, gpio1, radio, spi, delay);
+                enable_radio_interrupts(rx_int, gpio2, radio, spi, delay);
 
                 successful_sends
             });
@@ -1061,9 +1256,9 @@ mod app {
             pit_delay,
             state,
             rx_int,
-            gpio1,
+            gpio2,
             radio,
-            shared_spi,
+            radio_spi,
             blocking_delay,
         ],
         priority = 1
@@ -1076,9 +1271,9 @@ mod app {
             ctx.shared.pit_delay,
             ctx.shared.state,
             ctx.shared.rx_int,
-            ctx.shared.gpio1,
+            ctx.shared.gpio2,
             ctx.shared.radio,
-            ctx.shared.shared_spi,
+            ctx.shared.radio_spi,
             ctx.shared.blocking_delay,
         )
             .lock(
@@ -1088,14 +1283,14 @@ mod app {
                  delay,
                  state,
                  rx_int,
-                 gpio1,
+                 gpio2,
                  radio,
                  radio_spi,
                  radio_delay| {
                     disable_radio_interrupts(
                         KICKER_PROGRAM_MESSAGE,
                         rx_int,
-                        gpio1,
+                        gpio2,
                         radio,
                         radio_spi,
                         radio_delay,
@@ -1136,7 +1331,7 @@ mod app {
 
                     *state = State::Idle;
 
-                    enable_radio_interrupts(rx_int, gpio1, radio, radio_spi, radio_delay);
+                    enable_radio_interrupts(rx_int, gpio2, radio, radio_spi, radio_delay);
                 },
             );
     }
@@ -1150,9 +1345,9 @@ mod app {
             pit_delay,
             state,
             rx_int,
-            gpio1,
+            gpio2,
             radio,
-            shared_spi,
+            radio_spi,
             blocking_delay,
         ],
         priority = 1
@@ -1165,9 +1360,9 @@ mod app {
             ctx.shared.pit_delay,
             ctx.shared.state,
             ctx.shared.rx_int,
-            ctx.shared.gpio1,
+            ctx.shared.gpio2,
             ctx.shared.radio,
-            ctx.shared.shared_spi,
+            ctx.shared.radio_spi,
             ctx.shared.blocking_delay,
         )
             .lock(
@@ -1177,14 +1372,14 @@ mod app {
                  delay,
                  state,
                  rx_int,
-                 gpio1,
+                 gpio2,
                  radio,
                  radio_spi,
                  radio_delay| {
                     disable_radio_interrupts(
                         KICKER_PROGRAM_MESSAGE,
                         rx_int,
-                        gpio1,
+                        gpio2,
                         radio,
                         radio_spi,
                         radio_delay,
@@ -1231,7 +1426,7 @@ mod app {
 
                     *state = State::Idle;
 
-                    enable_radio_interrupts(rx_int, gpio1, radio, radio_spi, radio_delay);
+                    enable_radio_interrupts(rx_int, gpio2, radio, radio_spi, radio_delay);
                 },
             );
     }
@@ -1245,9 +1440,9 @@ mod app {
             pit_delay,
             state,
             rx_int,
-            gpio1,
+            gpio2,
             radio,
-            shared_spi,
+            radio_spi,
             blocking_delay,
         ],
         priority = 1
@@ -1262,9 +1457,9 @@ mod app {
             ctx.shared.pit_delay,
             ctx.shared.state,
             ctx.shared.rx_int,
-            ctx.shared.gpio1,
+            ctx.shared.gpio2,
             ctx.shared.radio,
-            ctx.shared.shared_spi,
+            ctx.shared.radio_spi,
             ctx.shared.blocking_delay,
         )
             .lock(
@@ -1274,14 +1469,14 @@ mod app {
                  delay,
                  state,
                  rx_int,
-                 gpio1,
+                 gpio2,
                  radio,
                  radio_spi,
                  radio_delay| {
                     disable_radio_interrupts(
                         KICKER_TESTING_SIZE,
                         rx_int,
-                        gpio1,
+                        gpio2,
                         radio,
                         radio_spi,
                         radio_delay,
@@ -1397,8 +1592,136 @@ mod app {
 
                     *state = State::Idle;
 
-                    enable_radio_interrupts(rx_int, gpio1, radio, radio_spi, radio_delay);
+                    enable_radio_interrupts(rx_int, gpio2, radio, radio_spi, radio_delay);
                 },
             );
+    }
+
+    #[task(
+        shared = [
+            motor_one_uart,
+            motor_one_velocity,
+        ],
+        local = [
+            motor_one_rx,
+            idx: usize = 0,
+            reading: bool = false,
+            buffer: [u8; 4] = [0u8; 4],
+        ],
+        binds = LPUART6,
+    )]
+    // Interrupt driven task to actually send and receive data via the uart
+    fn motor_one_uart(ctx: motor_one_uart::Context) {
+        motor_interrupt(
+            ctx.shared.motor_one_uart,
+            ctx.shared.motor_one_velocity,
+            ctx.local.motor_one_rx,
+            ctx.local.idx,
+            ctx.local.reading,
+            ctx.local.buffer,
+        );
+    }
+
+    #[task(
+        shared = [
+            motor_two_uart,
+            motor_two_velocity,
+        ],
+        local = [
+            motor_two_rx,
+            idx: usize = 0,
+            reading: bool = false,
+            buffer: [u8; 4] = [0u8; 4],
+        ],
+        binds = LPUART4
+    )]
+    fn motor_two_uart(ctx: motor_two_uart::Context) {
+        motor_interrupt(
+            ctx.shared.motor_two_uart,
+            ctx.shared.motor_two_velocity,
+            ctx.local.motor_two_rx,
+            ctx.local.idx,
+            ctx.local.reading,
+            ctx.local.buffer,
+        );
+    }
+
+    #[task(
+        shared = [
+            motor_three_uart,
+            motor_three_velocity,
+        ],
+        local = [
+            motor_three_rx,
+            idx: usize = 0,
+            reading: bool = false,
+            buffer: [u8; 4] = [0u8; 4],
+        ],
+        binds = LPUART1
+    )]
+    fn motor_three_uart(ctx: motor_three_uart::Context) {
+        motor_interrupt(
+            ctx.shared.motor_three_uart,
+            ctx.shared.motor_three_velocity,
+            ctx.local.motor_three_rx,
+            ctx.local.idx,
+            ctx.local.reading,
+            ctx.local.buffer,
+        );
+    }
+
+    #[task(
+        shared = [
+            motor_four_uart,
+            motor_four_velocity,
+        ],
+        local = [
+            motor_four_rx,
+            idx: usize = 0,
+            reading: bool = false,
+            buffer: [u8; 4] = [0u8; 4],
+        ],
+        binds = LPUART7
+    )]
+    fn motor_four_uart(ctx: motor_four_uart::Context) {
+        motor_interrupt(
+            ctx.shared.motor_four_uart,
+            ctx.shared.motor_four_velocity,
+            ctx.local.motor_four_rx,
+            ctx.local.idx,
+            ctx.local.reading,
+            ctx.local.buffer,
+        );
+    }
+
+    #[task(
+        shared = [
+            dribbler_uart,
+            dribbler_velocity,
+        ],
+        local = [
+            dribbler_rx,
+            idx: usize = 0,
+            reading: bool = false,
+            buffer: [u8; 4] = [0u8; 4],
+        ],
+        binds = LPUART8
+    )]
+    fn dribbler_uart(ctx: dribbler_uart::Context) {
+        motor_interrupt(
+            ctx.shared.dribbler_uart,
+            ctx.shared.dribbler_velocity,
+            ctx.local.dribbler_rx,
+            ctx.local.idx,
+            ctx.local.reading,
+            ctx.local.buffer,
+        );
+    }
+
+    /// This task runs when the USB1 interrupt activates.
+    /// Simply poll the logger to control the logging process.
+    #[task(binds = USB_OTG1, local = [poller])]
+    fn usb_interrupt(cx: usb_interrupt::Context) {
+        cx.local.poller.poll();
     }
 }
