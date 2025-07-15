@@ -94,7 +94,9 @@ mod app {
     ///This task kills the motor board when the power switch is pressed.
     #[task(binds = GPIO1_COMBINED_0_15, shared = [power_switch, kill_n],local=[power_state])]
     fn power_switch_interrupt(mut ctx: power_switch_interrupt::Context) {
-        //TODO: Add delay-based debouncing if it turns out to be a major issue
+        //Teensy 4 runs at 600MHz, so this is ~1ms delay
+        cortex_m::asm::delay(6_000_00);
+
         (ctx.shared.kill_n).lock(|kill_n| {
             if *ctx.local.power_state {
                 kill_n.clear();
