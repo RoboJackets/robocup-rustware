@@ -31,11 +31,12 @@ mod app {
     struct Local {
         // The logging poller
         poller: imxrt_log::Poller,
+        // True if suppling power to the motor board
+        power_state: bool,
     }
 
     #[shared]
     struct Shared {
-        motor_en: MotorEn,
         kill_n: Killn,
         power_switch: PowerSwitch,
     }
@@ -66,15 +67,20 @@ mod app {
         kill_n.set();
 
         let power_switch = gpio1.input(pins.p40);
-        gpio1.set_interrupt(&power_switch, Some(Trigger::RisingEdge));
+        gpio1.set_interrupt(&power_switch, Some(Trigger::EitherEdge));
+
+        //defult to suppling power on first boot
+        let power_state = true;
 
         (
             Shared {
-                motor_en,
                 kill_n,
                 power_switch,
             },
-            Local { poller },
+            Local {
+                poller,
+                power_state,
+            },
         )
     }
 
@@ -86,19 +92,16 @@ mod app {
     }
 
     ///This task kills the motor board when the power switch is pressed.
-    #[task(binds = GPIO1_COMBINED_0_15, shared = [power_switch, motor_en, kill_n])]
+    #[task(binds = GPIO1_COMBINED_0_15, shared = [power_switch, kill_n],local=[power_state])]
     fn power_switch_interrupt(ctx: power_switch_interrupt::Context) {
-        (
-            ctx.shared.power_switch,
-            ctx.shared.motor_en,
-            ctx.shared.kill_n,
-        )
-            .lock(|power_switch, motor_en, kill_n| {
-                if power_switch.is_set() {
-                    motor_en.clear();
-                    kill_n.clear();
-                }
-            });
+        //TODO: Add delay-based debouncing if it turns out to be a major issue
+        (ctx.shared.power_switch, ctx.shared.kill_n).lock(|kill_n| {
+            if *ctx.local.power_state {
+                kill_n.clear();
+            } else {
+                kill_n.set();
+            }
+        });
     }
 
     /// This task runs when the USB1 interrupt activates.
