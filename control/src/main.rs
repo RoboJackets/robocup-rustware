@@ -30,7 +30,7 @@ mod app {
     use bsp::board::PERCLK_FREQUENCY;
     use bsp::board::{self, LPSPI_FREQUENCY};
     use nalgebra::{Vector3, Vector4};
-    use robojackets_robocup_control::{Gpio2, Killn, MotorEn, RadioSPI};
+    use robojackets_robocup_control::{Gpio1, Gpio2, Killn, MotorEn, PowerSwitch, RadioSPI};
     use teensy4_bsp as bsp;
 
     use hal::gpio::Trigger;
@@ -174,11 +174,16 @@ mod app {
         radio_spi: RadioSPI,
         blocking_delay: Delay2,
         rx_int: RadioInterrupt,
+
+        gpio1: Gpio1,
         gpio2: Gpio2,
         pit_delay: PitDelay,
         fake_spi: FakeSpi,
         kicker_programmer: Option<KickerProg>,
         kicker_controller: Option<Kicker<KickerCSn, KickerReset>>,
+
+        kill_n: Killn,
+        power_switch: PowerSwitch,
 
         // Drivers
         imu: Imu,
@@ -281,6 +286,7 @@ mod app {
         motor_en.set();
         let kill_n: Killn = gpio2.output(pins.p36);
         kill_n.set();
+        let power_switch: PowerSwitch = gpio1.input(pins.p40);
 
         delay2.delay_ms(500u32);
 
@@ -395,6 +401,7 @@ mod app {
                 radio_spi,
                 blocking_delay: delay2,
                 rx_int,
+                gpio1,
                 gpio2,
                 robot_status: RobotStatusMessageBuilder::new().robot_id(ROBOT_ID).build(),
                 control_message: None,
@@ -420,6 +427,8 @@ mod app {
                 motor_four_velocity: 0i32,
                 dribbler_uart,
                 dribbler_velocity: 0i32,
+                power_switch,
+                kill_n,
 
                 // Errors
                 imu_init_error: None,
@@ -513,6 +522,8 @@ mod app {
             radio_init_error,
             kicker_program_error,
             kicker_service_error,
+            gpio1,
+            power_switch
         ],
         priority = 1
     )]
@@ -536,6 +547,11 @@ mod app {
         } else {
             start_listening::spawn().ok();
         }
+
+        //start the suicide watch
+        (ctx.shared.gpio1, ctx.shared.power_switch).lock(|gpio1, power_switch| {
+            gpio1.set_interrupt(&power_switch, Some(Trigger::Low));
+        });
     }
 
     /// Report (eventually via the OLED Display) any errors that occurred during
@@ -618,7 +634,7 @@ mod app {
 
     /// Have the radio start listening for incoming commands
     #[task(
-        shared = [radio, radio_spi, blocking_delay, gpio2, rx_int, pit0],
+        shared = [radio, radio_spi, blocking_delay, gpio1, power_switch, gpio2, rx_int, pit0],
         priority = 1
     )]
     async fn start_listening(mut ctx: start_listening::Context) {
@@ -659,6 +675,15 @@ mod app {
         ) {
             receive_command::spawn().ok();
         }
+    }
+
+    ///This task kills the motor board when the power switch is pressed.
+    #[task(binds = GPIO1_COMBINED_16_31, shared = [power_switch, kill_n])]
+    fn power_switch_interrupt(mut ctx: power_switch_interrupt::Context) {
+        log::info!("Killing Motor Board!");
+        (ctx.shared.kill_n).lock(|kill_n| {
+            kill_n.clear();
+        });
     }
 
     /// Task that decodes the command received via the radio.  This task is directly
