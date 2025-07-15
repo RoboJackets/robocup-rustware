@@ -1,6 +1,6 @@
 //!
 //! PID Tuning for the motor board
-//! 
+//!
 
 #![no_std]
 #![no_main]
@@ -12,8 +12,14 @@ use defmt_rtt as _;
 
 #[rtic::app(device = stm32f0xx_hal::pac, peripherals = true, dispatchers = [TSC])]
 mod app {
-    use stm32f0xx_hal::{pac::{TIM1, TIM2, TIM3}, prelude::*, pwm::{self, ComplementaryPwm, PwmChannels, C1, C1N, C2, C2N, C3, C3N}, qei::{Direction, Qei}, timers::{Timer, Event}};
-    use motor_controller::{hall_to_phases, pid::Pid, OvercurrentComparator, Phase, HS1, HS2, HS3};
+    use motor_controller::{HS1, HS2, HS3, OvercurrentComparator, Phase, hall_to_phases, pid::Pid};
+    use stm32f0xx_hal::{
+        pac::{TIM1, TIM2, TIM3},
+        prelude::*,
+        pwm::{self, C1, C1N, C2, C2N, C3, C3N, ComplementaryPwm, PwmChannels},
+        qei::{Direction, Qei},
+        timers::{Event, Timer},
+    };
 
     /// The maximum PWM that is sendable to the motors
     pub const MAXIMUM_OUTPUT: u16 = 100;
@@ -66,7 +72,12 @@ mod app {
 
     #[init]
     fn init(mut ctx: init::Context) -> (Shared, Local) {
-        let mut rcc = ctx.device.RCC.configure().sysclk(48.mhz()).freeze(&mut ctx.device.FLASH);
+        let mut rcc = ctx
+            .device
+            .RCC
+            .configure()
+            .sysclk(48.mhz())
+            .freeze(&mut ctx.device.FLASH);
         let gpioa = ctx.device.GPIOA.split(&mut rcc);
         let gpiob = ctx.device.GPIOB.split(&mut rcc);
         let gpiof = ctx.device.GPIOF.split(&mut rcc);
@@ -82,21 +93,9 @@ mod app {
             )
         });
 
-        let pwm = pwm::tim1(
-            ctx.device.TIM1,
-            pwm_channels,
-            &mut rcc,
-            30u32.khz()
-        );
+        let pwm = pwm::tim1(ctx.device.TIM1, pwm_channels, &mut rcc, 30u32.khz());
 
-        let (
-            mut ch1,
-            mut ch1n,
-            mut ch2,
-            mut ch2n,
-            mut ch3,
-            mut ch3n,
-        ) = pwm;
+        let (mut ch1, mut ch1n, mut ch2, mut ch2n, mut ch3, mut ch3n) = pwm;
 
         ch1.set_dead_time(pwm::DTInterval::DT_5);
         ch1.set_duty(0);
@@ -139,9 +138,7 @@ mod app {
         tim2.listen(Event::TimeOut);
 
         (
-            Shared {
-                setpoint: 2500 * 2,
-            },
+            Shared { setpoint: 2500 * 2 },
             Local {
                 encoders,
                 hs1,
@@ -155,13 +152,8 @@ mod app {
                 ch3n,
                 overcurrent_comparator,
                 tim2,
-                pid: Pid::new(
-                    MAXIMUM_OUTPUT,
-                    unsafe { KP },
-                    unsafe { KI },
-                    unsafe { KD }
-                )
-            }
+                pid: Pid::new(MAXIMUM_OUTPUT, unsafe { KP }, unsafe { KI }, unsafe { KD }),
+            },
         )
     }
 
@@ -199,16 +191,17 @@ mod app {
     /// Update the speed of the motors.  The timer calls an interrupt every 1ms
     fn motion_control_update(mut ctx: motion_control_update::Context) {
         let encoder_count = ctx.local.encoders.count();
-        let elapsed_encoders = if encoder_count < 1000 && *ctx.local.last_encoders_value > u16::MAX - 1000 {
-            // Overflow
-            (u16::MAX - *ctx.local.last_encoders_value + encoder_count) as i32
-        } else if *ctx.local.last_encoders_value < 1000 && encoder_count > u16::MAX - 1000 {
-            // Underflow
-            -((*ctx.local.last_encoders_value + u16::MAX - encoder_count) as i32)
-        } else {
-            // Normal
-            (encoder_count as i32) - (*ctx.local.last_encoders_value as i32)
-        };
+        let elapsed_encoders =
+            if encoder_count < 1000 && *ctx.local.last_encoders_value > u16::MAX - 1000 {
+                // Overflow
+                (u16::MAX - *ctx.local.last_encoders_value + encoder_count) as i32
+            } else if *ctx.local.last_encoders_value < 1000 && encoder_count > u16::MAX - 1000 {
+                // Underflow
+                -((*ctx.local.last_encoders_value + u16::MAX - encoder_count) as i32)
+            } else {
+                // Normal
+                (encoder_count as i32) - (*ctx.local.last_encoders_value as i32)
+            };
         let ticks_per_second = elapsed_encoders * 2_000;
 
         if *ctx.local.iteration % 100 == 0 {
@@ -233,7 +226,7 @@ mod app {
             ctx.local.hs1.is_high().unwrap(),
             ctx.local.hs2.is_high().unwrap(),
             ctx.local.hs3.is_high().unwrap(),
-            clockwise
+            clockwise,
         );
 
         match phases[0] {
@@ -241,16 +234,16 @@ mod app {
                 ctx.local.ch1.set_duty(pwm);
                 ctx.local.ch1.enable();
                 ctx.local.ch1n.enable();
-            },
+            }
             Phase::Zero => {
                 ctx.local.ch1.disable();
                 ctx.local.ch1n.disable();
-            },
+            }
             Phase::Negative => {
                 ctx.local.ch1.set_duty(0);
                 ctx.local.ch1.enable();
                 ctx.local.ch1n.enable();
-            },
+            }
         }
 
         match phases[1] {
@@ -258,16 +251,16 @@ mod app {
                 ctx.local.ch2.set_duty(pwm);
                 ctx.local.ch2.enable();
                 ctx.local.ch2n.enable();
-            },
+            }
             Phase::Zero => {
                 ctx.local.ch2.disable();
                 ctx.local.ch2n.disable();
-            },
+            }
             Phase::Negative => {
                 ctx.local.ch2.set_duty(0);
                 ctx.local.ch2.enable();
                 ctx.local.ch2n.enable();
-            },
+            }
         }
 
         match phases[2] {
@@ -275,16 +268,16 @@ mod app {
                 ctx.local.ch3.set_duty(pwm);
                 ctx.local.ch3.enable();
                 ctx.local.ch3n.enable();
-            },
+            }
             Phase::Zero => {
                 ctx.local.ch3.disable();
                 ctx.local.ch3n.disable();
-            },
+            }
             Phase::Negative => {
                 ctx.local.ch3.set_duty(0);
                 ctx.local.ch3.enable();
                 ctx.local.ch3n.enable();
-            },
+            }
         }
 
         *ctx.local.iteration += 1;

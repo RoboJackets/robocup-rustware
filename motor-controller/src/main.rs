@@ -1,6 +1,6 @@
 //!
 //! PID Tuning for the motor board
-//! 
+//!
 
 #![no_std]
 #![no_main]
@@ -13,8 +13,19 @@ use defmt_rtt as _;
 #[rtic::app(device = stm32f0xx_hal::pac, peripherals = true, dispatchers = [TSC])]
 mod app {
     use motion_control::Pid;
-    use stm32f0xx_hal::{gpio::{gpiob::PB1, Output, PushPull}, pac::{TIM1, TIM2, TIM3}, prelude::*, pwm::{self, ComplementaryPwm, PwmChannels, C1, C1N, C2, C2N, C3, C3N}, qei::Qei, serial::{self, Serial}, timers::{Event, Timer}};
-    use motor_controller::{hall_to_phases, OvercurrentComparator, Phase, SerialInterface, HS1, HS2, HS3, MOTION_CONTROL_FREQUENCY};
+    use motor_controller::{
+        HS1, HS2, HS3, MOTION_CONTROL_FREQUENCY, OvercurrentComparator, Phase, SerialInterface,
+        hall_to_phases,
+    };
+    use stm32f0xx_hal::{
+        gpio::{Output, PushPull, gpiob::PB1},
+        pac::{TIM1, TIM2, TIM3},
+        prelude::*,
+        pwm::{self, C1, C1N, C2, C2N, C3, C3N, ComplementaryPwm, PwmChannels},
+        qei::Qei,
+        serial::{self, Serial},
+        timers::{Event, Timer},
+    };
 
     /// The maximum PWM that is sendable to the motors
     pub const MAXIMUM_OUTPUT: u16 = 100;
@@ -71,7 +82,12 @@ mod app {
 
     #[init]
     fn init(mut ctx: init::Context) -> (Shared, Local) {
-        let mut rcc = ctx.device.RCC.configure().sysclk(48.mhz()).freeze(&mut ctx.device.FLASH);
+        let mut rcc = ctx
+            .device
+            .RCC
+            .configure()
+            .sysclk(48.mhz())
+            .freeze(&mut ctx.device.FLASH);
         let gpioa = ctx.device.GPIOA.split(&mut rcc);
         let gpiob = ctx.device.GPIOB.split(&mut rcc);
         let gpiof = ctx.device.GPIOF.split(&mut rcc);
@@ -87,21 +103,9 @@ mod app {
             )
         });
 
-        let pwm = pwm::tim1(
-            ctx.device.TIM1,
-            pwm_channels,
-            &mut rcc,
-            6u32.khz()
-        );
+        let pwm = pwm::tim1(ctx.device.TIM1, pwm_channels, &mut rcc, 6u32.khz());
 
-        let (
-            mut ch1,
-            mut ch1n,
-            mut ch2,
-            mut ch2n,
-            mut ch3,
-            mut ch3n,
-        ) = pwm;
+        let (mut ch1, mut ch1n, mut ch2, mut ch2n, mut ch3, mut ch3n) = pwm;
 
         ch1.set_dead_time(pwm::DTInterval::DT_5);
         ch1.set_duty(0);
@@ -143,10 +147,12 @@ mod app {
         overcurrent_comparator.set_interrupt(&syscfg, &exti);
         overcurrent_comparator.clear_interrupt(&exti);
 
-        let (tx, rx) = cortex_m::interrupt::free(|cs| (
-            gpioa.pa14.into_alternate_af1(cs),
-            gpioa.pa15.into_alternate_af1(cs),
-        ));
+        let (tx, rx) = cortex_m::interrupt::free(|cs| {
+            (
+                gpioa.pa14.into_alternate_af1(cs),
+                gpioa.pa15.into_alternate_af1(cs),
+            )
+        });
         let mut usart = Serial::usart1(ctx.device.USART1, (tx, rx), 115200.bps(), &mut rcc);
 
         let mut tim2 = Timer::tim2(ctx.device.TIM2, MOTION_CONTROL_FREQUENCY.hz(), &mut rcc);
@@ -177,14 +183,8 @@ mod app {
                 tim2,
                 led,
                 usart,
-                pid: Pid::new(
-                    max_duty,
-                    3.0,
-                    0.45,
-                    0.25,
-                    MOTION_CONTROL_FREQUENCY
-                )
-            }
+                pid: Pid::new(max_duty, 3.0, 0.45, 0.25, MOTION_CONTROL_FREQUENCY),
+            },
         )
     }
 
@@ -237,13 +237,15 @@ mod app {
 
         let (pwm, clockwise) = ctx.local.pid.update(setpoint, ctx.local.encoders.count());
 
-        ctx.shared.current_velocity.lock(|velocity| *velocity = ctx.local.pid.current_velocity);
+        ctx.shared
+            .current_velocity
+            .lock(|velocity| *velocity = ctx.local.pid.current_velocity);
 
         let phases = hall_to_phases(
             ctx.local.hs1.is_high().unwrap(),
             ctx.local.hs2.is_high().unwrap(),
             ctx.local.hs3.is_high().unwrap(),
-            clockwise
+            clockwise,
         );
 
         match phases[0] {
@@ -251,16 +253,16 @@ mod app {
                 ctx.local.ch1.set_duty(pwm);
                 ctx.local.ch1.enable();
                 ctx.local.ch1n.enable();
-            },
+            }
             Phase::Zero => {
                 ctx.local.ch1.disable();
                 ctx.local.ch1n.disable();
-            },
+            }
             Phase::Negative => {
                 ctx.local.ch1.set_duty(0);
                 ctx.local.ch1.enable();
                 ctx.local.ch1n.enable();
-            },
+            }
         }
 
         match phases[1] {
@@ -268,16 +270,16 @@ mod app {
                 ctx.local.ch2.set_duty(pwm);
                 ctx.local.ch2.enable();
                 ctx.local.ch2n.enable();
-            },
+            }
             Phase::Zero => {
                 ctx.local.ch2.disable();
                 ctx.local.ch2n.disable();
-            },
+            }
             Phase::Negative => {
                 ctx.local.ch2.set_duty(0);
                 ctx.local.ch2.enable();
                 ctx.local.ch2n.enable();
-            },
+            }
         }
 
         match phases[2] {
@@ -285,16 +287,16 @@ mod app {
                 ctx.local.ch3.set_duty(pwm);
                 ctx.local.ch3.enable();
                 ctx.local.ch3n.enable();
-            },
+            }
             Phase::Zero => {
                 ctx.local.ch3.disable();
                 ctx.local.ch3n.disable();
-            },
+            }
             Phase::Negative => {
                 ctx.local.ch3.set_duty(0);
                 ctx.local.ch3.enable();
                 ctx.local.ch3n.enable();
-            },
+            }
         }
 
         *ctx.local.iteration += 1;
@@ -326,14 +328,16 @@ mod app {
                     ctx.local.buffer[*ctx.local.idx] = data;
                     *ctx.local.idx += 1;
                 }
-            },
+            }
             Err(_err) => defmt::error!("Error Reading"),
         }
         if *ctx.local.idx == ctx.local.buffer.len() {
             let setpoint = i32::from_le_bytes(*ctx.local.buffer);
             ctx.shared.setpoint.lock(|s| *s = setpoint);
 
-            ctx.shared.current_velocity.lock(|velocity| ctx.local.buffer.copy_from_slice(&velocity.to_le_bytes()));
+            ctx.shared
+                .current_velocity
+                .lock(|velocity| ctx.local.buffer.copy_from_slice(&velocity.to_le_bytes()));
             for idx in 0..4 {
                 nb::block!(ctx.local.usart.write(ctx.local.buffer[idx])).unwrap();
                 nb::block!(ctx.local.usart.flush()).unwrap();

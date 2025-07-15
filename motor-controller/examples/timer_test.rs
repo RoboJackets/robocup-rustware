@@ -1,6 +1,6 @@
 //!
 //! Test to determine the delay frequency of my timer interrupt
-//! 
+//!
 
 #![no_std]
 #![no_main]
@@ -12,9 +12,17 @@ use defmt_rtt as _;
 
 #[rtic::app(device = stm32f0xx_hal::pac, peripherals = true, dispatchers = [TSC])]
 mod app {
-    use motor_controller::{hall_to_phases, set_pwm_output, OvercurrentComparator, Phase, HS1, HS2, HS3};
-    use stm32f0xx_hal::{gpio::{gpiob::PB1, Output, PushPull}, pac::{EXTI, TIM1, TIM2}, prelude::*, pwm::{ComplementaryPwm, PwmChannels, C1, C1N, C2, C2N, C3, C3N}, timers::{Event, Timer}};
+    use motor_controller::{
+        HS1, HS2, HS3, OvercurrentComparator, Phase, hall_to_phases, set_pwm_output,
+    };
     use rtic_monotonics::stm32::prelude::*;
+    use stm32f0xx_hal::{
+        gpio::{Output, PushPull, gpiob::PB1},
+        pac::{EXTI, TIM1, TIM2},
+        prelude::*,
+        pwm::{C1, C1N, C2, C2N, C3, C3N, ComplementaryPwm, PwmChannels},
+        timers::{Event, Timer},
+    };
 
     const PWM_DUTY_CYCLE: u16 = 200;
 
@@ -27,13 +35,16 @@ mod app {
     }
 
     #[shared]
-    struct Shared {
-
-    }
+    struct Shared {}
 
     #[init]
     fn init(mut ctx: init::Context) -> (Shared, Local) {
-        let mut rcc = ctx.device.RCC.configure().sysclk(48.mhz()).freeze(&mut ctx.device.FLASH);
+        let mut rcc = ctx
+            .device
+            .RCC
+            .configure()
+            .sysclk(48.mhz())
+            .freeze(&mut ctx.device.FLASH);
 
         let gpiob = ctx.device.GPIOB.split(&mut rcc);
         let led = cortex_m::interrupt::free(|cs| gpiob.pb1.into_push_pull_output(cs));
@@ -41,15 +52,7 @@ mod app {
         let mut tim2 = Timer::tim2(ctx.device.TIM2, 2_000.hz(), &mut rcc);
         tim2.listen(Event::TimeOut);
 
-        (
-            Shared {
-
-            },
-            Local {
-                led,
-                tim2,
-            }
-        )
+        (Shared {}, Local { led, tim2 })
     }
 
     #[idle]

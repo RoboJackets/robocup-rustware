@@ -1,6 +1,6 @@
 //!
 //! PID Tuning for the motor board
-//! 
+//!
 
 #![no_std]
 #![no_main]
@@ -12,8 +12,18 @@ use defmt_rtt as _;
 
 #[rtic::app(device = stm32f0xx_hal::pac, peripherals = true, dispatchers = [TSC])]
 mod app {
-    use stm32f0xx_hal::{gpio::{gpiob::PB1, Output, PushPull}, pac::{TIM1, TIM2}, prelude::*, pwm::{self, ComplementaryPwm, PwmChannels, C1, C1N, C2, C2N, C3, C3N}, serial::{self, Serial}, timers::{Event, Timer}};
-    use motor_controller::{hall_to_phases, OvercurrentComparator, Phase, SerialInterface, HS1, HS2, HS3, MOTION_CONTROL_FREQUENCY, VELOCITY_TO_PWM_MAPING};
+    use motor_controller::{
+        HS1, HS2, HS3, MOTION_CONTROL_FREQUENCY, OvercurrentComparator, Phase, SerialInterface,
+        VELOCITY_TO_PWM_MAPING, hall_to_phases,
+    };
+    use stm32f0xx_hal::{
+        gpio::{Output, PushPull, gpiob::PB1},
+        pac::{TIM1, TIM2},
+        prelude::*,
+        pwm::{self, C1, C1N, C2, C2N, C3, C3N, ComplementaryPwm, PwmChannels},
+        serial::{self, Serial},
+        timers::{Event, Timer},
+    };
 
     /// The maximum PWM that is sendable to the motors
     pub const MAXIMUM_OUTPUT: u16 = 100;
@@ -61,7 +71,12 @@ mod app {
 
     #[init]
     fn init(mut ctx: init::Context) -> (Shared, Local) {
-        let mut rcc = ctx.device.RCC.configure().sysclk(48.mhz()).freeze(&mut ctx.device.FLASH);
+        let mut rcc = ctx
+            .device
+            .RCC
+            .configure()
+            .sysclk(48.mhz())
+            .freeze(&mut ctx.device.FLASH);
         let gpioa = ctx.device.GPIOA.split(&mut rcc);
         let gpiob = ctx.device.GPIOB.split(&mut rcc);
         let gpiof = ctx.device.GPIOF.split(&mut rcc);
@@ -77,21 +92,9 @@ mod app {
             )
         });
 
-        let pwm = pwm::tim1(
-            ctx.device.TIM1,
-            pwm_channels,
-            &mut rcc,
-            6u32.khz()
-        );
+        let pwm = pwm::tim1(ctx.device.TIM1, pwm_channels, &mut rcc, 6u32.khz());
 
-        let (
-            mut ch1,
-            mut ch1n,
-            mut ch2,
-            mut ch2n,
-            mut ch3,
-            mut ch3n,
-        ) = pwm;
+        let (mut ch1, mut ch1n, mut ch2, mut ch2n, mut ch3, mut ch3n) = pwm;
 
         ch1.set_dead_time(pwm::DTInterval::DT_5);
         ch1.set_duty(0);
@@ -148,7 +151,7 @@ mod app {
                 overcurrent_comparator,
                 tim2,
                 led,
-            }
+            },
         )
     }
 
@@ -205,7 +208,7 @@ mod app {
             ctx.local.hs1.is_high().unwrap(),
             ctx.local.hs2.is_high().unwrap(),
             ctx.local.hs3.is_high().unwrap(),
-            clockwise
+            clockwise,
         );
 
         match phases[0] {
@@ -213,16 +216,16 @@ mod app {
                 ctx.local.ch1.set_duty(pwm);
                 ctx.local.ch1.enable();
                 ctx.local.ch1n.enable();
-            },
+            }
             Phase::Zero => {
                 ctx.local.ch1.disable();
                 ctx.local.ch1n.disable();
-            },
+            }
             Phase::Negative => {
                 ctx.local.ch1.set_duty(0);
                 ctx.local.ch1.enable();
                 ctx.local.ch1n.enable();
-            },
+            }
         }
 
         match phases[1] {
@@ -230,16 +233,16 @@ mod app {
                 ctx.local.ch2.set_duty(pwm);
                 ctx.local.ch2.enable();
                 ctx.local.ch2n.enable();
-            },
+            }
             Phase::Zero => {
                 ctx.local.ch2.disable();
                 ctx.local.ch2n.disable();
-            },
+            }
             Phase::Negative => {
                 ctx.local.ch2.set_duty(0);
                 ctx.local.ch2.enable();
                 ctx.local.ch2n.enable();
-            },
+            }
         }
 
         match phases[2] {
@@ -247,16 +250,16 @@ mod app {
                 ctx.local.ch3.set_duty(pwm);
                 ctx.local.ch3.enable();
                 ctx.local.ch3n.enable();
-            },
+            }
             Phase::Zero => {
                 ctx.local.ch3.disable();
                 ctx.local.ch3n.disable();
-            },
+            }
             Phase::Negative => {
                 ctx.local.ch3.set_duty(0);
                 ctx.local.ch3.enable();
                 ctx.local.ch3n.enable();
-            },
+            }
         }
 
         *ctx.local.iteration += 1;

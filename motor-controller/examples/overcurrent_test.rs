@@ -1,6 +1,6 @@
 //!
 //! Test to ensure the overcurrent protection comparator is configured correctly
-//! 
+//!
 
 #![no_std]
 #![no_main]
@@ -12,8 +12,8 @@ use defmt_rtt as _;
 
 #[rtic::app(device = stm32f0xx_hal::pac, peripherals = true, dispatchers = [TSC])]
 mod app {
+    use motor_controller::{OvercurrentComparator, OvercurrentThreshold, TIM2_CLOCK_HZ};
     use rtic_monotonics::stm32::prelude::*;
-    use motor_controller::{TIM2_CLOCK_HZ, OvercurrentComparator, OvercurrentThreshold};
     use stm32f0xx_hal::{pac::EXTI, prelude::*};
 
     stm32_tim2_monotonic!(Mono, 1_000_000);
@@ -32,7 +32,12 @@ mod app {
     fn init(mut ctx: init::Context) -> (Shared, Local) {
         Mono::start(TIM2_CLOCK_HZ);
 
-        let mut rcc = ctx.device.RCC.configure().sysclk(48.mhz()).freeze(&mut ctx.device.FLASH);
+        let mut rcc = ctx
+            .device
+            .RCC
+            .configure()
+            .sysclk(48.mhz())
+            .freeze(&mut ctx.device.FLASH);
         let gpioa = ctx.device.GPIOA.split(&mut rcc);
         let gpiob = ctx.device.GPIOB.split(&mut rcc);
         let gpiof = ctx.device.GPIOF.split(&mut rcc);
@@ -52,9 +57,7 @@ mod app {
         overcurrent_interrupt::spawn().ok();
 
         (
-            Shared {
-                exti,
-            },
+            Shared { exti },
             Local {
                 overcurrent_comparator,
             },
@@ -75,7 +78,10 @@ mod app {
     )]
     async fn overcurrent_interrupt(ctx: overcurrent_interrupt::Context) {
         loop {
-            defmt::info!("Overcurrent Tripped: {}", ctx.local.overcurrent_comparator.is_tripped());
+            defmt::info!(
+                "Overcurrent Tripped: {}",
+                ctx.local.overcurrent_comparator.is_tripped()
+            );
 
             Mono::delay(100.millis()).await;
         }

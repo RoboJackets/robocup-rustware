@@ -1,7 +1,7 @@
 //!
 //! Example program to read the HAL-effect sensors and print out the current state
 //! of the motor
-//! 
+//!
 
 #![no_std]
 #![no_main]
@@ -15,8 +15,14 @@ use defmt_rtt as _;
 mod app {
     use core::u16;
 
-    use motor_controller::{hall_to_phases, set_pwm_output, OvercurrentComparator, HS1, HS2, HS3};
-    use stm32f0xx_hal::{gpio::{gpiob::PB1, Output, PushPull}, pac::{EXTI, TIM1, TIM2}, prelude::*, pwm::{PwmChannels, C1, C1N, C2, C2N, C3, C3N}, timers::{Event, Timer}};
+    use motor_controller::{HS1, HS2, HS3, OvercurrentComparator, hall_to_phases, set_pwm_output};
+    use stm32f0xx_hal::{
+        gpio::{Output, PushPull, gpiob::PB1},
+        pac::{EXTI, TIM1, TIM2},
+        prelude::*,
+        pwm::{C1, C1N, C2, C2N, C3, C3N, PwmChannels},
+        timers::{Event, Timer},
+    };
 
     const PWM_DUTY_CYCLE: u16 = 200;
 
@@ -43,7 +49,7 @@ mod app {
         ch3n: PwmChannels<TIM1, C3N>,
 
         led: PB1<Output<PushPull>>,
-        
+
         // Overcurrent Comparataor
         overcurrent_comparator: OvercurrentComparator,
         // Timer 3 (used for motor control interrupt)
@@ -57,7 +63,12 @@ mod app {
 
     #[init]
     fn init(mut ctx: init::Context) -> (Shared, Local) {
-        let mut rcc = ctx.device.RCC.configure().sysclk(48.mhz()).freeze(&mut ctx.device.FLASH);
+        let mut rcc = ctx
+            .device
+            .RCC
+            .configure()
+            .sysclk(48.mhz())
+            .freeze(&mut ctx.device.FLASH);
         let gpioa = ctx.device.GPIOA.split(&mut rcc);
         let gpiob = ctx.device.GPIOB.split(&mut rcc);
         let gpiof = ctx.device.GPIOF.split(&mut rcc);
@@ -93,25 +104,12 @@ mod app {
         overcurrent_comparator.set_interrupt(&syscfg, &exti);
         overcurrent_comparator.clear_interrupt(&exti);
 
-
         let mut tim2 = Timer::tim2(ctx.device.TIM2, 1_000.hz(), &mut rcc);
         tim2.listen(Event::TimeOut);
 
-        let pwm = stm32f0xx_hal::pwm::tim1(
-            ctx.device.TIM1,
-            channels,
-            &mut rcc,
-            10u32.khz()
-        );
+        let pwm = stm32f0xx_hal::pwm::tim1(ctx.device.TIM1, channels, &mut rcc, 10u32.khz());
 
-        let (
-            mut ch1,
-            mut ch1n,
-            mut ch2,
-            mut ch2n,
-            mut ch3,
-            mut ch3n,
-        ) = pwm;
+        let (mut ch1, mut ch1n, mut ch2, mut ch2n, mut ch3, mut ch3n) = pwm;
 
         ch1.set_duty(0);
         ch1.enable();
@@ -127,9 +125,7 @@ mod app {
         ch3n.enable();
 
         (
-            Shared {
-                exti,
-            },
+            Shared { exti },
             Local {
                 led,
                 hs1,
@@ -143,7 +139,7 @@ mod app {
                 ch3n,
                 overcurrent_comparator,
                 tim2,
-            }
+            },
         )
     }
 

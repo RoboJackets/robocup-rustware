@@ -1,6 +1,6 @@
 //!
 //! PID Controller Implementation in rust
-//! 
+//!
 
 use core::cmp::max;
 
@@ -33,12 +33,7 @@ pub struct Pid {
 
 impl Pid {
     /// Create a new pid controller
-    pub fn new(
-        maximum_output: u16,
-        kp: f32,
-        ki: f32,
-        kd: f32,
-    ) -> Self {
+    pub fn new(maximum_output: u16, kp: f32, ki: f32, kd: f32) -> Self {
         Self {
             maximum_output,
             kp,
@@ -52,7 +47,7 @@ impl Pid {
             last_error: 0.0,
         }
     }
-    
+
     /// Set the maximum p value
     pub fn set_p_limit(&mut self, p_limit: f32) {
         self.p_limit = Some(p_limit);
@@ -74,7 +69,7 @@ impl Pid {
     }
 
     /// Apply the pid controller to determine the next control output
-    /// 
+    ///
     /// Returns: (pwm, clockwise)
     pub fn update(&mut self, setpoint: i32, measurement: i32) -> (u16, bool) {
         let error = (setpoint - measurement) as f32;
@@ -84,7 +79,11 @@ impl Pid {
         let mut p = error * self.kp;
         if let Some(p_limit) = self.p_limit {
             if p.abs() > p_limit {
-                if p > 0.0 { p = p_limit } else { p = -p_limit };
+                if p > 0.0 {
+                    p = p_limit
+                } else {
+                    p = -p_limit
+                };
             }
         }
 
@@ -92,7 +91,11 @@ impl Pid {
         self.integral_term = self.integral_term + error * self.ki;
         if let Some(i_limit) = self.i_limit {
             if self.integral_term.abs() > i_limit {
-                if self.integral_term > 0.0 { self.integral_term = i_limit } else { self.integral_term = -i_limit };
+                if self.integral_term > 0.0 {
+                    self.integral_term = i_limit
+                } else {
+                    self.integral_term = -i_limit
+                };
             }
         }
 
@@ -105,22 +108,20 @@ impl Pid {
         self.previous_measurement = Some(measurement);
         if let Some(d_limit) = self.d_limit {
             if d.abs() > d_limit {
-                if d > 0.0 { d = d_limit } else { d = -d_limit };
+                if d > 0.0 {
+                    d = d_limit
+                } else {
+                    d = -d_limit
+                };
             }
         }
 
         let output: i32 = unsafe { (p + self.integral_term + d).to_int_unchecked() };
 
         if output > 0 {
-            (
-                max(output as u16, self.maximum_output),
-                true,
-            )
+            (max(output as u16, self.maximum_output), true)
         } else {
-            (
-                max(output.abs() as u16, self.maximum_output),
-                false,
-            )
+            (max(output.abs() as u16, self.maximum_output), false)
         }
     }
 }

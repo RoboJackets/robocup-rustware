@@ -2,11 +2,16 @@
 #![no_std]
 
 use cortex_m_rt::entry;
-use panic_probe as _;
 use defmt_rtt as _;
+use panic_probe as _;
 
-use stm32f0xx_hal::{delay::Delay, pac, prelude::*, pwm::{self, ComplementaryPwm}};
 use motor_controller::OvercurrentComparator;
+use stm32f0xx_hal::{
+    delay::Delay,
+    pac,
+    prelude::*,
+    pwm::{self, ComplementaryPwm},
+};
 
 #[entry]
 fn main() -> ! {
@@ -39,20 +44,8 @@ fn main() -> ! {
         overcurrent_comparator.set_interrupt(&dp.SYSCFG, &dp.EXTI);
         overcurrent_comparator.clear_interrupt(&dp.EXTI);
 
-        let pwm = pwm::tim1(
-            dp.TIM1,
-            channels,
-            &mut rcc,
-            1u32.khz()
-        );
-        let (
-            mut ch1,
-            mut ch1n,
-            mut ch2,
-            mut ch2n,
-            mut ch3,
-            mut ch3n,
-        ) = pwm;
+        let pwm = pwm::tim1(dp.TIM1, channels, &mut rcc, 1u32.khz());
+        let (mut ch1, mut ch1n, mut ch2, mut ch2n, mut ch3, mut ch3n) = pwm;
 
         let max_duty = ch1.get_max_duty();
         defmt::info!("Max Duty: {}", max_duty);
@@ -71,15 +64,18 @@ fn main() -> ! {
             let mut delay = Delay::new(cp.SYST, &rcc);
 
             loop {
-                defmt::info!("Duty Cycles: [{}, {}, {}]", ch1.get_duty(), ch2.get_duty(), ch3.get_duty());
+                defmt::info!(
+                    "Duty Cycles: [{}, {}, {}]",
+                    ch1.get_duty(),
+                    ch2.get_duty(),
+                    ch3.get_duty()
+                );
 
                 delay.delay_ms(100u32);
             }
         }
 
-        loop {
-
-        }
+        loop {}
     }
 
     loop {

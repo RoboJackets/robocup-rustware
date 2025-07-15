@@ -1,7 +1,7 @@
 //!
 //! Basic Program to Read the Encoders and Periodically Calculate the Ticks/Second
 //! the motors are moving
-//! 
+//!
 
 #![no_std]
 #![no_main]
@@ -13,9 +13,17 @@ use defmt_rtt as _;
 
 #[rtic::app(device = stm32f0xx_hal::pac, peripherals = true, dispatchers = [TSC])]
 mod app {
-    use rtic_monotonics::stm32::prelude::*;
     use motor_controller::TIM2_CLOCK_HZ;
-    use stm32f0xx_hal::{gpio::{gpioa::{PA6, PA7}, Floating, Input, PullDown, PullUp}, pac::TIM3, prelude::*, qei::{Direction, Qei}};
+    use rtic_monotonics::stm32::prelude::*;
+    use stm32f0xx_hal::{
+        gpio::{
+            Floating, Input, PullDown, PullUp,
+            gpioa::{PA6, PA7},
+        },
+        pac::TIM3,
+        prelude::*,
+        qei::{Direction, Qei},
+    };
 
     stm32_tim2_monotonic!(Mono, 1_000_000);
 
@@ -27,15 +35,18 @@ mod app {
     }
 
     #[shared]
-    struct Shared {
-
-    }
+    struct Shared {}
 
     #[init]
     fn init(mut ctx: init::Context) -> (Shared, Local) {
         Mono::start(TIM2_CLOCK_HZ);
 
-        let mut rcc = ctx.device.RCC.configure().sysclk(48.mhz()).freeze(&mut ctx.device.FLASH);
+        let mut rcc = ctx
+            .device
+            .RCC
+            .configure()
+            .sysclk(48.mhz())
+            .freeze(&mut ctx.device.FLASH);
         let gpioa = ctx.device.GPIOA.split(&mut rcc);
         let gpiob = ctx.device.GPIOB.split(&mut rcc);
 
@@ -50,21 +61,9 @@ mod app {
             )
         });
 
-        let pwm = stm32f0xx_hal::pwm::tim1(
-            ctx.device.TIM1,
-            channels,
-            &mut rcc,
-            1u32.khz()
-        );
+        let pwm = stm32f0xx_hal::pwm::tim1(ctx.device.TIM1, channels, &mut rcc, 1u32.khz());
 
-        let (
-            mut ch1,
-            mut ch1n,
-            mut ch2,
-            mut ch2n,
-            mut ch3,
-            mut ch3n,
-        ) = pwm;
+        let (mut ch1, mut ch1n, mut ch2, mut ch2n, mut ch3, mut ch3n) = pwm;
 
         ch1.set_duty(0);
         ch2.set_duty(0);
@@ -88,14 +87,11 @@ mod app {
         // print_pin_states::spawn().ok();
 
         (
-            Shared {
-
-            },
+            Shared {},
             Local {
-                encoders
-                // pa6: pins.0,
-                // pa7: pins.1,
-            }
+                encoders, // pa6: pins.0,
+                          // pa7: pins.1,
+            },
         )
     }
 

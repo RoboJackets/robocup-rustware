@@ -1,6 +1,6 @@
 //!
 //! Basic Example that uses defmt logger to log on and off
-//! 
+//!
 
 #![no_std]
 #![no_main]
@@ -12,9 +12,12 @@ use defmt_rtt as _;
 
 #[rtic::app(device = stm32f0xx_hal::pac, peripherals = true, dispatchers = [TSC])]
 mod app {
-    use rtic_monotonics::stm32::prelude::*;
     use motor_controller::TIM2_CLOCK_HZ;
-    use stm32f0xx_hal::{gpio::{gpioa::PA8, gpiob::PB1, Output, PushPull}, prelude::*};
+    use rtic_monotonics::stm32::prelude::*;
+    use stm32f0xx_hal::{
+        gpio::{Output, PushPull, gpioa::PA8, gpiob::PB1},
+        prelude::*,
+    };
 
     stm32_tim2_monotonic!(Mono, 1_000_000);
 
@@ -25,15 +28,18 @@ mod app {
     }
 
     #[shared]
-    struct Shared {
-
-    }
+    struct Shared {}
 
     #[init]
     fn init(mut ctx: init::Context) -> (Shared, Local) {
         Mono::start(TIM2_CLOCK_HZ);
 
-        let mut rcc = ctx.device.RCC.configure().sysclk(48.mhz()).freeze(&mut ctx.device.FLASH);
+        let mut rcc = ctx
+            .device
+            .RCC
+            .configure()
+            .sysclk(48.mhz())
+            .freeze(&mut ctx.device.FLASH);
         let gpioa = ctx.device.GPIOA.split(&mut rcc);
         let gpiob = ctx.device.GPIOB.split(&mut rcc);
 
@@ -42,15 +48,7 @@ mod app {
 
         blink::spawn().ok();
 
-        (
-            Shared {
-
-            },
-            Local {
-                led,
-                test,
-            }
-        )
+        (Shared {}, Local { led, test })
     }
 
     #[idle]
