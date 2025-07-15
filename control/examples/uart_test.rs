@@ -123,7 +123,7 @@ mod app {
 
         delay2.delay_ms(500u32);
 
-        let mut motor_one_uart = board::lpuart(lpuart6, pins.p1, pins.p0, 9600);
+        let mut motor_one_uart = board::lpuart(lpuart6, pins.p1, pins.p0, 115200);
         motor_one_uart.disable(|uart| {
             uart.disable_fifo(lpuart::Direction::Tx);
             uart.disable_fifo(lpuart::Direction::Rx);
@@ -132,7 +132,7 @@ mod app {
         motor_one_uart.clear_status(lpuart::Status::W1C);
         let (motor_one_tx, motor_one_rx) = make_channel!([u8; 4], 3);
 
-        let mut motor_two_uart = board::lpuart(lpuart4, pins.p8, pins.p7, 9600);
+        let mut motor_two_uart = board::lpuart(lpuart4, pins.p8, pins.p7, 115200);
         motor_two_uart.disable(|uart| {
             uart.disable_fifo(lpuart::Direction::Tx);
             uart.disable_fifo(lpuart::Direction::Rx);
@@ -145,7 +145,7 @@ mod app {
             lpuart1,
             pins.p24,
             pins.p25,
-            9600,
+            115200,
         );
         motor_three_uart.disable(|uart| {
             uart.disable_fifo(lpuart::Direction::Tx);
@@ -159,7 +159,7 @@ mod app {
             lpuart7,
             pins.p29,
             pins.p28,
-            9600,
+            115200,
         );
         motor_four_uart.disable(|uart| {
             uart.disable_fifo(lpuart::Direction::Tx);
@@ -169,7 +169,7 @@ mod app {
         motor_four_uart.clear_status(lpuart::Status::W1C);
         let (motor_four_tx, motor_four_rx) = make_channel!([u8; 4], 3);
 
-        let mut dribbler_uart = board::lpuart(lpuart8, pins.p20, pins.p21, 9600);
+        let mut dribbler_uart = board::lpuart(lpuart8, pins.p20, pins.p21, 115200);
         dribbler_uart.disable(|uart| {
             uart.disable_fifo(lpuart::Direction::Tx);
             uart.disable_fifo(lpuart::Direction::Rx);
@@ -305,7 +305,7 @@ mod app {
                 .lock(|uart| send_command(setpoint, ctx.local.dribbler_tx, uart, 0));
 
             iteration = iteration.wrapping_add(1);
-            Systick::delay(200u32.millis()).await;
+            Systick::delay(100u32.millis()).await;
         }
     }
 

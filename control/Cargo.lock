@@ -741,6 +741,7 @@ dependencies = [
  "controller",
  "cortex-m",
  "defmt 0.3.100",
+ "display-interface",
  "embedded-alloc",
  "embedded-graphics",
  "embedded-hal 0.2.7",

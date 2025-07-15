@@ -25,7 +25,13 @@ mod app {
     use teensy4_bsp::board::Lpi2c1;
     use teensy4_pins::t41::{P18, P19};
 
+    use teensy4_bsp::hal::timer::Blocking;
+
+    use embedded_hal::blocking::delay::DelayMs;
+
     use core::mem::MaybeUninit;
+
+    use robojackets_robocup_control::{GPT_DIVIDER, GPT_CLOCK_SOURCE, GPT_FREQUENCY, Killn, MotorEn};
 
     const HEAP_SIZE: usize = 1024 * 8;
     static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
@@ -55,13 +61,36 @@ mod app {
         }
 
         let board::Resources {
-            pins, lpi2c1, usb, ..
+            pins,
+            lpi2c1,
+            usb,
+            mut gpt2,
+            mut gpio1,
+            mut gpio2,
+            ..
         } = board::t41(cx.device);
 
         let poller = imxrt_log::log::usbd(usb, imxrt_log::Interrupts::Enabled).unwrap();
 
         let systick_token = rtic_monotonics::create_systick_token!();
         Systick::start(cx.core.SYST, 36_000_000, systick_token);
+
+        // Gpt 2 as blocking delay
+        gpt2.disable();
+        gpt2.set_divider(GPT_DIVIDER);
+        gpt2.set_clock_source(GPT_CLOCK_SOURCE);
+        let mut delay2 = Blocking::<_, GPT_FREQUENCY>::from_gpt(gpt2);
+
+        // End Initialize Timers //
+
+        // Initialize Motor Board //
+
+        let motor_en: MotorEn = gpio1.output(pins.p23);
+        motor_en.set();
+        let kill_n: Killn = gpio2.output(pins.p36);
+        kill_n.set();
+
+        delay2.delay_ms(500u32);
 
         let i2c: Lpi2c1 = board::lpi2c(lpi2c1, pins.p19, pins.p18, board::Lpi2cClockSpeed::MHz1);
         let interface = I2CDisplayInterface::new(i2c);

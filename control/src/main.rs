@@ -73,7 +73,7 @@ mod app {
     use icm42605_driver::IMU;
 
     use robojackets_robocup_control::{
-        spi::FakeSpi, Delay2, Display, Gpio1, Imu, ImuInitError, KickerCSn, KickerProg,
+        spi::FakeSpi, Delay2, Display, Imu, ImuInitError, KickerCSn, KickerProg,
         KickerProgramError, KickerReset, KickerServicingError, PitDelay, RFRadio, RadioInitError,
         RadioInterrupt, State, BASE_AMPLIFICATION_LEVEL, CHANNEL, GPT_1_DIVIDER, GPT_CLOCK_SOURCE,
         GPT_DIVIDER, GPT_FREQUENCY, RADIO_ADDRESS, ROBOT_ID, MotorOneUart, MotorTwoUart,
@@ -92,11 +92,11 @@ mod app {
     static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
 
     /// The amount of time (in ms) between each motion control delay
-    const MOTION_CONTROL_DELAY_MS: u32 = 1_000_000 / 60;
+    const MOTION_CONTROL_DELAY_US: u32 = 1_000_000 / 60;
     /// The amount of time (in ms) between servicing the kicker
-    const KICKER_SERVICE_DELAY_MS: u32 = 50;
+    const KICKER_SERVICE_DELAY_US: u32 = 50_000;
     /// The number of motion control updates between servicing the kicker
-    const KICKER_SERVICE_DELAY_TICKS: u32 = KICKER_SERVICE_DELAY_MS / MOTION_CONTROL_DELAY_MS;
+    const KICKER_SERVICE_DELAY_TICKS: u32 = KICKER_SERVICE_DELAY_US / MOTION_CONTROL_DELAY_US;
     /// The amount of time the robot should continue moving without receiving a
     /// new message from the base station before it stops moving
     const DIE_TIME_US: u32 = 500_000;
@@ -282,7 +282,7 @@ mod app {
 
         delay2.delay_ms(500u32);
 
-        let mut motor_one_uart = board::lpuart(lpuart6, pins.p1, pins.p0, 9600);
+        let mut motor_one_uart = board::lpuart(lpuart6, pins.p1, pins.p0, 115200);
         motor_one_uart.disable(|uart| {
             uart.disable_fifo(lpuart::Direction::Tx);
             uart.disable_fifo(lpuart::Direction::Rx);
@@ -291,7 +291,7 @@ mod app {
         motor_one_uart.clear_status(lpuart::Status::W1C);
         let (motor_one_tx, motor_one_rx) = make_channel!([u8; 4], 3);
 
-        let mut motor_two_uart = board::lpuart(lpuart4, pins.p8, pins.p7, 9600);
+        let mut motor_two_uart = board::lpuart(lpuart4, pins.p8, pins.p7, 115200);
         motor_two_uart.disable(|uart| {
             uart.disable_fifo(lpuart::Direction::Tx);
             uart.disable_fifo(lpuart::Direction::Rx);
@@ -304,7 +304,7 @@ mod app {
             lpuart1,
             pins.p24,
             pins.p25,
-            9600,
+            115200,
         );
         motor_three_uart.disable(|uart| {
             uart.disable_fifo(lpuart::Direction::Tx);
@@ -318,7 +318,7 @@ mod app {
             lpuart7,
             pins.p29,
             pins.p28,
-            9600,
+            115200,
         );
         motor_four_uart.disable(|uart| {
             uart.disable_fifo(lpuart::Direction::Tx);
@@ -328,7 +328,7 @@ mod app {
         motor_four_uart.clear_status(lpuart::Status::W1C);
         let (motor_four_tx, motor_four_rx) = make_channel!([u8; 4], 3);
 
-        let mut dribbler_uart = board::lpuart(lpuart8, pins.p20, pins.p21, 9600);
+        let mut dribbler_uart = board::lpuart(lpuart8, pins.p20, pins.p21, 115200);
         dribbler_uart.disable(|uart| {
             uart.disable_fifo(lpuart::Direction::Tx);
             uart.disable_fifo(lpuart::Direction::Rx);
@@ -514,85 +514,6 @@ mod app {
         check_for_errors::spawn().ok();
     }
 
-    /// Initialize the kicker and kicker controller
-    #[task(
-        shared = [
-            kicker_programmer,
-            kicker_controller,
-            pit_delay,
-            fake_spi,
-            kicker_program_error,
-            kicker_service_error,
-            robot_status,
-        ],
-        priority = 1
-    )]
-    async fn initialize_kicker(ctx: initialize_kicker::Context) {
-        (
-            ctx.shared.kicker_programmer,
-            ctx.shared.kicker_controller,
-            ctx.shared.pit_delay,
-            ctx.shared.robot_status,
-            ctx.shared.fake_spi,
-            ctx.shared.kicker_program_error,
-            ctx.shared.kicker_service_error,
-        )
-            .lock(
-                |programmer,
-                 controller,
-                 delay,
-                 robot_status,
-                 spi,
-                 kicker_program_error,
-                 kicker_service_error| {
-                    let mut kicker_programmer = match programmer.take() {
-                        Some(kicker_programmer) => kicker_programmer,
-                        None => {
-                            let (cs, reset) = controller.take().unwrap().destroy();
-                            KickerProgrammer::new(cs, reset)
-                        }
-                    };
-
-                    match kicker_programmer.program_kicker(spi, delay) {
-                        Ok(_) => {
-                            log::info!("Kicker Programmed");
-                            let (cs, reset) = kicker_programmer.destroy();
-                            let mut kicker_controller = Kicker::new(cs, reset);
-
-                            match kicker_controller.service(
-                                KickerCommand {
-                                    kick_type: KickType::Kick,
-                                    kick_trigger: KickTrigger::Disabled,
-                                    kick_strength: 0.0,
-                                    charge_allowed: false,
-                                },
-                                spi,
-                            ) {
-                                Ok(status) => {
-                                    log::info!("Kicker Serviced");
-                                    robot_status.kick_status = false;
-                                    robot_status.ball_sense_status = status.ball_sensed;
-                                    robot_status.kick_healthy = status.healthy;
-                                }
-                                Err(err) => {
-                                    log::error!("Unable to Service Kicker: {:?}", err);
-                                    *kicker_service_error = Some(err);
-                                }
-                            }
-
-                            *controller = Some(kicker_controller);
-                        }
-                        Err(err) => {
-                            log::error!("Unable to program kicker: {:?}", err);
-                            *kicker_program_error = Some(err);
-                        }
-                    }
-                },
-            );
-
-        check_for_errors::spawn().ok();
-    }
-
     /// Check for any errors with the peripheral drivers
     #[task(
         shared = [
@@ -724,7 +645,7 @@ mod app {
 
         ctx.shared.pit0.lock(|pit| {
             pit.clear_elapsed();
-            pit.set_load_timer_value(MOTION_CONTROL_DELAY_MS);
+            pit.set_load_timer_value(MOTION_CONTROL_DELAY_US);
             pit.set_interrupt_enable(true);
             pit.enable();
         });
@@ -814,7 +735,7 @@ mod app {
     fn state_machine(mut ctx: state_machine::Context) {
         ctx.shared.pit0.lock(|pit| {
             pit.clear_elapsed();
-            pit.set_load_timer_value(MOTION_CONTROL_DELAY_MS);
+            pit.set_load_timer_value(MOTION_CONTROL_DELAY_US);
             pit.set_interrupt_enable(true);
             pit.enable();
         });
@@ -962,45 +883,45 @@ mod app {
         log::info!("Moving at {:?}", wheel_velocities);
 
         // Service the kicker
-        // if *ctx.local.iteration % KICKER_SERVICE_DELAY_TICKS == 0 {
-        //     let kicker_command = ctx.shared.control_message.lock(|control_message| {
-        //         if let Some(control_message) = control_message {
-        //             (*control_message).into()
-        //         } else {
-        //             KickerCommand::default()
-        //         }
-        //     });
-        //     (
-        //         ctx.shared.kicker_controller,
-        //         ctx.shared.kicker_programmer,
-        //         ctx.shared.robot_status,
-        //         ctx.shared.fake_spi,
-        //     )
-        //         .lock(
-        //             |controller, programmer, robot_status, fake_spi| match controller.take() {
-        //                 Some(mut kicker_controller) => {
-        //                     let state =
-        //                         kicker_controller.service(kicker_command, fake_spi).unwrap();
-        //                     robot_status.kick_status =
-        //                         kicker_command.kick_trigger != KickTrigger::Disabled;
-        //                     robot_status.ball_sense_status = state.ball_sensed;
-        //                     robot_status.kick_healthy = state.healthy;
-        //                     *controller = Some(kicker_controller);
-        //                 }
-        //                 None => {
-        //                     let (cs, reset) = programmer.take().unwrap().destroy();
-        //                     let mut kicker_controller = Kicker::new(cs, reset);
-        //                     let state =
-        //                         kicker_controller.service(kicker_command, fake_spi).unwrap();
-        //                     robot_status.kick_status =
-        //                         kicker_command.kick_trigger != KickTrigger::Disabled;
-        //                     robot_status.ball_sense_status = state.ball_sensed;
-        //                     robot_status.kick_healthy = state.healthy;
-        //                     *controller = Some(kicker_controller);
-        //                 }
-        //             },
-        //         );
-        // }
+        if *ctx.local.iteration % KICKER_SERVICE_DELAY_TICKS == 0 {
+            let kicker_command = ctx.shared.control_message.lock(|control_message| {
+                if let Some(control_message) = control_message {
+                    (*control_message).into()
+                } else {
+                    KickerCommand::default()
+                }
+            });
+            (
+                ctx.shared.kicker_controller,
+                ctx.shared.kicker_programmer,
+                ctx.shared.robot_status,
+                ctx.shared.fake_spi,
+            )
+                .lock(
+                    |controller, programmer, robot_status, fake_spi| match controller.take() {
+                        Some(mut kicker_controller) => {
+                            let state =
+                                kicker_controller.service(kicker_command, fake_spi).unwrap();
+                            robot_status.kick_status =
+                                kicker_command.kick_trigger != KickTrigger::Disabled;
+                            robot_status.ball_sense_status = state.ball_sensed;
+                            robot_status.kick_healthy = state.healthy;
+                            *controller = Some(kicker_controller);
+                        }
+                        None => {
+                            let (cs, reset) = programmer.take().unwrap().destroy();
+                            let mut kicker_controller = Kicker::new(cs, reset);
+                            let state =
+                                kicker_controller.service(kicker_command, fake_spi).unwrap();
+                            robot_status.kick_status =
+                                kicker_command.kick_trigger != KickTrigger::Disabled;
+                            robot_status.ball_sense_status = state.ball_sensed;
+                            robot_status.kick_healthy = state.healthy;
+                            *controller = Some(kicker_controller);
+                        }
+                    },
+                );
+        }
 
         *ctx.local.iteration = ctx.local.iteration.wrapping_add(1);
     }
@@ -1036,7 +957,7 @@ mod app {
     )]
     async fn from_idle(ctx: from_idle::Context) {
         (ctx.shared.pit0, ctx.shared.state).lock(|pit, state| {
-            pit.set_load_timer_value(MOTION_CONTROL_DELAY_MS);
+            pit.set_load_timer_value(MOTION_CONTROL_DELAY_US);
             pit.set_interrupt_enable(true);
             pit.enable();
             *state = State::Default

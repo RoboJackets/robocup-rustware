@@ -49,9 +49,6 @@ mod app {
 
         // The motor board led
         led: PB1<Output<PushPull>>,
-
-        // The usart serial interface to talk to the Teensy
-        usart: SerialInterface,
     }
 
     #[shared]
@@ -128,16 +125,9 @@ mod app {
         overcurrent_comparator.set_interrupt(&syscfg, &exti);
         overcurrent_comparator.clear_interrupt(&exti);
 
-        let (tx, rx) = cortex_m::interrupt::free(|cs| (
-            gpioa.pa14.into_alternate_af1(cs),
-            gpioa.pa15.into_alternate_af1(cs),
-        ));
-        let mut usart = Serial::usart1(ctx.device.USART1, (tx, rx), 115200.bps(), &mut rcc);
-
         let mut tim2 = Timer::tim2(ctx.device.TIM2, MOTION_CONTROL_FREQUENCY.hz(), &mut rcc);
 
         // Start Interrupts
-        usart.listen(serial::Event::Rxne);
         tim2.listen(Event::TimeOut);
 
         (
@@ -158,7 +148,6 @@ mod app {
                 overcurrent_comparator,
                 tim2,
                 led,
-                usart,
             }
         )
     }
@@ -209,14 +198,8 @@ mod app {
                 *ctx.local.last_led = true;
             }
         }
-        // Setpoint in ticks per second
-        let setpoint = ctx.shared.setpoint.lock(|setpoint| *setpoint as f32);
 
-        let (pwm, clockwise) = if setpoint == 0.0 {
-            (0, true)
-        } else {
-            (ctx.local.ch1.get_max_duty() / 8, false)
-        };
+        let (pwm, clockwise) = (ctx.local.ch1.get_max_duty() / 8, false);
 
         let phases = hall_to_phases(
             ctx.local.hs1.is_high().unwrap(),
@@ -278,47 +261,5 @@ mod app {
 
         *ctx.local.iteration += 1;
         ctx.local.tim2.clear_irq();
-    }
-
-    #[task(
-        local = [
-            usart,
-            buffer: [u8; 4] = [0u8; 4],
-            idx: usize = 0,
-            done: bool = false,
-            sending: bool = false,
-        ],
-        shared = [
-            setpoint,
-            current_velocity,
-        ],
-        binds = USART1,
-        priority = 1
-    )]
-    fn usart_interrupt(mut ctx: usart_interrupt::Context) {
-        ctx.local.usart.unlisten(serial::Event::Rxne);
-        match nb::block!(ctx.local.usart.read()) {
-            Ok(data) => {
-                if data == 0x11 {
-                    *ctx.local.idx = 0;
-                } else {
-                    ctx.local.buffer[*ctx.local.idx] = data;
-                    *ctx.local.idx += 1;
-                }
-            },
-            Err(_err) => defmt::error!("Error Reading"),
-        }
-        if *ctx.local.idx == ctx.local.buffer.len() {
-            let setpoint = i32::from_le_bytes(*ctx.local.buffer);
-            ctx.shared.setpoint.lock(|s| *s = setpoint);
-
-            ctx.shared.current_velocity.lock(|velocity| ctx.local.buffer.copy_from_slice(&velocity.to_le_bytes()));
-            for idx in 0..4 {
-                nb::block!(ctx.local.usart.write(ctx.local.buffer[idx])).unwrap();
-                nb::block!(ctx.local.usart.flush()).unwrap();
-            }
-            *ctx.local.idx = 0;
-        }
-        ctx.local.usart.listen(serial::Event::Rxne);
     }
 }

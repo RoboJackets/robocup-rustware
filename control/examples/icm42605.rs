@@ -39,7 +39,7 @@ mod app {
 
     use rtic_monotonics::systick::*;
 
-    use robojackets_robocup_control::{Imu, PitDelay};
+    use robojackets_robocup_control::{Imu, PitDelay, GPT_DIVIDER, GPT_CLOCK_SOURCE, GPT_FREQUENCY, Killn, MotorEn};
 
     use teensy4_pins::t41::{P18, P19};
 
@@ -70,10 +70,30 @@ mod app {
             usb,
             lpi2c1,
             pit: (_, _, pit2, _),
+            mut gpt2,
+            mut gpio1,
+            mut gpio2,
             ..
         } = board::t41(ctx.device);
 
         let poller = imxrt_log::log::usbd(usb, imxrt_log::Interrupts::Enabled).unwrap();
+
+        // Gpt 2 as blocking delay
+        gpt2.disable();
+        gpt2.set_divider(GPT_DIVIDER);
+        gpt2.set_clock_source(GPT_CLOCK_SOURCE);
+        let mut delay2 = Blocking::<_, GPT_FREQUENCY>::from_gpt(gpt2);
+
+        // End Initialize Timers //
+
+        // Initialize Motor Board //
+
+        let motor_en: MotorEn = gpio1.output(pins.p23);
+        motor_en.set();
+        let kill_n: Killn = gpio2.output(pins.p36);
+        kill_n.set();
+
+        delay2.delay_ms(500u32);
 
         let i2c = board::lpi2c(lpi2c1, pins.p19, pins.p18, board::Lpi2cClockSpeed::MHz1);
         let i2c_bus: &'static _ = shared_bus::new_cortexm!(
@@ -138,36 +158,26 @@ mod app {
         shared = [imu, pit_delay],
         priority = 1,
     )]
-    async fn imu_test(ctx: imu_test::Context) {
-        (ctx.shared.imu, ctx.shared.pit_delay).lock(|imu, pit_delay| loop {
-            let gyro_z = match imu.gyro_z() {
-                Ok(gyro_z) => gyro_z,
-                Err(err) => {
-                    log::info!("Unable to Read Gyro Z: {:?}", err);
-                    0.0
-                }
-            };
+    async fn imu_test(mut ctx: imu_test::Context) {
+        let (
+            gyro_z, accel_x, accel_y
+        ) = ctx.shared.imu.lock(|imu| {
+            (
+                imu.gyro_z().unwrap_or_default(),
+                imu.accel_x().unwrap_or_default(),
+                imu.accel_y().unwrap_or_default()
+            )
+        });
 
-            let accel_x = match imu.accel_x() {
-                Ok(accel_x) => accel_x,
-                Err(err) => {
-                    log::info!("Unable to Read Accel X: {:?}", err);
-                    0.0
-                }
-            };
+        log::info!("X: {}, Y: {}, Z: {}", accel_x, accel_y, gyro_z);
 
-            let accel_y = match imu.accel_y() {
-                Ok(accel_y) => accel_y,
-                Err(err) => {
-                    log::info!("Unable to Read Accel Y: {:?}", err);
-                    0.0
-                }
-            };
+        short_delay::spawn().ok();
+    }
 
-            log::info!("X: {}, Y: {}, Z: {}", accel_x, accel_y, gyro_z);
-
-            pit_delay.delay_ms(100u32);
-        })
+    #[task(priority = 1)]
+    async fn short_delay(_ctx: short_delay::Context) {
+        Systick::delay(100u32.millis()).await;
+        imu_test::spawn().ok();
     }
 
     #[task(

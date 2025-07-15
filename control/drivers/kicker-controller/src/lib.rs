@@ -28,9 +28,9 @@ const VOLTAGE_SCALE: u8 = 2;
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum KickType {
     /// Kick the ball
-    Kick = 1 << 7,
+    Kick = 0,
     /// Chip the ball
-    Chip = 0,
+    Chip = 1 << 7,
 }
 
 impl From<ShootMode> for KickType {

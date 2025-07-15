@@ -12,9 +12,9 @@ use defmt_rtt as _;
 
 #[rtic::app(device = stm32f0xx_hal::pac, peripherals = true, dispatchers = [TSC])]
 mod app {
-    use motion_control::MotionController;
+    use motion_control::Pid;
     use stm32f0xx_hal::{gpio::{gpiob::PB1, Output, PushPull}, pac::{TIM1, TIM14, TIM2, TIM3}, prelude::*, pwm::{self, ComplementaryPwm, PwmChannels, C1, C1N, C2, C2N, C3, C3N}, qei::Qei, timers::{Event, Timer}};
-    use motor_controller::{hall_to_phases, pid::Pid, OvercurrentComparator, Phase, HS1, HS2, HS3};
+    use motor_controller::{hall_to_phases, OvercurrentComparator, Phase, HS1, HS2, HS3};
 
     /// The maximum PWM that is sendable to the motors
     pub const MAXIMUM_OUTPUT: u16 = 100;
@@ -24,11 +24,11 @@ mod app {
     pub const MOTION_CONTROL_FREQUENCY: u32 = 1000;
 
     /// The kp constant for the pid controller
-    static mut KP: f32 = 1.0;
+    static mut KP: f32 = 2.5;
     /// The ki constant for the pid controller
-    static mut KI: f32 = 0.0;
+    static mut KI: f32 = 0.2;
     /// the kd constant for the pid controller
-    static mut KD: f32 = 0.0;
+    static mut KD: f32 = 0.5;
 
     #[local]
     struct Local {
@@ -66,9 +66,6 @@ mod app {
         led: PB1<Output<PushPull>>,
         // The tim14 peripheral
         tim14: Timer<TIM14>,
-
-        // The motion control module
-        motion_controller: MotionController,
     }
 
     #[shared]
@@ -160,6 +157,8 @@ mod app {
         tim2.listen(Event::TimeOut);
         tim14.listen(Event::TimeOut);
 
+        let max_duty = ch1.get_max_duty() / 4;
+
         (
             Shared {
                 setpoint: 0,
@@ -180,13 +179,13 @@ mod app {
                 tim2,
                 led,
                 pid: Pid::new(
-                    MAXIMUM_OUTPUT,
+                    max_duty,
                     unsafe { KP },
                     unsafe { KI },
-                    unsafe { KD }
+                    unsafe { KD },
+                    MOTION_CONTROL_FREQUENCY
                 ),
                 tim14,
-                motion_controller: MotionController::new(MOTION_CONTROL_FREQUENCY),
             }
         )
     }
@@ -256,8 +255,9 @@ mod app {
             ch3n,
             tim2,
             pid,
-            motion_controller,
             overcurrent_comparator,
+            last_setpoint: i32 = 0,
+            iterations: u32 = 0,
         ],
         shared = [
             setpoint,
@@ -270,14 +270,16 @@ mod app {
     fn motion_control_update(mut ctx: motion_control_update::Context) {
         // Setpoint in ticks per second
         let setpoint = ctx.shared.setpoint.lock(|setpoint| *setpoint);
+        if setpoint != *ctx.local.last_setpoint {
+            defmt::info!("Found New Setpoint: {}; Iterations: {}", setpoint, *ctx.local.iterations);
+            *ctx.local.last_setpoint = setpoint;
+            *ctx.local.iterations = 0;
+        }
 
-        let (pwm, clockwise) = ctx.local.motion_controller.update(
-            ctx.local.encoders.count(),
-            setpoint
-        );
+        let (pwm, clockwise) = ctx.local.pid.update(setpoint, ctx.local.encoders.count());
 
-        ctx.shared.current_velocity.lock(|velocity| *velocity = ctx.local.motion_controller.current_velocity);
-
+        ctx.shared.current_velocity.lock(|velocity| *velocity = ctx.local.pid.current_velocity);
+        
         let phases = hall_to_phases(
             ctx.local.hs1.is_high().unwrap(),
             ctx.local.hs2.is_high().unwrap(),
@@ -336,6 +338,7 @@ mod app {
             },
         }
 
+        *ctx.local.iterations += 1;
         ctx.local.tim2.clear_irq();
     }
 }

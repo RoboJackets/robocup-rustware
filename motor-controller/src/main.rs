@@ -12,9 +12,9 @@ use defmt_rtt as _;
 
 #[rtic::app(device = stm32f0xx_hal::pac, peripherals = true, dispatchers = [TSC])]
 mod app {
-    use motion_control::MotionController;
+    use motion_control::Pid;
     use stm32f0xx_hal::{gpio::{gpiob::PB1, Output, PushPull}, pac::{TIM1, TIM2, TIM3}, prelude::*, pwm::{self, ComplementaryPwm, PwmChannels, C1, C1N, C2, C2N, C3, C3N}, qei::Qei, serial::{self, Serial}, timers::{Event, Timer}};
-    use motor_controller::{hall_to_phases, OvercurrentComparator, Phase, HS1, HS2, HS3, SerialInterface, MOTION_CONTROL_FREQUENCY};
+    use motor_controller::{hall_to_phases, OvercurrentComparator, Phase, SerialInterface, HS1, HS2, HS3, MOTION_CONTROL_FREQUENCY};
 
     /// The maximum PWM that is sendable to the motors
     pub const MAXIMUM_OUTPUT: u16 = 100;
@@ -56,8 +56,9 @@ mod app {
 
         // The usart serial interface to talk to the Teensy
         usart: SerialInterface,
-        // The motion controller
-        motion_controller: MotionController,
+
+        // THe pid motion controller
+        pid: Pid,
     }
 
     #[shared]
@@ -146,13 +147,15 @@ mod app {
             gpioa.pa14.into_alternate_af1(cs),
             gpioa.pa15.into_alternate_af1(cs),
         ));
-        let mut usart = Serial::usart1(ctx.device.USART1, (tx, rx), 9600.bps(), &mut rcc);
+        let mut usart = Serial::usart1(ctx.device.USART1, (tx, rx), 115200.bps(), &mut rcc);
 
         let mut tim2 = Timer::tim2(ctx.device.TIM2, MOTION_CONTROL_FREQUENCY.hz(), &mut rcc);
 
         // Start Interrupts
         usart.listen(serial::Event::Rxne);
         tim2.listen(Event::TimeOut);
+
+        let max_duty = ch1.get_max_duty();
 
         (
             Shared {
@@ -174,7 +177,13 @@ mod app {
                 tim2,
                 led,
                 usart,
-                motion_controller: MotionController::new(MOTION_CONTROL_FREQUENCY),
+                pid: Pid::new(
+                    max_duty,
+                    3.0,
+                    0.45,
+                    0.25,
+                    MOTION_CONTROL_FREQUENCY
+                )
             }
         )
     }
@@ -201,13 +210,7 @@ mod app {
             tim2,
             last_encoders_value: u16 = 0,
             iteration: u32 = 0,
-            errors: [f32; 500] = [0.0; 500],
-            last_setpoint: i32 = 0,
-            last_received_iteration: u32 = 0,
-            velocity_buffer: [i32; 100] = [0i32; 100],
-            velocity_idx: usize = 0,
-            motion_controller,
-
+            pid,
             led,
             last_led: bool = false,
         ],
@@ -220,7 +223,7 @@ mod app {
     )]
     /// Update the speed of the motors.  The timer calls an interrupt every 1ms
     fn motion_control_update(mut ctx: motion_control_update::Context) {
-        if *ctx.local.iteration % 1_000 == 0 {
+        if *ctx.local.iteration % 2_000 == 0 {
             if *ctx.local.last_led {
                 ctx.local.led.set_low().unwrap();
                 *ctx.local.last_led = false;
@@ -232,12 +235,9 @@ mod app {
         // Setpoint in ticks per second
         let setpoint = ctx.shared.setpoint.lock(|setpoint| *setpoint);
 
-        let (pwm, clockwise) = ctx.local.motion_controller.update(
-            ctx.local.encoders.count(),
-            setpoint
-        );
+        let (pwm, clockwise) = ctx.local.pid.update(setpoint, ctx.local.encoders.count());
 
-        ctx.shared.current_velocity.lock(|velocity| *velocity = ctx.local.motion_controller.current_velocity);
+        ctx.shared.current_velocity.lock(|velocity| *velocity = ctx.local.pid.current_velocity);
 
         let phases = hall_to_phases(
             ctx.local.hs1.is_high().unwrap(),
