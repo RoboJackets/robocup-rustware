@@ -18,6 +18,7 @@ mod app {
     use super::*;
     use core::mem::MaybeUninit;
 
+    use imxrt_hal::gpio::Trigger;
     use rtic_monotonics::systick::*;
     use teensy4_bsp::board;
 
@@ -33,7 +34,11 @@ mod app {
     }
 
     #[shared]
-    struct Shared {}
+    struct Shared {
+        motor_en: MotorEn,
+        kill_n: Killn,
+        power_switch: PowerSwitch,
+    }
 
     #[init]
     fn init(ctx: init::Context) -> (Shared, Local) {
@@ -60,7 +65,17 @@ mod app {
         let kill_n: Killn = gpio2.output(pins.p36);
         kill_n.set();
 
-        (Shared {}, Local { poller })
+        let power_switch = gpio1.input(pins.p40);
+        gpio1.set_interrupt(&power_switch, Some(Trigger::RisingEdge));
+
+        (
+            Shared {
+                motor_en,
+                kill_n,
+                power_switch,
+            },
+            Local { poller },
+        )
     }
 
     #[idle]
@@ -68,6 +83,22 @@ mod app {
         loop {
             cortex_m::asm::wfi();
         }
+    }
+
+    ///This task kills the motor board when the power switch is pressed.
+    #[task(binds = GPIO1_COMBINED_0_15, shared = [power_switch, motor_en, kill_n])]
+    fn power_switch_interrupt(ctx: power_switch_interrupt::Context) {
+        (
+            ctx.shared.power_switch,
+            ctx.shared.motor_en,
+            ctx.shared.kill_n,
+        )
+            .lock(|power_switch, motor_en, kill_n| {
+                if power_switch.is_set() {
+                    motor_en.clear();
+                    kill_n.clear();
+                }
+            });
     }
 
     /// This task runs when the USB1 interrupt activates.

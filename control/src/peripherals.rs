@@ -49,6 +49,8 @@ pub type RadioCE = Output<P41>; //Changed from P20
 pub type RadioCSN = Output<P14>; //Changed from P14
 /// The Interrupt for the Radio
 pub type RadioInterrupt = Input<P9>; //Changed from P15
+// The Interrupt for power switch
+pub type PowerSwitch = Input<P40>;
 /// The Radio
 pub type RFRadio = rtic_nrf24l01::Radio<RadioCE, RadioCSN, RadioSPI, Infallible, LpspiError>;
 /// The Delay used by the FPGA
