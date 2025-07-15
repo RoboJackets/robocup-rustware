@@ -39,11 +39,7 @@ mod app {
     use hal::timer::Blocking;
     use teensy4_bsp::hal;
 
-    use rtic_nrf24l01::Radio;
-
     use rtic_monotonics::systick::*;
-
-    use ncomm_utils::packing::Packable;
 
     use shared_bus;
 
@@ -53,20 +49,10 @@ mod app {
     use ssd1306::{prelude::*, I2CDisplayInterface, Ssd1306};
     use teensy4_pins::t41::{P18, P19};
 
-    use robojackets_robocup_control::robot::{TEAM, TEAM_NUM};
+    use robojackets_robocup_rtp::ControlMessageBuilder;
     use robojackets_robocup_rtp::{
-        control_message::Mode,
-        imu_test_message::{ImuTestMessage, IMU_MESSAGE_SIZE},
-        kicker_program_message::{KickerProgramMessage, KICKER_PROGRAM_MESSAGE},
-        kicker_testing::{KickerTestingMessage, KICKER_TESTING_SIZE},
-        radio_benchmarks::{
-            RadioReceiveBenchmarkMessage, RadioSendBenchmarkMessage, RADIO_RECEIVE_BENCHMARK_SIZE,
-            RADIO_SEND_BENCHMARK_SIZE,
-        },
         ControlMessage, RobotStatusMessage, RobotStatusMessageBuilder, CONTROL_MESSAGE_SIZE,
-        ROBOT_STATUS_SIZE,
     };
-    use robojackets_robocup_rtp::{ControlMessageBuilder, BASE_STATION_ADDRESSES};
 
     use motion::MotionControl;
 
@@ -78,12 +64,10 @@ mod app {
         Delay2, Display, DribblerUart, Gpio1, Imu, ImuInitError, KickerCSn, KickerProg,
         KickerProgramError, KickerReset, KickerServicingError, MotorFourUart, MotorOneUart,
         MotorThreeUart, MotorTwoUart, PitDelay, RFRadio, RadioInitError, RadioInterrupt, State,
-        BASE_AMPLIFICATION_LEVEL, CHANNEL, GPT_1_DIVIDER, GPT_CLOCK_SOURCE, GPT_DIVIDER,
-        GPT_FREQUENCY, RADIO_ADDRESS, ROBOT_ID,
+        GPT_1_DIVIDER, GPT_CLOCK_SOURCE, GPT_DIVIDER, GPT_FREQUENCY, ROBOT_ID,
     };
 
-    use kicker_controller::{KickTrigger, KickType, Kicker, KickerCommand};
-    use kicker_programmer::KickerProgrammer;
+    use kicker_controller::Kicker;
 
     use rtic_sync::{
         channel::{Receiver, Sender},
@@ -95,13 +79,6 @@ mod app {
 
     /// The amount of time (in ms) between each motion control delay
     const MOTION_CONTROL_DELAY_MS: u32 = 200_000;
-    /// The amount of time (in ms) between servicing the kicker
-    const KICKER_SERVICE_DELAY_MS: u32 = 50;
-    /// The number of motion control updates between servicing the kicker
-    const KICKER_SERVICE_DELAY_TICKS: u32 = KICKER_SERVICE_DELAY_MS / MOTION_CONTROL_DELAY_MS;
-    /// The amount of time the robot should continue moving without receiving a
-    /// new message from the base station before it stops moving
-    const DIE_TIME_US: u32 = 500_000;
 
     /// Helper method to disable radio interrupts and prepare to
     /// send messages of `message_size` over the radio
@@ -171,7 +148,6 @@ mod app {
         // Peripherals
         pit0: Pit<0>,
         gpt: Gpt<1>,
-        radio_spi: RadioSPI,
         blocking_delay: Delay2,
         rx_int: RadioInterrupt,
         gpio1: Gpio1,
@@ -182,7 +158,6 @@ mod app {
 
         // Drivers
         imu: Imu,
-        radio: RFRadio,
 
         // Motion Control
         robot_status: RobotStatusMessage,
@@ -363,9 +338,6 @@ mod app {
             spi.set_clock_hz(LPSPI_FREQUENCY, 5_000_000u32);
             spi.set_mode(MODE_0);
         });
-        let radio_cs = gpio1.output(pins.p14);
-        let ce = gpio1.output(pins.p41);
-        let radio = Radio::new(ce, radio_cs);
         let rx_int = gpio2.input(pins.p9);
         gpio2.set_interrupt(&rx_int, None);
 
@@ -392,7 +364,6 @@ mod app {
             Shared {
                 pit0,
                 gpt: gpt1,
-                radio_spi,
                 blocking_delay: delay2,
                 rx_int,
                 gpio1,
@@ -400,7 +371,6 @@ mod app {
                 control_message: Some(ControlMessageBuilder::new().body_y(1.0).build()),
                 counter: 0,
                 elapsed_time: 0,
-                radio,
                 imu,
                 pit_delay,
                 kicker_programmer: None,

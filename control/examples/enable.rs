@@ -18,21 +18,10 @@ mod app {
     use super::*;
     use core::mem::MaybeUninit;
 
-    use imxrt_hal::{lpuart, timer::Blocking};
     use rtic_monotonics::systick::*;
-    use rtic_sync::{
-        channel::{Receiver, Sender},
-        make_channel,
-    };
     use teensy4_bsp::board;
 
-    use robojackets_robocup_control::{
-        motors::{motor_interrupt, send_command},
-        peripherals::*,
-        GPT_CLOCK_SOURCE, GPT_DIVIDER, GPT_FREQUENCY,
-    };
-
-    use embedded_hal::blocking::delay::DelayMs;
+    use robojackets_robocup_control::peripherals::*;
 
     const HEAP_SIZE: usize = 4096;
     static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
