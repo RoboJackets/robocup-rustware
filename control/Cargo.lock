@@ -53,7 +53,7 @@ version = "0.1.0"
 dependencies = [
  "embedded-hal 0.2.7",
  "imxrt-hal",
- "teensy4-bsp",
+ "teensy4-bsp 0.4.8",
 ]
 
 [[package]]
@@ -76,9 +76,9 @@ checksum = "bef38d45163c2f1dde094a7dfd33ccf595c92905c8f8f4fdc18d06fb1037718a"
 
 [[package]]
 name = "bitflags"
-version = "2.9.0"
+version = "2.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5c8214115b7bf84099f1309324e63141d4c5d7cc26862f97a0a857dbefe165bd"
+checksum = "1b8e56985ec62d17e9c1001dc89c88ecd7dc08e47eba5ec7c29c7b5eeecde967"
 
 [[package]]
 name = "byte-slice-cast"
@@ -99,12 +99,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 
 [[package]]
+name = "common"
+version = "0.1.0"
+dependencies = [
+ "defmt 0.3.100",
+ "ncomm-utils",
+]
+
+[[package]]
 name = "controller"
 version = "0.1.0"
 dependencies = [
  "embedded-hal 0.2.7",
  "nalgebra 0.32.6",
- "teensy4-bsp",
+ "teensy4-bsp 0.4.8",
 ]
 
 [[package]]
@@ -148,9 +156,18 @@ checksum = "790eea4361631c5e7d22598ecd5723ff611904e3344ce8720784c93e3d83d40b"
 
 [[package]]
 name = "defmt"
-version = "0.3.10"
+version = "0.3.100"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "86f6162c53f659f65d00619fe31f14556a6e9f8752ccc4a41bd177ffcf3d6130"
+checksum = "f0963443817029b2024136fc4dd07a5107eb8f977eaf18fcd1fdeb11306b64ad"
+dependencies = [
+ "defmt 1.0.1",
+]
+
+[[package]]
+name = "defmt"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "548d977b6da32fa1d1fda2876453da1e7df63ad0304c8b3dae4dbe7b96f39b78"
 dependencies = [
  "bitflags 1.3.2",
  "defmt-macros",
@@ -158,22 +175,22 @@ dependencies = [
 
 [[package]]
 name = "defmt-macros"
-version = "0.4.0"
+version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9d135dd939bad62d7490b0002602d35b358dce5fd9233a709d3c1ef467d4bde6"
+checksum = "3d4fc12a85bcf441cfe44344c4b72d58493178ce635338a3f3b78943aceb258e"
 dependencies = [
  "defmt-parser",
  "proc-macro-error2",
  "proc-macro2",
  "quote",
- "syn 2.0.99",
+ "syn 2.0.101",
 ]
 
 [[package]]
 name = "defmt-parser"
-version = "0.4.1"
+version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3983b127f13995e68c1e29071e5d115cd96f215ccb5e6812e3728cd6f92653b3"
+checksum = "10d60334b3b2e7c9d91ef8150abfb6fa4c1c39ebbcf4a81c2e346aad939fee3e"
 dependencies = [
  "thiserror",
 ]
@@ -255,6 +272,33 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "361a90feb7004eca4019fb28352a9465666b24f840f5c3cddf0ff13920590b89"
 
 [[package]]
+name = "embedded-hal-async"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0c4c685bbef7fe13c3c6dd4da26841ed3980ef33e841cddfa15ce8a8fb3f1884"
+dependencies = [
+ "embedded-hal 1.0.0",
+]
+
+[[package]]
+name = "embedded-hal-bus"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0d3980bf28e8577db59fe2bdb3df868a419469d2cecb363644eea2b6f7797669"
+dependencies = [
+ "critical-section",
+ "embedded-hal 1.0.0",
+ "embedded-hal-async",
+ "portable-atomic",
+]
+
+[[package]]
+name = "embedded-io"
+version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "edd0f118536f44f5ccd48bcb8b111bdc3de888b58c74639dfb034a357d0f206d"
+
+[[package]]
 name = "equivalent"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -280,7 +324,7 @@ name = "fpga-rs"
 version = "0.1.0"
 dependencies = [
  "embedded-hal 0.2.7",
- "teensy4-bsp",
+ "teensy4-bsp 0.4.8",
 ]
 
 [[package]]
@@ -331,16 +375,35 @@ dependencies = [
 ]
 
 [[package]]
-name = "hashbrown"
-version = "0.15.2"
+name = "hash32"
+version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bf151400ff0baff5465007dd2f3e717f3fe502074ca563069ce3a6629d07b289"
+checksum = "47d60b12902ba28e2730cd37e95b8c9223af2808df9e902d4df49588d1470606"
+dependencies = [
+ "byteorder",
+]
+
+[[package]]
+name = "hashbrown"
+version = "0.15.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "84b26c544d002229e640969970a2e74021aadf6e2f96372b9c58eff97de08eb3"
+
+[[package]]
+name = "heapless"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0bfb9eb618601c89945a70e254898da93b13be0388091d42117462b265bb3fad"
+dependencies = [
+ "hash32",
+ "stable_deref_trait",
+]
 
 [[package]]
 name = "icm42605-driver"
 version = "0.1.0"
 dependencies = [
- "bitflags 2.9.0",
+ "bitflags 2.9.1",
  "embedded-hal 0.2.7",
  "log",
 ]
@@ -393,7 +456,8 @@ checksum = "2f9711a9eaeb920ab0f7df6b1692251394ddea5e4af88cc4762d51259321749e"
 dependencies = [
  "bbqueue",
  "critical-section",
- "defmt",
+ "defmt 0.3.100",
+ "imxrt-hal",
  "imxrt-usbd",
  "log",
  "usb-device",
@@ -434,9 +498,9 @@ dependencies = [
 
 [[package]]
 name = "indexmap"
-version = "2.7.1"
+version = "2.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8c9c992b02b5b4c94ea26e32fe5bccb7aa7d9f390ab5c1221ff895bc7ea8b652"
+checksum = "cea70ddb795996207ad57735b50c5982d8844f38ba9ee5f1aedcfb708a2aa11e"
 dependencies = [
  "equivalent",
  "hashbrown",
@@ -447,7 +511,7 @@ name = "io_expander_rs"
 version = "0.1.0"
 dependencies = [
  "embedded-hal 0.2.7",
- "teensy4-bsp",
+ "teensy4-bsp 0.4.8",
 ]
 
 [[package]]
@@ -468,9 +532,9 @@ dependencies = [
 
 [[package]]
 name = "libm"
-version = "0.2.11"
+version = "0.2.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8355be11b20d696c8f18f6cc018c4e372165b1fa8126cef092399c9951984ffa"
+checksum = "f9fbbcab51052fe104eb5e5d351cf728d30a5be1fe14d9be8a3b097481fb97de"
 
 [[package]]
 name = "linked_list_allocator"
@@ -480,9 +544,9 @@ checksum = "9afa463f5405ee81cdb9cc2baf37e08ec7e4c8209442b5d72c04cfb2cd6e6286"
 
 [[package]]
 name = "log"
-version = "0.4.26"
+version = "0.4.27"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "30bde2b3dc3671ae49d8e2e9f044c7c005836e7a023ee57cffa25ab82764bb9e"
+checksum = "13dc2df351e3202783a1fe0d44375f7295ffb4049267b0f3018346dc122a1d94"
 
 [[package]]
 name = "micromath"
@@ -536,7 +600,7 @@ checksum = "254a5372af8fc138e36684761d3c0cdb758a4410e938babcff1c860ce14ddbfc"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.99",
+ "syn 2.0.101",
 ]
 
 [[package]]
@@ -641,23 +705,23 @@ dependencies = [
  "proc-macro-error-attr2",
  "proc-macro2",
  "quote",
- "syn 2.0.99",
+ "syn 2.0.101",
 ]
 
 [[package]]
 name = "proc-macro2"
-version = "1.0.94"
+version = "1.0.95"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a31971752e70b8b2686d7e46ec17fb38dad4051d94024c88df49b667caea9c84"
+checksum = "02b3e5e68a3a1a02aad3ec490a98007cbc13c37cbe84a3cd7b8e406d76e7f778"
 dependencies = [
  "unicode-ident",
 ]
 
 [[package]]
 name = "quote"
-version = "1.0.39"
+version = "1.0.40"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c1f1914ce909e1658d9907913b4b91947430c7d9be598b15a1912935b8c04801"
+checksum = "1885c039570dc00dcb4ff087a89e185fd56bae234ddc7f056a945bf36467248d"
 dependencies = [
  "proc-macro2",
 ]
@@ -673,18 +737,22 @@ name = "robojackets-robocup-control"
 version = "0.2.0"
 dependencies = [
  "battery_sense_rs",
+ "common",
  "controller",
  "cortex-m",
- "defmt",
+ "defmt 0.3.100",
+ "display-interface",
  "embedded-alloc",
  "embedded-graphics",
  "embedded-hal 0.2.7",
+ "embedded-io",
  "fixed-queue",
  "fpga-rs",
  "graphics",
  "icm42605-driver",
  "imxrt-hal",
  "imxrt-iomuxc",
+ "imxrt-log",
  "io_expander_rs",
  "kicker-controller",
  "kicker-programmer",
@@ -692,17 +760,21 @@ dependencies = [
  "log",
  "motion",
  "nalgebra 0.33.2",
+ "nb 1.1.0",
  "ncomm-utils",
  "robojackets-robocup-rtp",
  "rotary_switch_rs",
  "rtic",
  "rtic-monotonics",
  "rtic-nrf24l01",
+ "rtic-sync",
  "shared-bus",
  "ssd1306",
- "teensy4-bsp",
+ "teensy4-bsp 0.5.1",
  "teensy4-panic",
- "teensy4-pins",
+ "teensy4-pins 0.3.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "usb-device",
+ "usbd-serial",
 ]
 
 [[package]]
@@ -721,7 +793,7 @@ version = "0.1.0"
 dependencies = [
  "embedded-hal 0.2.7",
  "io_expander_rs",
- "teensy4-bsp",
+ "teensy4-bsp 0.4.8",
 ]
 
 [[package]]
@@ -763,7 +835,7 @@ dependencies = [
  "proc-macro-error2",
  "proc-macro2",
  "quote",
- "syn 2.0.99",
+ "syn 2.0.101",
 ]
 
 [[package]]
@@ -785,8 +857,23 @@ name = "rtic-nrf24l01"
 version = "0.2.0"
 source = "git+https://github.com/N8BWert/rtic-nrf24l01.git#c1bff671aef54f510569771cf45935d300a25e5b"
 dependencies = [
- "defmt",
+ "defmt 0.3.100",
  "embedded-hal 0.2.7",
+]
+
+[[package]]
+name = "rtic-sync"
+version = "1.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d0c3648d8ab27216a940ccfc1939479bfd14010fbae9f5b7706a5b3d30ef561f"
+dependencies = [
+ "critical-section",
+ "embedded-hal 1.0.0",
+ "embedded-hal-async",
+ "embedded-hal-bus",
+ "heapless",
+ "portable-atomic",
+ "rtic-common",
 ]
 
 [[package]]
@@ -874,6 +961,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "stable_deref_trait"
+version = "1.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a8f112729512f8e442d81f95a8a7ddf2b7c6b8a1a6f509a95864142b30cab2d3"
+
+[[package]]
 name = "syn"
 version = "1.0.109"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -886,9 +979,9 @@ dependencies = [
 
 [[package]]
 name = "syn"
-version = "2.0.99"
+version = "2.0.101"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e02e925281e18ffd9d640e234264753c43edc62d64b2d4cf898f1bc5e75f3fc2"
+checksum = "8ce2b7fc941b3a24138a0a7cf8e858bfc6a992e7978a068a5c760deb0ed43caf"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -897,17 +990,30 @@ dependencies = [
 
 [[package]]
 name = "teensy4-bsp"
-version = "0.4.5"
+version = "0.4.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f17a337aa204c141efcfa0e30e9949705dcb78e146292a1ee7ad652c8681022a"
+checksum = "6872d87e635c3b76210866500573a9aae2d2a6c27fe9dae700b6f3754bb53f00"
 dependencies = [
  "cortex-m",
  "imxrt-hal",
  "imxrt-log",
  "imxrt-ral",
  "imxrt-rt",
- "teensy4-fcb",
- "teensy4-pins",
+ "teensy4-fcb 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "teensy4-pins 0.3.2 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "teensy4-bsp"
+version = "0.5.1"
+source = "git+https://github.com/mciantyre/teensy4-rs#a1c2dd8a6722dc325d40ca2325cd3b84acdd5919"
+dependencies = [
+ "cortex-m",
+ "imxrt-hal",
+ "imxrt-ral",
+ "imxrt-rt",
+ "teensy4-fcb 0.4.0 (git+https://github.com/mciantyre/teensy4-rs)",
+ "teensy4-pins 0.3.2 (git+https://github.com/mciantyre/teensy4-rs)",
 ]
 
 [[package]]
@@ -915,6 +1021,14 @@ name = "teensy4-fcb"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8007b6d680b853afd7aa5a4b2be509efac0b5063698a87f274206955afbf1d0f"
+dependencies = [
+ "imxrt-boot-gen",
+]
+
+[[package]]
+name = "teensy4-fcb"
+version = "0.4.0"
+source = "git+https://github.com/mciantyre/teensy4-rs#a1c2dd8a6722dc325d40ca2325cd3b84acdd5919"
 dependencies = [
  "imxrt-boot-gen",
 ]
@@ -938,6 +1052,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "teensy4-pins"
+version = "0.3.2"
+source = "git+https://github.com/mciantyre/teensy4-rs#a1c2dd8a6722dc325d40ca2325cd3b84acdd5919"
+dependencies = [
+ "imxrt-iomuxc",
+]
+
+[[package]]
 name = "thiserror"
 version = "2.0.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -954,7 +1076,7 @@ checksum = "7f7cf42b4507d8ea322120659672cf1b9dbb93f8f2d4ecfd6e51350ff5b17a1d"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.99",
+ "syn 2.0.101",
 ]
 
 [[package]]

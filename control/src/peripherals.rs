@@ -8,7 +8,9 @@ use core::convert::Infallible;
 
 use teensy4_pins::t41::*;
 
-use teensy4_bsp::board::{self, Lpi2c1, Lpi2c3, PERCLK_FREQUENCY};
+use teensy4_bsp::board::{
+    self, Lpi2c1, Lpi2c3, Lpuart1, Lpuart4, Lpuart6, Lpuart7, Lpuart8, PERCLK_FREQUENCY,
+};
 use teensy4_bsp::hal::{
     adc::AnalogInput,
     gpio::{Input, Output, Port},
@@ -71,6 +73,30 @@ pub type KickerReset = Output<P37>; //Changed from P6
 pub type KickerCSn = Output<P38>; //Changed from P5
 /// The Kicker Programmer
 pub type KickerProg = KickerProgrammer<KickerCSn, KickerReset>;
+/// The enable 3v3 pin for the motor_board
+pub type MotorEn = Output<P23>;
+/// The Motor killn pin
+pub type Killn = Output<P36>;
+/// The uart interface connected to the first motor
+pub type MotorOneUart = Lpuart6;
+/// The prog pin connected to the first motor
+pub type MotorOneProg = Output<P2>;
+/// The uart interface connected to the second motor
+pub type MotorTwoUart = Lpuart4;
+/// The prog pin connected to the second motor
+pub type MotorTwoProg = Output<P6>;
+/// The uart interface connected to the third motor
+pub type MotorThreeUart = Lpuart1;
+/// The prog pin connected to the third motor
+pub type MotorThreeProg = Output<P31>;
+/// The uart interface connected to the fourth motor
+pub type MotorFourUart = Lpuart7;
+/// The prog pin connected to the fourth motor
+pub type MotorFourProg = Output<P30>;
+/// The uart interface connnected to the dribbler motor
+pub type DribblerUart = Lpuart8;
+/// The prog pin connected to the dribbler
+pub type DribblerProg = Output<P22>;
 /// The display
 pub type Display = Ssd1306<
     I2CInterface<
@@ -79,10 +105,8 @@ pub type Display = Ssd1306<
     DisplaySize128x64,
     BufferedGraphicsMode<DisplaySize128x64>,
 >;
-
 // Adc Port used by BatterySense
 pub type AdcP = AnalogInput<P41, 1>;
-
 /// One of two ADCs defined under Teensy 4.1 docs
 pub type Adc1 = Adc<1>;
 // Alias of BatterySense

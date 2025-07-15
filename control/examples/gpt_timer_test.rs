@@ -41,6 +41,7 @@ mod app {
         delay: Delay2,
         pit: Chained01,
         gpt1: Gpt<1>,
+        poller: imxrt_log::Poller,
     }
 
     #[shared]
@@ -66,7 +67,7 @@ mod app {
         chained.enable();
 
         // Setup Logging
-        bsp::LoggingFrontend::default_log().register_usb(usb);
+        let poller = imxrt_log::log::usbd(usb, imxrt_log::Interrupts::Enabled).unwrap();
 
         // Initialize Systick Async Delay
         let systick_token = rtic_monotonics::create_systick_token!();
@@ -90,6 +91,7 @@ mod app {
                 pit: chained,
                 delay: delay2,
                 gpt1,
+                poller,
             },
         )
     }
@@ -113,5 +115,12 @@ mod app {
 
         log::info!("Elapsed PIT: {}", start_pit - end_pit);
         log::info!("Elapsed GPT: {}", end_gpt - start_gpt);
+    }
+
+    /// This task runs when the USB1 interrupt activates.
+    /// Simply poll the logger to control the logging process.
+    #[task(binds = USB_OTG1, local = [poller])]
+    fn usb_interrupt(cx: usb_interrupt::Context) {
+        cx.local.poller.poll();
     }
 }

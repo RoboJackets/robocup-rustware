@@ -1,0 +1,35 @@
+[package]
+name = "motor-controller"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
+cortex-m-rt = "0.7"
+defmt = "0.3.10"
+defmt-rtt = "0.4.1"
+nb = { version = "1.1.0", features = ["defmt-0-3"] }
+panic-probe = "0.3.2"
+portable-atomic = { version = "1.10.0", features = ["unsafe-assume-single-core"] }
+rtic = { version = "2.1.2", features = ["thumbv6-backend"] }
+rtic-monotonics = { version = "2.0.3", features = ["defmt", "stm32f031c6", "stm32_tim2"] }
+embedded-hal = { version = "0.2.7", features = ["unproven"]}
+ncomm-utils = { version = "1.1.4", default-features = false, features = ["nostd"] }
+motion-control = { path = "./modules/motion-control" }
+
+common = { path = "../common" }
+
+[dependencies.stm32f0xx-hal]
+# I'm working on getting the qei changes merged into the upstream stm32f0xx-hal.  Until then, I'm going
+# to use my working fork
+git = "https://github.com/n8bwert/stm32f0xx-hal.git"
+# git = "https://github.com/stm32-rs/stm32f0xx-hal.git"
+# path = "../../stm32f0xx-hal"
+features = ["stm32f031"]
+
+[features]
+default = []
+motor-1 = []
+motor-2 = []
+motor-3 = []
+motor-4 = []

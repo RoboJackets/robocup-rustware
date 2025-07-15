@@ -54,6 +54,7 @@ mod app {
     #[local]
     struct Local {
         total_packets: usize,
+        poller: imxrt_log::Poller,
     }
 
     #[shared]
@@ -84,7 +85,7 @@ mod app {
             ..
         } = board::t41(ctx.device);
 
-        bsp::LoggingFrontend::default_log().register_usb(usb);
+        let poller = imxrt_log::log::usbd(usb, imxrt_log::Interrupts::Enabled).unwrap();
 
         let systick_token = rtic_monotonics::create_systick_token!();
         Systick::start(ctx.core.SYST, 600_000_000, systick_token);
@@ -125,7 +126,7 @@ mod app {
         let initial_radio_status = RobotStatusMessageBuilder::new().build();
 
         let rx_int = gpio2.input(pins.p9);
-        gpio2.set_interrupt(&rx_int, None);
+        gpio2.set_interrupt(&rx_int, Some(Trigger::FallingEdge));
 
         blink::spawn().ok();
 
@@ -139,7 +140,10 @@ mod app {
                 gpio1,
                 radio,
             },
-            Local { total_packets: 0 },
+            Local {
+                total_packets: 0,
+                poller,
+            },
         )
     }
 
@@ -157,7 +161,7 @@ mod app {
     }
 
     #[task(
-        binds = GPIO1_COMBINED_16_31,
+        binds = GPIO2_COMBINED_0_15,
         shared = [rx_int, gpio1],
         priority = 1
     )]
@@ -208,5 +212,12 @@ mod app {
         });
 
         log::info!("Received {} Total Packets", *ctx.local.total_packets);
+    }
+
+    /// This task runs when the USB1 interrupt activates.
+    /// Simply poll the logger to control the logging process.
+    #[task(binds = USB_OTG1, local = [poller])]
+    fn usb_interrupt(cx: usb_interrupt::Context) {
+        cx.local.poller.poll();
     }
 }

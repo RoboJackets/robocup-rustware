@@ -64,6 +64,7 @@ mod app {
     #[local]
     struct Local {
         error: Result<(), RadioError>,
+        poller: imxrt_log::Poller,
     }
 
     #[shared]
@@ -90,7 +91,7 @@ mod app {
             ..
         } = board::t41(ctx.device);
 
-        bsp::LoggingFrontend::default_log().register_usb(usb);
+        let poller = imxrt_log::log::usbd(usb, imxrt_log::Interrupts::Enabled).unwrap();
 
         let systick_token = rtic_monotonics::create_systick_token!();
         Systick::start(ctx.core.SYST, 600_000_000, systick_token);
@@ -142,7 +143,10 @@ mod app {
                 robot_status: initial_robot_status,
                 radio,
             },
-            Local { error: success },
+            Local {
+                error: success,
+                poller,
+            },
         )
     }
 
@@ -237,5 +241,12 @@ mod app {
         });
 
         // panic!("Error Occurred: {:?}", error);
+    }
+
+    /// This task runs when the USB1 interrupt activates.
+    /// Simply poll the logger to control the logging process.
+    #[task(binds = USB_OTG1, local = [poller])]
+    fn usb_interrupt(cx: usb_interrupt::Context) {
+        cx.local.poller.poll();
     }
 }

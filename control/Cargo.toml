@@ -18,10 +18,18 @@ embedded-alloc = "0.5.0"
 defmt = "0.3.5"
 libm = "0.2.8"
 fixed-queue = "0.5.1"
+rtic-sync = "1.3.2"
+common = { path = "../common" }
+nb = "1.1.0"
+embedded-io = "0.6.1"
 battery_sense_rs = { version = "0.1.0", path = "drivers/battery_sense" }
 embedded-graphics = "0.7.0"
 graphics = {path = "drivers/graphics"}
 ssd1306 = "0.7.1"
+usb-device = "0.2.9"
+usbd-serial = "0.1.1"
+imxrt-log = "0.1.2"
+display-interface = "=0.4.1"
 
 [dependencies.rtic-nrf24l01]
 git = "https://github.com/N8BWert/rtic-nrf24l01.git"
@@ -60,13 +68,12 @@ features = ["cortex-m-systick"]
 
 # teensy4-bsp is the board support package for teensy 4.0/4.1
 [dependencies.teensy4-bsp]
-version = "=0.4.5"
+# version = "0.5.1"
+git = "https://github.com/mciantyre/teensy4-rs"
 features = [
     # Use the BSP's runtime. This lets you write your
     # `main()` function.
     "rt",
-    # Remove me if you don't want logging.
-    "usb-logging",
 ]
 
 [dependencies.imxrt-hal]
@@ -118,7 +125,7 @@ members = [
 opt-level = 0
 
 [features]
-default = []
+default = ["all-motors"]
 # The robot id features are more for testing than anything else
 robot-0 = []
 robot-1 = []
@@ -135,3 +142,10 @@ right = []
 left = []
 clockwise = []
 counterclockwise = []
+motor-1 = []
+motor-2 = []
+motor-3 = []
+motor-4 = []
+dribbler = []
+all-motors = ["motor-1", "motor-2", "motor-3", "motor-4", "dribbler"]
+

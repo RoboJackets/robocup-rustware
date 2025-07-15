@@ -42,6 +42,7 @@ mod app {
         delay: Delay2,
         ce: Option<RadioCE>,
         csn: Option<RadioCSN>,
+        poller: imxrt_log::Poller,
     }
 
     #[shared]
@@ -64,7 +65,7 @@ mod app {
         } = board::t41(ctx.device);
 
         // usb logging setup
-        bsp::LoggingFrontend::default_log().register_usb(usb);
+        let poller = imxrt_log::log::usbd(usb, imxrt_log::Interrupts::Enabled).unwrap();
 
         // systic setup
         let systick_token = rtic_monotonics::create_systick_token!();
@@ -105,6 +106,7 @@ mod app {
                 spi: shared_spi,
                 ce: Some(ce),
                 csn: Some(radio_cs),
+                poller,
             },
         )
     }
@@ -182,6 +184,13 @@ mod app {
                 radio.get_registers(ctx.local.spi, ctx.local.delay)
             );
         }
+    }
+
+    /// This task runs when the USB1 interrupt activates.
+    /// Simply poll the logger to control the logging process.
+    #[task(binds = USB_OTG1, local = [poller])]
+    fn usb_interrupt(cx: usb_interrupt::Context) {
+        cx.local.poller.poll();
     }
 }
 

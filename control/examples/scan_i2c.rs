@@ -38,6 +38,7 @@ mod app {
     #[local]
     struct Local {
         i2c: Lpi2c1,
+        poller: imxrt_log::Poller,
     }
 
     #[init]
@@ -53,7 +54,7 @@ mod app {
             pins, usb, lpi2c1, ..
         } = board::t41(ctx.device);
 
-        bsp::LoggingFrontend::default_log().register_usb(usb);
+        let poller = imxrt_log::log::usbd(usb, imxrt_log::Interrupts::Enabled).unwrap();
 
         let systick_token = rtic_monotonics::create_systick_token!();
         Systick::start(ctx.core.SYST, 600_000_000, systick_token);
@@ -62,7 +63,7 @@ mod app {
 
         scan_i2c_devices::spawn().ok();
 
-        (Shared {}, Local { i2c })
+        (Shared {}, Local { i2c, poller })
     }
 
     #[idle]
@@ -85,5 +86,12 @@ mod app {
         log::info!("Who Am I: {:#01x}", buffer[0]);
 
         log::info!("Completed I2C Devices Scan");
+    }
+
+    /// This task runs when the USB1 interrupt activates.
+    /// Simply poll the logger to control the logging process.
+    #[task(binds = USB_OTG1, local = [poller])]
+    fn usb_interrupt(cx: usb_interrupt::Context) {
+        cx.local.poller.poll();
     }
 }

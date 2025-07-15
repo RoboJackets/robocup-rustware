@@ -22,6 +22,7 @@ use teensy4_panic as _;
 #[rtic::app(device = teensy4_bsp, peripherals = true, dispatchers = [GPT2])]
 mod app {
     use bsp::board::{self, PERCLK_FREQUENCY};
+    use embedded_hal::blocking::delay::DelayMs;
     use imxrt_hal::timer::Blocking;
     use teensy4_bsp as bsp;
 
@@ -29,12 +30,16 @@ mod app {
 
     use kicker_controller::{KickTrigger, KickType, Kicker, KickerCommand};
 
-    use robojackets_robocup_control::{spi::FakeSpi, KickerCSn, KickerReset};
+    use robojackets_robocup_control::{
+        spi::FakeSpi, KickerCSn, KickerReset, Killn, MotorEn, GPT_CLOCK_SOURCE, GPT_DIVIDER,
+        GPT_FREQUENCY,
+    };
 
     #[local]
     struct Local {
         kicker_controller: Kicker<KickerCSn, KickerReset>,
         fake_spi: FakeSpi,
+        poller: imxrt_log::Poller,
     }
 
     #[shared]
@@ -45,16 +50,31 @@ mod app {
         let board::Resources {
             pins,
             usb,
+            mut gpt2,
             mut gpio1,
             mut gpio2,
             pit: (_pit0, _pit1, _pit2, pit3),
             ..
         } = board::t41(ctx.device);
 
-        bsp::LoggingFrontend::default_log().register_usb(usb);
+        let poller = imxrt_log::log::usbd(usb, imxrt_log::Interrupts::Enabled).unwrap();
 
         let systick_token = rtic_monotonics::create_systick_token!();
         Systick::start(ctx.core.SYST, 600_000_000, systick_token);
+
+        // Gpt 2 as blocking delay
+        gpt2.disable();
+        gpt2.set_divider(GPT_DIVIDER);
+        gpt2.set_clock_source(GPT_CLOCK_SOURCE);
+        let mut delay2 = Blocking::<_, GPT_FREQUENCY>::from_gpt(gpt2);
+
+        let motor_en: MotorEn = gpio1.output(pins.p23);
+        motor_en.set();
+        let kill_n: Killn = gpio2.output(pins.p36);
+        kill_n.set();
+
+        delay2.delay_ms(500u32);
+
         let kicker = Kicker::new(gpio1.output(pins.p38), gpio2.output(pins.p37));
 
         let pit_delay = Blocking::<_, PERCLK_FREQUENCY>::from_pit(pit3);
@@ -72,6 +92,7 @@ mod app {
             Local {
                 kicker_controller: kicker,
                 fake_spi,
+                poller,
             },
         )
     }
@@ -140,5 +161,12 @@ mod app {
             log::info!("Status: {:?}", kicker_status);
             Systick::delay(100u32.millis()).await;
         }
+    }
+
+    /// This task runs when the USB1 interrupt activates.
+    /// Simply poll the logger to control the logging process.
+    #[task(binds = USB_OTG1, local = [poller])]
+    fn usb_interrupt(cx: usb_interrupt::Context) {
+        cx.local.poller.poll();
     }
 }
