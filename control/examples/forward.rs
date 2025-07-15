@@ -35,8 +35,8 @@ mod app {
 
     use hal::gpio::Trigger;
     use hal::lpspi::Pins;
-    use hal::timer::Blocking;
     use hal::lpuart;
+    use hal::timer::Blocking;
     use teensy4_bsp::hal;
 
     use rtic_nrf24l01::Radio;
@@ -54,7 +54,6 @@ mod app {
     use teensy4_pins::t41::{P18, P19};
 
     use robojackets_robocup_control::robot::{TEAM, TEAM_NUM};
-    use robojackets_robocup_rtp::{ControlMessageBuilder, BASE_STATION_ADDRESSES};
     use robojackets_robocup_rtp::{
         control_message::Mode,
         imu_test_message::{ImuTestMessage, IMU_MESSAGE_SIZE},
@@ -67,17 +66,20 @@ mod app {
         ControlMessage, RobotStatusMessage, RobotStatusMessageBuilder, CONTROL_MESSAGE_SIZE,
         ROBOT_STATUS_SIZE,
     };
+    use robojackets_robocup_rtp::{ControlMessageBuilder, BASE_STATION_ADDRESSES};
 
     use motion::MotionControl;
 
     use icm42605_driver::IMU;
 
     use robojackets_robocup_control::{
-        spi::FakeSpi, Delay2, Display, Gpio1, Imu, ImuInitError, KickerCSn, KickerProg,
-        KickerProgramError, KickerReset, KickerServicingError, PitDelay, RFRadio, RadioInitError,
-        RadioInterrupt, State, BASE_AMPLIFICATION_LEVEL, CHANNEL, GPT_1_DIVIDER, GPT_CLOCK_SOURCE,
-        GPT_DIVIDER, GPT_FREQUENCY, RADIO_ADDRESS, ROBOT_ID, MotorOneUart, MotorTwoUart,
-        MotorThreeUart, MotorFourUart, DribblerUart, motors::{motor_interrupt, send_command}
+        motors::{motor_interrupt, send_command},
+        spi::FakeSpi,
+        Delay2, Display, DribblerUart, Gpio1, Imu, ImuInitError, KickerCSn, KickerProg,
+        KickerProgramError, KickerReset, KickerServicingError, MotorFourUart, MotorOneUart,
+        MotorThreeUart, MotorTwoUart, PitDelay, RFRadio, RadioInitError, RadioInterrupt, State,
+        BASE_AMPLIFICATION_LEVEL, CHANNEL, GPT_1_DIVIDER, GPT_CLOCK_SOURCE, GPT_DIVIDER,
+        GPT_FREQUENCY, RADIO_ADDRESS, ROBOT_ID,
     };
 
     use kicker_controller::{KickTrigger, KickType, Kicker, KickerCommand};
@@ -298,12 +300,7 @@ mod app {
         motor_two_uart.clear_status(lpuart::Status::W1C);
         let (motor_two_tx, motor_two_rx) = make_channel!([u8; 4], 3);
 
-        let mut motor_three_uart = board::lpuart(
-            lpuart1,
-            pins.p24,
-            pins.p25,
-            9600,
-        );
+        let mut motor_three_uart = board::lpuart(lpuart1, pins.p24, pins.p25, 9600);
         motor_three_uart.disable(|uart| {
             uart.disable_fifo(lpuart::Direction::Tx);
             uart.disable_fifo(lpuart::Direction::Rx);
@@ -312,12 +309,7 @@ mod app {
         motor_three_uart.clear_status(lpuart::Status::W1C);
         let (motor_three_tx, motor_three_rx) = make_channel!([u8; 4], 3);
 
-        let mut motor_four_uart = board::lpuart(
-            lpuart7,
-            pins.p29,
-            pins.p28,
-            9600,
-        );
+        let mut motor_four_uart = board::lpuart(lpuart7, pins.p29, pins.p28, 9600);
         motor_four_uart.disable(|uart| {
             uart.disable_fifo(lpuart::Direction::Tx);
             uart.disable_fifo(lpuart::Direction::Rx);
@@ -694,7 +686,8 @@ mod app {
             ctx.shared.motor_two_velocity,
             ctx.shared.motor_three_velocity,
             ctx.shared.motor_four_velocity,
-        ).lock(|one, two, three, four| Vector4::new(*one, *two, *three, *four));
+        )
+            .lock(|one, two, three, four| Vector4::new(*one, *two, *three, *four));
 
         let wheel_velocities = ctx.local.motion_controller.control_update(
             Vector3::new(-accel_y, accel_x, gyro),
@@ -703,15 +696,25 @@ mod app {
             delta,
         );
 
-        ctx.shared.dribbler_uart
-            .lock(|uart| send_command(if dribbler_enabled { 6200 } else { 0 }, ctx.local.dribbler_tx, uart, 0));
-        ctx.shared.motor_one_uart
+        ctx.shared.dribbler_uart.lock(|uart| {
+            send_command(
+                if dribbler_enabled { 6200 } else { 0 },
+                ctx.local.dribbler_tx,
+                uart,
+                0,
+            )
+        });
+        ctx.shared
+            .motor_one_uart
             .lock(|uart| send_command(wheel_velocities[0], ctx.local.motor_one_tx, uart, 0));
-        ctx.shared.motor_two_uart
+        ctx.shared
+            .motor_two_uart
             .lock(|uart| send_command(wheel_velocities[1], ctx.local.motor_two_tx, uart, 0));
-        ctx.shared.motor_three_uart
+        ctx.shared
+            .motor_three_uart
             .lock(|uart| send_command(wheel_velocities[2], ctx.local.motor_three_tx, uart, 0));
-        ctx.shared.motor_four_uart
+        ctx.shared
+            .motor_four_uart
             .lock(|uart| send_command(wheel_velocities[3], ctx.local.motor_four_tx, uart, 0));
 
         // #[cfg(feature = "debug")]

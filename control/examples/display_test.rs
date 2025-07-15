@@ -31,7 +31,9 @@ mod app {
 
     use core::mem::MaybeUninit;
 
-    use robojackets_robocup_control::{GPT_DIVIDER, GPT_CLOCK_SOURCE, GPT_FREQUENCY, Killn, MotorEn};
+    use robojackets_robocup_control::{
+        Killn, MotorEn, GPT_CLOCK_SOURCE, GPT_DIVIDER, GPT_FREQUENCY,
+    };
 
     const HEAP_SIZE: usize = 1024 * 8;
     static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];

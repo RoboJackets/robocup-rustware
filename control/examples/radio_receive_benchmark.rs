@@ -140,7 +140,10 @@ mod app {
                 gpio1,
                 radio,
             },
-            Local { total_packets: 0, poller },
+            Local {
+                total_packets: 0,
+                poller,
+            },
         )
     }
 

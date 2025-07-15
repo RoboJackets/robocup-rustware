@@ -159,7 +159,8 @@ impl MotionControl {
         }
 
         // Return the New Wheel Velocities
-        (self.bot_to_wheel * target_velocity + self.wheel_correction).map(|v| MotionControl::meters_to_ticks(v))
+        (self.bot_to_wheel * target_velocity + self.wheel_correction)
+            .map(|v| MotionControl::meters_to_ticks(v))
     }
 
     /// Calculate the Current State Estimate Based on IMU Measurements
@@ -200,7 +201,10 @@ impl MotionControl {
     #[inline(always)]
     /// Convert meters / second to ticks / second
     pub fn meters_to_ticks(value: f32) -> i32 {
-        unsafe { (value / (4.0 * core::f32::consts::PI * WHEEL_RADIUS) * TICKS_PER_ROTATION).to_int_unchecked::<i32>() }
+        unsafe {
+            (value / (4.0 * core::f32::consts::PI * WHEEL_RADIUS) * TICKS_PER_ROTATION)
+                .to_int_unchecked::<i32>()
+        }
     }
 }
 
@@ -266,17 +270,26 @@ mod tests {
 
     #[test]
     fn test_ticks_to_meters() {
-        assert_eq!(MotionControl::ticks_to_meters(6200), 1.0 * core::f32::consts::PI * 2.0 * 2.0 * WHEEL_RADIUS);
+        assert_eq!(
+            MotionControl::ticks_to_meters(6200),
+            1.0 * core::f32::consts::PI * 2.0 * 2.0 * WHEEL_RADIUS
+        );
     }
 
     #[test]
     fn test_meters_to_ticks() {
-        assert_eq!(MotionControl::meters_to_ticks(core::f32::consts::PI * 2.0 * 2.0 * WHEEL_RADIUS), 6200);
+        assert_eq!(
+            MotionControl::meters_to_ticks(core::f32::consts::PI * 2.0 * 2.0 * WHEEL_RADIUS),
+            6200
+        );
     }
 
     #[test]
     fn test_conversions() {
-        assert_eq!(MotionControl::meters_to_ticks(MotionControl::ticks_to_meters(6200)), 6200);
+        assert_eq!(
+            MotionControl::meters_to_ticks(MotionControl::ticks_to_meters(6200)),
+            6200
+        );
     }
 
     #[test]

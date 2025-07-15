@@ -8,7 +8,9 @@ use core::convert::Infallible;
 
 use teensy4_pins::t41::*;
 
-use teensy4_bsp::board::{self, Lpi2c3, Lpi2c1, Lpuart1, Lpuart4, Lpuart6, Lpuart7, Lpuart8, PERCLK_FREQUENCY};
+use teensy4_bsp::board::{
+    self, Lpi2c1, Lpi2c3, Lpuart1, Lpuart4, Lpuart6, Lpuart7, Lpuart8, PERCLK_FREQUENCY,
+};
 use teensy4_bsp::hal::{
     adc::AnalogInput,
     gpio::{Input, Output, Port},

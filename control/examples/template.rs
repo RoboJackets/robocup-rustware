@@ -1,6 +1,6 @@
 //!
 //! Example program template
-//! 
+//!
 
 #![no_std]
 #![no_main]
@@ -22,14 +22,10 @@ mod app {
     static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
 
     #[local]
-    struct Local {
-
-    }
+    struct Local {}
 
     #[shared]
-    struct Shared {
-
-    }
+    struct Shared {}
 
     #[init]
     fn init(ctx: init::Context) -> (Shared, Local) {
@@ -38,18 +34,9 @@ mod app {
             HEAP.init(HEAP_MEM.as_ptr() as usize, HEAP_SIZE);
         }
 
-        let teensy4_bsp::board::Resources {
-            ..
-        } = teensy4_bsp::board::t41(ctx.device);
+        let teensy4_bsp::board::Resources { .. } = teensy4_bsp::board::t41(ctx.device);
 
-        (
-            Shared {
-
-            },
-            Local {
-
-            }
-        )
+        (Shared {}, Local {})
     }
 
     #[idle]

@@ -28,6 +28,7 @@ mod app {
     #[local]
     struct Local {
         battery_sensor: BatterySenseT,
+        poller: imxrt_log::Poller,
     }
 
     #[shared]
@@ -41,7 +42,7 @@ mod app {
             pins, usb, adc1, ..
         } = board::t41(cx.device);
 
-        bsp::LoggingFrontend::default_log().register_usb(usb);
+        let poller = imxrt_log::log::usbd(usb, imxrt_log::Interrupts::Enabled).unwrap();
 
         let systick_token = rtic_monotonics::create_systick_token!();
         Systick::start(cx.core.SYST, 36_000_000, systick_token);
@@ -56,7 +57,10 @@ mod app {
             Shared {
                 battery_capacity: current_capacity,
             },
-            Local { battery_sensor },
+            Local {
+                battery_sensor,
+                poller,
+            },
         )
     }
 
@@ -89,5 +93,12 @@ mod app {
     async fn battery_dly(_cx: battery_dly::Context) {
         Systick::delay(25000000.micros()).await;
         get_battery_capacity::spawn().ok();
+    }
+
+    /// This task runs when the USB1 interrupt activates.
+    /// Simply poll the logger to control the logging process.
+    #[task(binds = USB_OTG1, local = [poller])]
+    fn usb_interrupt(cx: usb_interrupt::Context) {
+        cx.local.poller.poll();
     }
 }

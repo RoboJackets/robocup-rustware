@@ -115,6 +115,7 @@ mod app {
     struct Local {
         motion_controller: MotionControl,
         last_encoders: Vector4<f32>,
+        poller: imxrt_log::Poller,
     }
 
     #[shared]
@@ -171,7 +172,7 @@ mod app {
         } = board::t41(ctx.device);
 
         // Setup USB Logging
-        bsp::LoggingFrontend::default_log().register_usb(usb);
+        let poller = imxrt_log::log::usbd(usb, imxrt_log::Interrupts::Enabled).unwrap();
 
         // Initialize Systick Async Delay
         let systick_token = rtic_monotonics::create_systick_token!();
@@ -251,6 +252,7 @@ mod app {
             Local {
                 motion_controller: MotionControl::new(),
                 last_encoders: Vector4::zeros(),
+                poller,
             },
         )
     }
@@ -1097,5 +1099,12 @@ mod app {
                     enable_radio_interrupts(rx_int, gpio1, radio, shared_spi, delay);
                 },
             );
+    }
+
+    /// This task runs when the USB1 interrupt activates.
+    /// Simply poll the logger to control the logging process.
+    #[task(binds = USB_OTG1, local = [poller])]
+    fn usb_interrupt(cx: usb_interrupt::Context) {
+        cx.local.poller.poll();
     }
 }

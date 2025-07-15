@@ -39,7 +39,9 @@ mod app {
 
     use rtic_monotonics::systick::*;
 
-    use robojackets_robocup_control::{Imu, PitDelay, GPT_DIVIDER, GPT_CLOCK_SOURCE, GPT_FREQUENCY, Killn, MotorEn};
+    use robojackets_robocup_control::{
+        Imu, Killn, MotorEn, PitDelay, GPT_CLOCK_SOURCE, GPT_DIVIDER, GPT_FREQUENCY,
+    };
 
     use teensy4_pins::t41::{P18, P19};
 
@@ -115,9 +117,7 @@ mod app {
                 pit_delay: delay,
                 imu_init_error: None,
             },
-            Local {
-                poller,
-            },
+            Local { poller },
         )
     }
 
@@ -159,13 +159,11 @@ mod app {
         priority = 1,
     )]
     async fn imu_test(mut ctx: imu_test::Context) {
-        let (
-            gyro_z, accel_x, accel_y
-        ) = ctx.shared.imu.lock(|imu| {
+        let (gyro_z, accel_x, accel_y) = ctx.shared.imu.lock(|imu| {
             (
                 imu.gyro_z().unwrap_or_default(),
                 imu.accel_x().unwrap_or_default(),
-                imu.accel_y().unwrap_or_default()
+                imu.accel_y().unwrap_or_default(),
             )
         });
 

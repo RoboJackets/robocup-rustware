@@ -27,7 +27,9 @@ mod app {
     use teensy4_bsp::board;
 
     use robojackets_robocup_control::{
-        motors::{motor_interrupt, send_command}, peripherals::*, GPT_CLOCK_SOURCE, GPT_DIVIDER, GPT_FREQUENCY
+        motors::{motor_interrupt, send_command},
+        peripherals::*,
+        GPT_CLOCK_SOURCE, GPT_DIVIDER, GPT_FREQUENCY,
     };
 
     use embedded_hal::blocking::delay::DelayMs;
@@ -42,9 +44,7 @@ mod app {
     }
 
     #[shared]
-    struct Shared {
-
-    }
+    struct Shared {}
 
     #[init]
     fn init(ctx: init::Context) -> (Shared, Local) {
@@ -71,14 +71,7 @@ mod app {
         let kill_n: Killn = gpio2.output(pins.p36);
         kill_n.set();
 
-        (
-            Shared {
-                
-            },
-            Local {
-                poller,
-            },
-        )
+        (Shared {}, Local { poller })
     }
 
     #[idle]

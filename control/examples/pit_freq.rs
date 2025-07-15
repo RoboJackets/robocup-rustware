@@ -26,6 +26,7 @@ mod app {
     struct Local {
         pit: Pit<0>,
         output: Output<P0>,
+        poller: imxrt_log::Poller,
     }
 
     #[shared]
@@ -41,7 +42,7 @@ mod app {
             ..
         } = board::t41(ctx.device);
 
-        bsp::LoggingFrontend::default_log().register_usb(usb);
+        let poller = imxrt_log::log::usbd(usb, imxrt_log::Interrupts::Enabled).unwrap();
 
         let output = gpio1.output(pins.p0);
 
@@ -50,7 +51,14 @@ mod app {
         pit0.set_interrupt_enable(true);
         pit0.enable();
 
-        (Shared {}, Local { pit: pit0, output })
+        (
+            Shared {},
+            Local {
+                pit: pit0,
+                output,
+                poller,
+            },
+        )
     }
 
     #[idle]
@@ -80,5 +88,12 @@ mod app {
         ctx.local.pit.set_load_timer_value(PIT_VALUE);
         ctx.local.pit.set_interrupt_enable(true);
         ctx.local.pit.enable();
+    }
+
+    /// This task runs when the USB1 interrupt activates.
+    /// Simply poll the logger to control the logging process.
+    #[task(binds = USB_OTG1, local = [poller])]
+    fn usb_interrupt(cx: usb_interrupt::Context) {
+        cx.local.poller.poll();
     }
 }

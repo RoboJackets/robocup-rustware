@@ -34,21 +34,21 @@ mod app {
 
     use bsp::hal;
     use hal::lpi2c::ControllerStatus;
-    use hal::timer::Blocking;
     use hal::lpspi::Pins;
+    use hal::timer::Blocking;
 
     use robojackets_robocup_control::{
-        Display, Imu, Killn, MotorEn, PitDelay, RFRadio, RadioInitError, RadioSPI,
-        GPT_CLOCK_SOURCE, GPT_DIVIDER, GPT_FREQUENCY, Delay2, BASE_AMPLIFICATION_LEVEL, CHANNEL,
-        RADIO_ADDRESS, robot::TEAM_NUM
+        robot::TEAM_NUM, Delay2, Display, Imu, Killn, MotorEn, PitDelay, RFRadio, RadioInitError,
+        RadioSPI, BASE_AMPLIFICATION_LEVEL, CHANNEL, GPT_CLOCK_SOURCE, GPT_DIVIDER, GPT_FREQUENCY,
+        RADIO_ADDRESS,
     };
 
-    use robojackets_robocup_rtp::{CONTROL_MESSAGE_SIZE, BASE_STATION_ADDRESSES};
+    use robojackets_robocup_rtp::{BASE_STATION_ADDRESSES, CONTROL_MESSAGE_SIZE};
 
     use teensy4_pins::t41::{P18, P19};
 
-    use graphics::main_window::MainWindow;
     use display_interface::DisplayError;
+    use graphics::main_window::MainWindow;
 
     use embedded_graphics::prelude::*;
     use ssd1306::{prelude::*, I2CDisplayInterface, Ssd1306};
@@ -167,7 +167,7 @@ mod app {
                 poller,
                 main_window,
                 latency_placeholder,
-            }
+            },
         )
     }
 
@@ -188,11 +188,11 @@ mod app {
             ctx.shared.pit_delay,
             ctx.shared.imu_init_error,
         )
-        .lock(|imu, pit_delay, imu_init_error| {
-            if let Err(err) = imu.init(pit_delay) {
-                *imu_init_error = Some(err);
-            }
-        });
+            .lock(|imu, pit_delay, imu_init_error| {
+                if let Err(err) = imu.init(pit_delay) {
+                    *imu_init_error = Some(err);
+                }
+            });
 
         init_display::spawn().ok();
     }
@@ -202,10 +202,7 @@ mod app {
         priority = 1
     )]
     async fn init_display(ctx: init_display::Context) {
-        (
-            ctx.shared.display,
-            ctx.shared.display_init_error
-        ).lock(|display, error| {
+        (ctx.shared.display, ctx.shared.display_init_error).lock(|display, error| {
             if let Err(err) = display.init() {
                 *error = Some(err);
             }
@@ -249,12 +246,12 @@ mod app {
         if (
             ctx.shared.imu_init_error,
             ctx.shared.display_init_error,
-            ctx.shared.radio_init_error
-        ).lock(|imu_error, display_error, radio_error| {
-            imu_error.is_some() ||
-                display_error.is_some() ||
-                radio_error.is_some()
-        }) {
+            ctx.shared.radio_init_error,
+        )
+            .lock(|imu_error, display_error, radio_error| {
+                imu_error.is_some() || display_error.is_some() || radio_error.is_some()
+            })
+        {
             error_report::spawn().ok();
         } else {
             imu_test::spawn().ok();
@@ -266,21 +263,14 @@ mod app {
         priority = 1
     )]
     async fn error_report(ctx: error_report::Context) {
-        let (
-            imu_init_error,
-            display_init_error,
-            radio_init_error
-        ) = (
+        let (imu_init_error, display_init_error, radio_init_error) = (
             ctx.shared.imu_init_error,
             ctx.shared.display_init_error,
-            ctx.shared.radio_init_error
-        ).lock(|imu_error, display_error, radio_error| {
-            (
-                imu_error.take(),
-                display_error.take(),
-                radio_error.take()
-            )
-        });
+            ctx.shared.radio_init_error,
+        )
+            .lock(|imu_error, display_error, radio_error| {
+                (imu_error.take(), display_error.take(), radio_error.take())
+            });
 
         for _ in 0..3 {
             log::error!("IMU ERROR: {:?}", imu_init_error);
@@ -302,11 +292,16 @@ mod app {
             (
                 imu.gyro_z().unwrap_or_default(),
                 imu.accel_x().unwrap_or_default(),
-                imu.accel_y().unwrap_or_default()
+                imu.accel_y().unwrap_or_default(),
             )
         });
 
-        log::info!("ACCEL X: {}, ACCEL Y: {}, GYRO Z: {}", accel_x, accel_y, gyro_z);
+        log::info!(
+            "ACCEL X: {}, ACCEL Y: {}, GYRO Z: {}",
+            accel_x,
+            accel_y,
+            gyro_z
+        );
 
         short_delay::spawn().ok();
     }

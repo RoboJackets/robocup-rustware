@@ -27,7 +27,9 @@ mod app {
     use teensy4_bsp::board;
 
     use robojackets_robocup_control::{
-        motors::{motor_interrupt, send_command}, peripherals::*, GPT_CLOCK_SOURCE, GPT_DIVIDER, GPT_FREQUENCY
+        motors::{motor_interrupt, send_command},
+        peripherals::*,
+        GPT_CLOCK_SOURCE, GPT_DIVIDER, GPT_FREQUENCY,
     };
 
     use embedded_hal::blocking::delay::DelayMs;
@@ -141,12 +143,7 @@ mod app {
         motor_two_uart.clear_status(lpuart::Status::W1C);
         let (motor_two_tx, motor_two_rx) = make_channel!([u8; 4], 3);
 
-        let mut motor_three_uart = board::lpuart(
-            lpuart1,
-            pins.p24,
-            pins.p25,
-            115200,
-        );
+        let mut motor_three_uart = board::lpuart(lpuart1, pins.p24, pins.p25, 115200);
         motor_three_uart.disable(|uart| {
             uart.disable_fifo(lpuart::Direction::Tx);
             uart.disable_fifo(lpuart::Direction::Rx);
@@ -155,12 +152,7 @@ mod app {
         motor_three_uart.clear_status(lpuart::Status::W1C);
         let (motor_three_tx, motor_three_rx) = make_channel!([u8; 4], 3);
 
-        let mut motor_four_uart = board::lpuart(
-            lpuart7,
-            pins.p29,
-            pins.p28,
-            115200,
-        );
+        let mut motor_four_uart = board::lpuart(lpuart7, pins.p29, pins.p28, 115200);
         motor_four_uart.disable(|uart| {
             uart.disable_fifo(lpuart::Direction::Tx);
             uart.disable_fifo(lpuart::Direction::Rx);
@@ -266,7 +258,7 @@ mod app {
     )]
     async fn send_motor_move_commands(mut ctx: send_motor_move_commands::Context) {
         let mut iteration = 0u32;
-        let mut setpoint = 6200; 
+        let mut setpoint = 6200;
         let mut downcounting = true;
         loop {
             if iteration % 5 == 0 {
@@ -274,18 +266,36 @@ mod app {
                     6200 => {
                         downcounting = true;
                         3100
-                    },
-                    3100 => if downcounting { 0 } else { 6200 },
-                    0 => if downcounting { -3100 } else { 3100 },
-                    -3100 => if downcounting { -6200 } else { 0 },
+                    }
+                    3100 => {
+                        if downcounting {
+                            0
+                        } else {
+                            6200
+                        }
+                    }
+                    0 => {
+                        if downcounting {
+                            -3100
+                        } else {
+                            3100
+                        }
+                    }
+                    -3100 => {
+                        if downcounting {
+                            -6200
+                        } else {
+                            0
+                        }
+                    }
                     -6200 => {
                         downcounting = false;
                         -3100
-                    },
+                    }
                     _ => {
                         downcounting = true;
                         3100
-                    },
+                    }
                 }
             }
             ctx.shared

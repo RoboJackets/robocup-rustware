@@ -22,15 +22,18 @@ use teensy4_panic as _;
 #[rtic::app(device = teensy4_bsp, peripherals = true, dispatchers = [GPT2])]
 mod app {
     use bsp::board::{self, PERCLK_FREQUENCY};
+    use embedded_hal::blocking::delay::DelayMs;
     use imxrt_hal::timer::Blocking;
     use teensy4_bsp as bsp;
-    use embedded_hal::blocking::delay::DelayMs;
 
     use rtic_monotonics::systick::*;
 
     use kicker_controller::{KickTrigger, KickType, Kicker, KickerCommand};
 
-    use robojackets_robocup_control::{spi::FakeSpi, KickerCSn, KickerReset, MotorEn, Killn, GPT_DIVIDER, GPT_CLOCK_SOURCE, GPT_FREQUENCY};
+    use robojackets_robocup_control::{
+        spi::FakeSpi, KickerCSn, KickerReset, Killn, MotorEn, GPT_CLOCK_SOURCE, GPT_DIVIDER,
+        GPT_FREQUENCY,
+    };
 
     #[local]
     struct Local {

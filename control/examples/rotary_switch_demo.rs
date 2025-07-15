@@ -57,6 +57,7 @@ mod app {
     struct Local {
         //rotary: Rotary,
         //io_expander: Expander
+        poller: imxrt_log::Poller,
     }
 
     // struct that holds shared resources which can be accessed via the context
@@ -80,7 +81,7 @@ mod app {
         } = board::t40(cx.device);
 
         // usb logging setup
-        bsp::LoggingFrontend::default_log().register_usb(usb);
+        let poller = imxrt_log::log::usbd(usb, imxrt_log::Interrupts::Enabled).unwrap();
 
         // systick monotonic setup
         let systick_token = rtic_monotonics::create_systick_token!();
@@ -138,6 +139,7 @@ mod app {
             Local {
                 //rotary,
                 //io_expander
+                poller,
             },
         )
     }
@@ -230,5 +232,12 @@ mod app {
     async fn rotary_dly(_cx: rotary_dly::Context) {
         Systick::delay(25000000.micros()).await;
         //going::spawn().ok();
+    }
+
+    /// This task runs when the USB1 interrupt activates.
+    /// Simply poll the logger to control the logging process.
+    #[task(binds = USB_OTG1, local = [poller])]
+    fn usb_interrupt(cx: usb_interrupt::Context) {
+        cx.local.poller.poll();
     }
 }
