@@ -20,7 +20,7 @@ mod app {
 
     use imxrt_hal::gpio::Trigger;
     use rtic_monotonics::systick::*;
-    use teensy4_bsp::board;
+    use teensy4_bsp::board::{self, Led};
 
     use robojackets_robocup_control::peripherals::*;
 
@@ -39,6 +39,8 @@ mod app {
     struct Shared {
         kill_n: Killn,
         power_switch: PowerSwitch,
+        led: Led,
+        gpio1: Gpio1,
     }
 
     #[init]
@@ -67,15 +69,20 @@ mod app {
         kill_n.set();
 
         let power_switch = gpio1.input(pins.p40);
-        gpio1.set_interrupt(&power_switch, Some(Trigger::EitherEdge));
 
         //defult to suppling power on first boot
         let power_state = true;
+
+        let led = gpio2.output(pins.p13);
+
+        startup::spawn().ok();
 
         (
             Shared {
                 kill_n,
                 power_switch,
+                led,
+                gpio1,
             },
             Local {
                 poller,
@@ -91,19 +98,21 @@ mod app {
         }
     }
 
-    ///This task kills the motor board when the power switch is pressed.
-    #[task(binds = GPIO1_COMBINED_0_15, shared = [power_switch, kill_n],local=[power_state])]
-    fn power_switch_interrupt(mut ctx: power_switch_interrupt::Context) {
-        //Teensy 4 runs at 600MHz, so this is ~1ms delay
-        cortex_m::asm::delay(6_000_00);
+    #[task(priority = 1,shared=[gpio1,power_switch])]
+    async fn startup(ctx: startup::Context) {
+        Systick::delay(2000.millis()).await;
+        (ctx.shared.gpio1, ctx.shared.power_switch).lock(|gpio1, power_switch| {
+            gpio1.set_interrupt(&power_switch, Some(Trigger::Low));
+        });
+    }
 
-        (ctx.shared.kill_n).lock(|kill_n| {
-            if *ctx.local.power_state {
-                kill_n.clear();
-            } else {
-                kill_n.set();
-            }
-            *ctx.local.power_state = !*ctx.local.power_state;
+    ///This task kills the motor board when the power switch is pressed.
+    #[task(binds = GPIO1_COMBINED_16_31, shared = [power_switch, kill_n,led],local=[power_state])]
+    fn power_switch_interrupt(ctx: power_switch_interrupt::Context) {
+        log::info!("Killing Motor Board!");
+        (ctx.shared.kill_n, ctx.shared.led).lock(|kill_n, led| {
+            kill_n.clear();
+            led.set();
         });
     }
 
