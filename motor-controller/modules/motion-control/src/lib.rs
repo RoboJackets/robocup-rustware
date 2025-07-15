@@ -6,10 +6,10 @@
 
 #![no_std]
 
-use core::f32::MIN;
+use defmt::Format;
 
-/// The minimum velocity the robot will move at
-const MIN_VELOCITY: i32 = 0;
+use core::cmp::min;
+
 /// LERP up or down to the desired frequency moving my LERP_VELOCITY each tick
 /// until we are within the LERP_CUTOFF of the setpoint
 const LERP_VELOCITY: i32 = 1;
@@ -143,10 +143,6 @@ impl MotionController {
     }
 }
 
-use core::cmp::{max, min};
-
-use defmt::Format;
-
 #[derive(Clone, Copy, PartialEq, Format, Debug)]
 /// PID Controller implementation.
 pub struct Pid {
@@ -276,6 +272,8 @@ impl Pid {
                 if d > 0.0 { d = d_limit } else { d = -d_limit };
             }
         }
+
+        defmt::info!("P: {}; I: {}; D: {}", p, self.integral_term, d);
 
         let intended_velocity = p + self.integral_term + d;
         let output: i32 = unsafe { (intended_velocity * VELOCITY_TO_PWM_MAPPING).to_int_unchecked() };

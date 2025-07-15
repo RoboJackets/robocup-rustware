@@ -13,15 +13,13 @@ use defmt_rtt as _;
 #[rtic::app(device = stm32f0xx_hal::pac, peripherals = true, dispatchers = [TSC])]
 mod app {
     use motor_controller::{
-        HS1, HS2, HS3, MOTION_CONTROL_FREQUENCY, OvercurrentComparator, Phase, SerialInterface,
-        VELOCITY_TO_PWM_MAPING, hall_to_phases,
+        HS1, HS2, HS3, MOTION_CONTROL_FREQUENCY, OvercurrentComparator, Phase, hall_to_phases,
     };
     use stm32f0xx_hal::{
         gpio::{Output, PushPull, gpiob::PB1},
         pac::{TIM1, TIM2},
         prelude::*,
         pwm::{self, C1, C1N, C2, C2N, C3, C3N, ComplementaryPwm, PwmChannels},
-        serial::{self, Serial},
         timers::{Event, Timer},
     };
 
@@ -53,7 +51,7 @@ mod app {
         ch3n: PwmChannels<TIM1, C3N>,
 
         // Overcurrent Comparator
-        overcurrent_comparator: OvercurrentComparator,
+        _overcurrent_comparator: OvercurrentComparator,
         // Timer 2 (used to schedule the motion control updates)
         tim2: Timer<TIM2>,
 
@@ -148,7 +146,7 @@ mod app {
                 ch2n,
                 ch3,
                 ch3n,
-                overcurrent_comparator,
+                _overcurrent_comparator: overcurrent_comparator,
                 tim2,
                 led,
             },
@@ -191,7 +189,7 @@ mod app {
         priority = 1
     )]
     /// Update the speed of the motors.  The timer calls an interrupt every 1ms
-    fn motion_control_update(mut ctx: motion_control_update::Context) {
+    fn motion_control_update(ctx: motion_control_update::Context) {
         if *ctx.local.iteration % 500 == 0 {
             if *ctx.local.last_led {
                 ctx.local.led.set_low().unwrap();

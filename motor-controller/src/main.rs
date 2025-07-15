@@ -58,7 +58,7 @@ mod app {
         ch3n: PwmChannels<TIM1, C3N>,
 
         // Overcurrent Comparator
-        overcurrent_comparator: OvercurrentComparator,
+        _overcurrent_comparator: OvercurrentComparator,
         // Timer 2 (used to schedule the motion control updates)
         tim2: Timer<TIM2>,
 
@@ -179,7 +179,7 @@ mod app {
                 ch2n,
                 ch3,
                 ch3n,
-                overcurrent_comparator,
+                _overcurrent_comparator: overcurrent_comparator,
                 tim2,
                 led,
                 usart,
