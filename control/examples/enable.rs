@@ -93,14 +93,15 @@ mod app {
 
     ///This task kills the motor board when the power switch is pressed.
     #[task(binds = GPIO1_COMBINED_0_15, shared = [power_switch, kill_n],local=[power_state])]
-    fn power_switch_interrupt(ctx: power_switch_interrupt::Context) {
+    fn power_switch_interrupt(mut ctx: power_switch_interrupt::Context) {
         //TODO: Add delay-based debouncing if it turns out to be a major issue
-        (ctx.shared.power_switch, ctx.shared.kill_n).lock(|kill_n| {
+        (ctx.shared.kill_n).lock(|kill_n| {
             if *ctx.local.power_state {
                 kill_n.clear();
             } else {
                 kill_n.set();
             }
+            *ctx.local.power_state = !*ctx.local.power_state;
         });
     }
 
