@@ -18,21 +18,11 @@ mod app {
     use super::*;
     use core::mem::MaybeUninit;
 
-    use imxrt_hal::{lpuart, timer::Blocking};
+    use imxrt_hal::gpio::Trigger;
     use rtic_monotonics::systick::*;
-    use rtic_sync::{
-        channel::{Receiver, Sender},
-        make_channel,
-    };
-    use teensy4_bsp::board;
+    use teensy4_bsp::board::{self, Led};
 
-    use robojackets_robocup_control::{
-        motors::{motor_interrupt, send_command},
-        peripherals::*,
-        GPT_CLOCK_SOURCE, GPT_DIVIDER, GPT_FREQUENCY,
-    };
-
-    use embedded_hal::blocking::delay::DelayMs;
+    use robojackets_robocup_control::peripherals::*;
 
     const HEAP_SIZE: usize = 4096;
     static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
@@ -41,10 +31,17 @@ mod app {
     struct Local {
         // The logging poller
         poller: imxrt_log::Poller,
+        // True if suppling power to the motor board
+        power_state: bool,
     }
 
     #[shared]
-    struct Shared {}
+    struct Shared {
+        kill_n: Killn,
+        power_switch: PowerSwitch,
+        led: Led,
+        gpio1: Gpio1,
+    }
 
     #[init]
     fn init(ctx: init::Context) -> (Shared, Local) {
@@ -71,7 +68,27 @@ mod app {
         let kill_n: Killn = gpio2.output(pins.p36);
         kill_n.set();
 
-        (Shared {}, Local { poller })
+        let power_switch = gpio1.input(pins.p40);
+
+        //defult to suppling power on first boot
+        let power_state = true;
+
+        let led = gpio2.output(pins.p13);
+
+        startup::spawn().ok();
+
+        (
+            Shared {
+                kill_n,
+                power_switch,
+                led,
+                gpio1,
+            },
+            Local {
+                poller,
+                power_state,
+            },
+        )
     }
 
     #[idle]
@@ -79,6 +96,24 @@ mod app {
         loop {
             cortex_m::asm::wfi();
         }
+    }
+
+    #[task(priority = 1,shared=[gpio1,power_switch])]
+    async fn startup(ctx: startup::Context) {
+        Systick::delay(2000.millis()).await;
+        (ctx.shared.gpio1, ctx.shared.power_switch).lock(|gpio1, power_switch| {
+            gpio1.set_interrupt(&power_switch, Some(Trigger::Low));
+        });
+    }
+
+    ///This task kills the motor board when the power switch is pressed.
+    #[task(binds = GPIO1_COMBINED_16_31, shared = [power_switch, kill_n,led],local=[power_state])]
+    fn power_switch_interrupt(ctx: power_switch_interrupt::Context) {
+        log::info!("Killing Motor Board!");
+        (ctx.shared.kill_n, ctx.shared.led).lock(|kill_n, led| {
+            kill_n.clear();
+            led.set();
+        });
     }
 
     /// This task runs when the USB1 interrupt activates.
