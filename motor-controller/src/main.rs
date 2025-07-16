@@ -58,7 +58,7 @@ mod app {
         ch3n: PwmChannels<TIM1, C3N>,
 
         // Overcurrent Comparator
-        _overcurrent_comparator: OvercurrentComparator,
+        overcurrent_comparator: OvercurrentComparator,
         // Timer 2 (used to schedule the motion control updates)
         tim2: Timer<TIM2>,
 
@@ -143,7 +143,7 @@ mod app {
 
         let mut overcurrent_comparator = OvercurrentComparator::new(pa11, pf6, pf7, pb12);
         overcurrent_comparator.stop_gate_drivers(false);
-        overcurrent_comparator.set_threshold(motor_controller::OvercurrentThreshold::T1);
+        overcurrent_comparator.set_threshold(motor_controller::OvercurrentThreshold::T2);
         overcurrent_comparator.set_interrupt(&syscfg, &exti);
         overcurrent_comparator.clear_interrupt(&exti);
 
@@ -161,7 +161,16 @@ mod app {
         usart.listen(serial::Event::Rxne);
         tim2.listen(Event::TimeOut);
 
-        let max_duty = ch1.get_max_duty();
+        let max_duty = ch1.get_max_duty() / 4;
+
+        let mut pid = Pid::new(
+            max_duty,
+            2.5,
+            0.2,
+            0.5,
+            MOTION_CONTROL_FREQUENCY
+        );
+        pid.set_i_limit(5_000.0);
 
         (
             Shared {
@@ -179,11 +188,11 @@ mod app {
                 ch2n,
                 ch3,
                 ch3n,
-                _overcurrent_comparator: overcurrent_comparator,
+                overcurrent_comparator,
                 tim2,
                 led,
                 usart,
-                pid: Pid::new(max_duty, 3.0, 0.45, 0.25, MOTION_CONTROL_FREQUENCY),
+                pid,
             },
         )
     }
@@ -208,6 +217,7 @@ mod app {
             ch3,
             ch3n,
             tim2,
+            overcurrent_comparator,
             last_encoders_value: u16 = 0,
             iteration: u32 = 0,
             pid,
@@ -241,12 +251,20 @@ mod app {
             .current_velocity
             .lock(|velocity| *velocity = ctx.local.pid.current_velocity);
 
-        let phases = hall_to_phases(
-            ctx.local.hs1.is_high().unwrap(),
-            ctx.local.hs2.is_high().unwrap(),
-            ctx.local.hs3.is_high().unwrap(),
-            clockwise,
-        );
+        let phases = if ctx.local.overcurrent_comparator.is_tripped() {
+            [
+                Phase::Zero,
+                Phase::Zero,
+                Phase::Zero
+            ]
+        } else {
+            hall_to_phases(
+                ctx.local.hs1.is_high().unwrap(),
+                ctx.local.hs2.is_high().unwrap(),
+                ctx.local.hs3.is_high().unwrap(),
+                clockwise,
+            )
+        };
 
         match phases[0] {
             Phase::Positive => {

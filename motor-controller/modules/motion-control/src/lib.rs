@@ -273,8 +273,6 @@ impl Pid {
             }
         }
 
-        defmt::info!("P: {}; I: {}; D: {}", p, self.integral_term, d);
-
         let intended_velocity = p + self.integral_term + d;
         let output: i32 = unsafe { (intended_velocity * VELOCITY_TO_PWM_MAPPING).to_int_unchecked() };
 

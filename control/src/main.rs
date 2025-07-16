@@ -101,7 +101,7 @@ mod app {
     const KICKER_SERVICE_DELAY_TICKS: u32 = KICKER_SERVICE_DELAY_US / MOTION_CONTROL_DELAY_US;
     /// The amount of time the robot should continue moving without receiving a
     /// new message from the base station before it stops moving
-    const DIE_TIME_US: u32 = 500_000;
+    const DIE_TIME_US: u32 = 1_000_000;
 
     /// Helper method to disable radio interrupts and prepare to
     /// send messages of `message_size` over the radio
@@ -680,7 +680,10 @@ mod app {
                 let mut read_buffer = [0u8; CONTROL_MESSAGE_SIZE];
                 radio.read(&mut read_buffer, spi, delay);
 
-                let control_message = ControlMessage::unpack(&read_buffer).unwrap();
+                let mut control_message = ControlMessage::unpack(&read_buffer).unwrap();
+                control_message.body_y *= -1;
+                control_message.body_x *= -1;
+                control_message.body_w *= -1;
 
                 *counter = 0;
 
@@ -855,7 +858,7 @@ mod app {
             .lock(|one, two, three, four| Vector4::new(*one, *two, *three, *four));
 
         let wheel_velocities = ctx.local.motion_controller.control_update(
-            Vector3::new(-accel_y, accel_x, gyro),
+            Vector3::new(-accel_y, -accel_x, -gyro),
             last_encoders,
             body_velocities,
             delta,

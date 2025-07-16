@@ -122,7 +122,7 @@ mod app {
 
         let mut overcurrent_comparator = OvercurrentComparator::new(pa11, pf6, pf7, pb12);
         overcurrent_comparator.stop_gate_drivers(false);
-        overcurrent_comparator.set_threshold(motor_controller::OvercurrentThreshold::T1);
+        overcurrent_comparator.set_threshold(motor_controller::OvercurrentThreshold::T2);
         overcurrent_comparator.set_interrupt(&syscfg, &exti);
         overcurrent_comparator.clear_interrupt(&exti);
 
@@ -200,7 +200,7 @@ mod app {
             }
         }
 
-        let (pwm, clockwise) = (ctx.local.ch1.get_max_duty() / 8, false);
+        let (pwm, clockwise) = (ctx.local.ch1.get_max_duty() / 4, false);
 
         let phases = hall_to_phases(
             ctx.local.hs1.is_high().unwrap(),

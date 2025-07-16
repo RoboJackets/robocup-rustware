@@ -26,6 +26,7 @@ mod app {
     use embedded_hal::spi::MODE_0;
 
     use bsp::board::{self, LPSPI_FREQUENCY};
+    use rtic_monotonics::systick::fugit::{Duration, Instant};
     use teensy4_bsp as bsp;
 
     use hal::gpio::Trigger;
@@ -37,14 +38,14 @@ mod app {
 
     use ncomm_utils::packing::Packable;
 
-    use rtic_monotonics::systick::*;
+    use rtic_monotonics::{systick::*, Monotonic};
 
     use robojackets_robocup_rtp::BASE_STATION_ADDRESSES;
     use robojackets_robocup_rtp::{ControlMessage, CONTROL_MESSAGE_SIZE};
     use robojackets_robocup_rtp::{RobotStatusMessage, RobotStatusMessageBuilder};
 
     use robojackets_robocup_control::{
-        Delay2, Gpio1, RFRadio, RadioInterrupt, RadioSPI, CHANNEL, GPT_CLOCK_SOURCE, GPT_DIVIDER,
+        Delay2, Gpio2, RFRadio, RadioInterrupt, RadioSPI, CHANNEL, GPT_CLOCK_SOURCE, GPT_DIVIDER,
         GPT_FREQUENCY, RADIO_ADDRESS,
     };
 
@@ -65,7 +66,7 @@ mod app {
         rx_int: RadioInterrupt,
         robot_status: RobotStatusMessage,
         control_message: Option<ControlMessage>,
-        gpio1: Gpio1,
+        gpio2: Gpio2,
     }
 
     #[init]
@@ -137,7 +138,7 @@ mod app {
                 rx_int,
                 robot_status: initial_radio_status,
                 control_message: None,
-                gpio1,
+                gpio2,
                 radio,
             },
             Local {
@@ -162,16 +163,14 @@ mod app {
 
     #[task(
         binds = GPIO2_COMBINED_0_15,
-        shared = [rx_int, gpio1],
+        shared = [rx_int, gpio2],
         priority = 1
     )]
     fn radio_interrupt(ctx: radio_interrupt::Context) {
-        log::info!("Command Received");
-
-        if (ctx.shared.rx_int, ctx.shared.gpio1).lock(|rx_int, gpio1| {
+        if (ctx.shared.rx_int, ctx.shared.gpio2).lock(|rx_int, gpio2| {
             if rx_int.is_triggered() {
                 rx_int.clear_triggered();
-                gpio1.set_interrupt(rx_int, None);
+                gpio2.set_interrupt(rx_int, None);
                 return true;
             }
             false
@@ -181,11 +180,20 @@ mod app {
     }
 
     #[task(
-        local = [total_packets],
-        shared = [rx_int, gpio1, shared_spi, delay2, control_message, robot_status, radio],
+        local = [
+            total_packets,
+            rx_timestamps: [Instant<u32, 1, 1_000>; 20] = [Instant::<u32, 1, 1_000>::from_ticks(0u32); 20],
+            rx_idx: usize = 0,
+        ],
+        shared = [rx_int, gpio2, shared_spi, delay2, control_message, robot_status, radio],
         priority = 1,
     )]
     async fn receive_command(ctx: receive_command::Context) {
+        log::info!("Command Received");
+        
+        ctx.local.rx_timestamps[*ctx.local.rx_idx] = Systick::now();
+        *ctx.local.rx_idx = (*ctx.local.rx_idx + 1) % ctx.local.rx_timestamps.len();
+
         (
             ctx.shared.shared_spi,
             ctx.shared.delay2,
@@ -197,21 +205,21 @@ mod app {
                 let mut read_buffer = [0u8; CONTROL_MESSAGE_SIZE];
                 radio.read(&mut read_buffer, spi, delay);
 
-                let control_message = ControlMessage::unpack(&read_buffer).unwrap();
+                let _ = ControlMessage::unpack(&read_buffer).unwrap();
 
                 *ctx.local.total_packets += 1;
-
-                log::info!("Control Command Received: {:?}", control_message);
 
                 radio.flush_rx(spi, delay);
             });
 
-        (ctx.shared.rx_int, ctx.shared.gpio1).lock(|rx_int, gpio1| {
+        (ctx.shared.rx_int, ctx.shared.gpio2).lock(|rx_int, gpio2| {
             rx_int.clear_triggered();
-            gpio1.set_interrupt(rx_int, Some(Trigger::FallingEdge));
+            gpio2.set_interrupt(rx_int, Some(Trigger::FallingEdge));
         });
 
-        log::info!("Received {} Total Packets", *ctx.local.total_packets);
+        if *ctx.local.rx_idx == 0 {
+            log::info!("RX Delay: {}ms", calculate_rx_delay(ctx.local.rx_timestamps).to_millis());
+        }
     }
 
     /// This task runs when the USB1 interrupt activates.
@@ -219,5 +227,13 @@ mod app {
     #[task(binds = USB_OTG1, local = [poller])]
     fn usb_interrupt(cx: usb_interrupt::Context) {
         cx.local.poller.poll();
+    }
+
+    fn calculate_rx_delay(instants: &[Instant<u32, 1, 1_000>]) -> Duration<u32, 1, 1_000> {
+        let mut total_duration = Duration::<u32, 1, 1_000>::millis(0);
+        for i in 0..(instants.len() - 1) {
+            total_duration += instants[i+1] - instants[i];
+        }
+        total_duration / ((instants.len() - 1) as u32)
     }
 }
