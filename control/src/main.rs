@@ -31,6 +31,7 @@ mod app {
     use bsp::board::{self, LPSPI_FREQUENCY};
     use nalgebra::{Vector3, Vector4};
     use robojackets_robocup_control::{Gpio1, Gpio2, Killn, MotorEn, PowerSwitch, RadioSPI};
+    use robojackets_robocup_rtp::control_message::{ShootMode, TriggerMode};
     use teensy4_bsp as bsp;
 
     use hal::gpio::Trigger;
@@ -677,13 +678,55 @@ mod app {
         }
     }
 
-    ///This task kills the motor board when the power switch is pressed.
-    #[task(binds = GPIO1_COMBINED_16_31, shared = [power_switch, kill_n])]
-    fn power_switch_interrupt(mut ctx: power_switch_interrupt::Context) {
-        log::info!("Killing Motor Board!");
+    /// This task kills the motor board when the power switch is pressed.
+    #[task(binds = GPIO1_COMBINED_16_31)]
+    fn power_switch_interrupt(_: power_switch_interrupt::Context) {
+        kill_self::spawn().ok();
+    }
+
+    #[task(shared=[power_switch, kill_n,gpio2,rx_int,control_message,kicker_controller,fake_spi],priority=2)]
+    async fn kill_self(mut ctx: kill_self::Context) {
+        // Disable new radio events from coming in by disabling the interrupt
+        (ctx.shared.gpio2, ctx.shared.rx_int).lock(|gpio2, rx_int| {
+            gpio2.set_interrupt(rx_int, None);
+        });
+        log::info!("Radio Disabled!");
+
+        // Set Control Message to stop all movement
+        (ctx.shared.control_message).lock(|message| {
+            *message = None;
+        });
+        log::info!("Freezed Motors!");
+
+        //trigger kicker repeatedly to force discharge
+        (ctx.shared.kicker_controller, ctx.shared.fake_spi).lock(|controller, fake_spi| {
+            match controller.take() {
+                Some(mut kicker) => {
+                    for _ in 0..5 {
+                        let command = KickerCommand {
+                            kick_type: KickType::Kick,
+                            kick_trigger: KickTrigger::Immediate,
+                            kick_strength: 1.0,
+                            charge_allowed: false,
+                        };
+                        kicker.service(command, fake_spi).unwrap();
+
+                        cortex_m::asm::delay(200_000_000); // 333ms
+                    }
+                }
+                None => {
+                    //If we never initialized the kicker, we never told it to charge
+                    //Thus, it's unlikely to have any charge and we can kill immediately
+                    return;
+                }
+            }
+        });
+        log::info!("Discharged Kicker!");
+
         (ctx.shared.kill_n).lock(|kill_n| {
             kill_n.clear();
         });
+        log::info!("Killed Motor Board!");
     }
 
     /// Task that decodes the command received via the radio.  This task is directly
@@ -706,8 +749,10 @@ mod app {
                 radio.read(&mut read_buffer, spi, delay);
 
                 let mut control_message = ControlMessage::unpack(&read_buffer).unwrap();
-                control_message.body_y = unsafe { ((control_message.body_y as f32) * -2.1).to_int_unchecked() };
-                control_message.body_x = unsafe { ((control_message.body_x as f32) * -2.1).to_int_unchecked() };
+                control_message.body_y =
+                    unsafe { ((control_message.body_y as f32) * -2.1).to_int_unchecked() };
+                control_message.body_x =
+                    unsafe { ((control_message.body_x as f32) * -2.1).to_int_unchecked() };
                 control_message.body_w *= -1;
                 // control_message.body_w = unsafe { ((control_message.body_w as f32) * -2.1).to_int_unchecked() };
 
