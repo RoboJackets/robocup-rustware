@@ -710,6 +710,8 @@ mod app {
                             charge_allowed: false,
                         };
                         kicker.service(command, fake_spi).unwrap();
+
+                        cortex_m::asm::delay(200_000_000); // 333ms
                     }
                 }
                 None => {
