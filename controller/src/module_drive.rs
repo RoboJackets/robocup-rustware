@@ -371,17 +371,21 @@ impl DriveMod {
                 Team::Blue
             } else {
                 Team::Yellow
-            })
+            }) 
             .shoot_mode(match self.settings.shoot_mode {
                 0 => ShootMode::Kick,
                 1 => ShootMode::Chip,
                 _ => ShootMode::Kick,
             })
-            .trigger_mode(match self.settings.trigger_mode {
-                0 => TriggerMode::StandDown,
-                1 => TriggerMode::Immediate,
-                2 => TriggerMode::OnBreakBeam,
-                _ => TriggerMode::StandDown,
+            .trigger_mode(if self.state.kicker_state == 1 {
+                match self.settings.trigger_mode {
+                    0 => TriggerMode::StandDown,
+                    1 => TriggerMode::Immediate,
+                    2 => TriggerMode::OnBreakBeam,
+                    _ => TriggerMode::StandDown,
+                }
+            } else {
+                TriggerMode::StandDown
             })
             .body_x(body_x)
             .body_y(body_y)
