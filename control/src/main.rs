@@ -681,9 +681,10 @@ mod app {
                 radio.read(&mut read_buffer, spi, delay);
 
                 let mut control_message = ControlMessage::unpack(&read_buffer).unwrap();
-                control_message.body_y *= -1;
-                control_message.body_x *= -1;
+                control_message.body_y = unsafe { ((control_message.body_y as f32) * -2.1).to_int_unchecked() };
+                control_message.body_x = unsafe { ((control_message.body_x as f32) * -2.1).to_int_unchecked() };
                 control_message.body_w *= -1;
+                // control_message.body_w = unsafe { ((control_message.body_w as f32) * -2.1).to_int_unchecked() };
 
                 *counter = 0;
 
