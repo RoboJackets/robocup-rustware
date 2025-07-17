@@ -702,7 +702,7 @@ mod app {
         (ctx.shared.kicker_controller, ctx.shared.fake_spi).lock(|controller, fake_spi| {
             match controller.take() {
                 Some(mut kicker) => {
-                    for _ in 0..10 {
+                    for _ in 0..5 {
                         let command = KickerCommand {
                             kick_type: KickType::Kick,
                             kick_trigger: KickTrigger::Immediate,
