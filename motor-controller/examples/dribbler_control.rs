@@ -220,7 +220,7 @@ mod app {
         let (pwm, clockwise) = if setpoint == 0.0 {
             (0, true)
         } else {
-            (ctx.local.ch1.get_max_duty() / 8, false)
+            (ctx.local.ch1.get_max_duty() / 4, false)
         };
 
         let phases = hall_to_phases(

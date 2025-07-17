@@ -142,23 +142,70 @@ mod app {
             .unwrap();
         log::info!("Kicker Status: {:?}", kicker_status);
 
-        Systick::delay(100u32.millis()).await;
-
-        log::info!("Powering Down the Kicker");
+        log::info!("Charging the Chipper");
         let kicker_command = KickerCommand {
-            kick_type: KickType::Kick,
+            kick_type: KickType::Chip,
             kick_trigger: KickTrigger::Disabled,
-            kick_strength: 0.0,
-            charge_allowed: false,
+            kick_strength: 20.0,
+            charge_allowed: true,
         };
-
         for _ in 0..20 {
             let kicker_status = ctx
                 .local
                 .kicker_controller
                 .service(kicker_command, ctx.local.fake_spi)
                 .unwrap();
-            log::info!("Status: {:?}", kicker_status);
+            log::info!("Kicker Status: {:?}", kicker_status);
+            Systick::delay(100u32.millis()).await;
+        }
+
+        log::info!("CHIPPING!!!!");
+        let kicker_command = KickerCommand {
+            kick_type: KickType::Chip,
+            kick_trigger: KickTrigger::Immediate,
+            kick_strength: 100.0,
+            charge_allowed: true,
+        };
+        let kicker_status = ctx
+            .local
+            .kicker_controller
+            .service(kicker_command, ctx.local.fake_spi)
+            .unwrap();
+        log::info!("Kicker Status: {:?}", kicker_status);
+
+        Systick::delay(100u32.millis()).await;
+
+        log::info!("Charging the Kicker");
+        let kicker_command = KickerCommand {
+            kick_type: KickType::Kick,
+            kick_trigger: KickTrigger::Disabled,
+            kick_strength: 20.0,
+            charge_allowed: true,
+        };
+        for _ in 0..20 {
+            let kicker_status = ctx
+                .local
+                .kicker_controller
+                .service(kicker_command, ctx.local.fake_spi)
+                .unwrap();
+            log::info!("Kicker Status: {:?}", kicker_status);
+            Systick::delay(100u32.millis()).await;
+        }
+
+        loop {
+            log::info!("Kick on Breakbeam");
+            let kicker_command = KickerCommand {
+                kick_type: KickType::Kick,
+                kick_trigger: KickTrigger::Breakbeam,
+                kick_strength: 20.0,
+                charge_allowed: true,
+            };
+            let kicker_status = ctx
+                .local
+                .kicker_controller
+                .service(kicker_command, ctx.local.fake_spi)
+                .unwrap();
+            log::info!("Kicker Status: {:?}", kicker_status);
             Systick::delay(100u32.millis()).await;
         }
     }
