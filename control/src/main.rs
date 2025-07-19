@@ -923,15 +923,15 @@ mod app {
             *ctx.local.last_time = ctx.shared.gpt.lock(|gpt| gpt.count());
         }
 
-        let (mut body_velocities, dribbler_enabled) =
+        let (mut body_velocities, dribbler_speed) =
             ctx.shared
                 .control_message
                 .lock(|control_message| match control_message {
                     Some(control_message) => (
                         control_message.get_velocity(),
-                        control_message.dribbler_speed != 0,
+                        control_message.dribbler_speed,
                     ),
-                    None => (Vector3::new(0.0, 0.0, 0.0), false),
+                    None => (Vector3::new(0.0, 0.0, 0.0), 0),
                 });
 
         let (gyro, accel_x, accel_y) = ctx.shared.imu.lock(|imu| {
@@ -973,7 +973,7 @@ mod app {
 
         ctx.shared.dribbler_uart.lock(|uart| {
             send_command(
-                if dribbler_enabled { 6200 } else { 0 },
+                dribbler_speed as i32,
                 ctx.local.dribbler_tx,
                 uart,
                 0,
@@ -1060,10 +1060,10 @@ mod app {
             robot_status.clone()
         });
 
-        // Battery is under voltaged so we should die
-        if battery_voltage < MIN_BATTERY_VOLTAGE {
-            kill_self::spawn().ok();
-        }
+        // // Battery is under voltaged so we should die
+        // if battery_voltage < MIN_BATTERY_VOLTAGE {
+        //     kill_self::spawn().ok();
+        // }
 
         // TODO: Display robot status on display
     }

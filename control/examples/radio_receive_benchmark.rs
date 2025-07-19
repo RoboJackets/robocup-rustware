@@ -6,6 +6,9 @@
 #![no_main]
 #![feature(type_alias_impl_trait)]
 
+extern crate alloc;
+use alloc::format;
+
 use embedded_alloc::Heap;
 use rtic_nrf24l01::config::power_amplifier::PowerAmplifier;
 
@@ -23,10 +26,16 @@ mod app {
 
     use core::mem::MaybeUninit;
 
+    use embedded_graphics::mono_font::ascii::{FONT_5X8, FONT_6X10};
+    use embedded_graphics::mono_font::MonoTextStyle;
+    use embedded_graphics::pixelcolor::BinaryColor;
+    use embedded_graphics::text::Text;
     use embedded_hal::spi::MODE_0;
 
     use bsp::board::{self, LPSPI_FREQUENCY};
+    use graphics::startup_screen::StartScreen;
     use rtic_monotonics::systick::fugit::{Duration, Instant};
+    use teensy4_pins::common::{P19, P18};
     use teensy4_bsp as bsp;
 
     use hal::gpio::Trigger;
@@ -40,16 +49,21 @@ mod app {
 
     use rtic_monotonics::{systick::*, Monotonic};
 
-    use robojackets_robocup_rtp::BASE_STATION_ADDRESSES;
+    use robojackets_robocup_rtp::{BASE_STATION_ADDRESSES, ROBOT_RADIO_ADDRESSES};
     use robojackets_robocup_rtp::{ControlMessage, CONTROL_MESSAGE_SIZE};
     use robojackets_robocup_rtp::{RobotStatusMessage, RobotStatusMessageBuilder};
 
+    use embedded_graphics::prelude::*;
+    use ssd1306::{prelude::*, I2CDisplayInterface, Ssd1306};
+
     use robojackets_robocup_control::{
-        Delay2, Gpio2, RFRadio, RadioInterrupt, RadioSPI, CHANNEL, GPT_CLOCK_SOURCE, GPT_DIVIDER,
-        GPT_FREQUENCY, RADIO_ADDRESS,
+        Delay2, Display, Gpio2, RFRadio, RadioInterrupt, RadioSPI, CHANNEL, GPT_CLOCK_SOURCE, GPT_DIVIDER, GPT_FREQUENCY, RADIO_ADDRESS,
+        MotorEn, Killn
     };
 
-    const HEAP_SIZE: usize = 1024;
+    use embedded_hal::blocking::delay::DelayMs;
+
+    const HEAP_SIZE: usize = 8192;
     static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
 
     #[local]
@@ -60,6 +74,7 @@ mod app {
 
     #[shared]
     struct Shared {
+        display: Display,
         radio: RFRadio,
         shared_spi: RadioSPI,
         delay2: Delay2,
@@ -83,6 +98,7 @@ mod app {
             usb,
             mut gpt2,
             lpspi4,
+            lpi2c1,
             ..
         } = board::t41(ctx.device);
 
@@ -91,10 +107,18 @@ mod app {
         let systick_token = rtic_monotonics::create_systick_token!();
         Systick::start(ctx.core.SYST, 600_000_000, systick_token);
 
+        // Gpt 2 as blocking delay
         gpt2.disable();
         gpt2.set_divider(GPT_DIVIDER);
         gpt2.set_clock_source(GPT_CLOCK_SOURCE);
         let mut delay2 = Blocking::<_, GPT_FREQUENCY>::from_gpt(gpt2);
+
+        let motor_en: MotorEn = gpio1.output(pins.p23);
+        motor_en.set();
+        let kill_n: Killn = gpio2.output(pins.p36);
+        kill_n.set();
+
+        delay2.delay_ms(1_500u32);
 
         let shared_spi_pins = Pins {
             pcs0: pins.p10,
@@ -121,15 +145,28 @@ mod app {
         radio.set_channel(CHANNEL, &mut shared_spi, &mut delay2);
         radio.set_payload_size(CONTROL_MESSAGE_SIZE as u8, &mut shared_spi, &mut delay2);
         radio.open_writing_pipe(BASE_STATION_ADDRESSES[0], &mut shared_spi, &mut delay2);
-        radio.open_reading_pipe(1, RADIO_ADDRESS, &mut shared_spi, &mut delay2);
-        radio.start_listening(&mut shared_spi, &mut delay2);
+        radio.open_reading_pipe(1, ROBOT_RADIO_ADDRESSES[0][0], &mut shared_spi, &mut delay2);
 
         let initial_radio_status = RobotStatusMessageBuilder::new().build();
 
+        let i2c = board::lpi2c(lpi2c1, pins.p19, pins.p18, board::Lpi2cClockSpeed::KHz400);
+        let i2c_bus: &'static _ = shared_bus::new_cortexm!(
+            imxrt_hal::lpi2c::Lpi2c<imxrt_hal::lpi2c::Pins<P19, P18>, 1> = i2c
+        )
+        .expect("Failed to initialize shared I2C bus LPI2C1");
+
+        let display_interface = I2CDisplayInterface::new(i2c_bus.acquire_i2c());
+        let display: Display = Ssd1306::new(
+            display_interface,
+            DisplaySize128x64,
+            DisplayRotation::Rotate0,
+        )
+        .into_buffered_graphics_mode();
+
         let rx_int = gpio2.input(pins.p9);
-        gpio2.set_interrupt(&rx_int, Some(Trigger::FallingEdge));
 
         blink::spawn().ok();
+        initialize_display::spawn().ok();
 
         (
             Shared {
@@ -140,6 +177,7 @@ mod app {
                 control_message: None,
                 gpio2,
                 radio,
+                display,
             },
             Local {
                 total_packets: 0,
@@ -159,6 +197,29 @@ mod app {
 
             Systick::delay(1000u32.millis()).await;
         }
+    }
+
+    /// Initialize the display
+    #[task(shared=[display, radio, rx_int, shared_spi, delay2, gpio2])]
+    async fn initialize_display(mut ctx: initialize_display::Context) {
+        ctx.shared.display.lock(|display| {
+            display.init().ok();
+            display.clear();
+            let start_scrn = StartScreen::new(Point::new(0, 0), Point::new(24, 8));
+            let _ = start_scrn.draw(display);
+            let _ = display.flush();
+        });
+
+        (
+            ctx.shared.rx_int,
+            ctx.shared.radio,
+            ctx.shared.shared_spi,
+            ctx.shared.delay2,
+            ctx.shared.gpio2
+        ).lock(|rx_int, radio, spi, delay, gpio2| {
+            radio.start_listening(spi, delay);
+            gpio2.set_interrupt(&rx_int, Some(Trigger::FallingEdge));
+        });
     }
 
     #[task(
@@ -185,12 +246,12 @@ mod app {
             rx_timestamps: [Instant<u32, 1, 1_000>; 20] = [Instant::<u32, 1, 1_000>::from_ticks(0u32); 20],
             rx_idx: usize = 0,
         ],
-        shared = [rx_int, gpio2, shared_spi, delay2, control_message, robot_status, radio],
+        shared = [rx_int, gpio2, shared_spi, delay2, control_message, robot_status, radio, display],
         priority = 1,
     )]
-    async fn receive_command(ctx: receive_command::Context) {
+    async fn receive_command(mut ctx: receive_command::Context) {
         log::info!("Command Received");
-        
+
         ctx.local.rx_timestamps[*ctx.local.rx_idx] = Systick::now();
         *ctx.local.rx_idx = (*ctx.local.rx_idx + 1) % ctx.local.rx_timestamps.len();
 
@@ -218,7 +279,17 @@ mod app {
         });
 
         if *ctx.local.rx_idx == 0 {
-            log::info!("RX Delay: {}ms", calculate_rx_delay(ctx.local.rx_timestamps).to_millis());
+            let char_style = MonoTextStyle::new(&FONT_6X10, BinaryColor::On);
+            ctx.shared.display.lock(|display| {
+                display.clear();
+                let _ = Text::new(
+                    &format!("RX Delay: {}ms", calculate_rx_delay(ctx.local.rx_timestamps).to_millis()),
+                    Point { x: 0, y: 32 },
+                    char_style
+                )
+                .draw(display);
+                display.flush().ok();
+            });
         }
     }
 
