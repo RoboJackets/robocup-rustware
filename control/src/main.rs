@@ -30,15 +30,17 @@ mod app {
     use bsp::board::PERCLK_FREQUENCY;
     use bsp::board::{self, LPSPI_FREQUENCY};
     use nalgebra::{Vector3, Vector4};
-    use robojackets_robocup_control::{Adc1, Gpio1, Gpio2, Killn, MotorEn, PowerSwitch, RadioSPI, MIN_BATTERY_VOLTAGE};
+    use robojackets_robocup_control::{
+        Adc1, Gpio1, Gpio2, Killn, MotorEn, PowerSwitch, RadioSPI, MIN_BATTERY_VOLTAGE,
+    };
     use robojackets_robocup_rtp::control_message::{ShootMode, TriggerMode};
     use teensy4_bsp as bsp;
 
+    use hal::adc::AnalogInput;
     use hal::gpio::Trigger;
     use hal::lpspi::Pins;
     use hal::lpuart;
     use hal::timer::Blocking;
-    use hal::adc::AnalogInput;
     use teensy4_bsp::hal;
 
     use rtic_nrf24l01::Radio;
@@ -971,14 +973,9 @@ mod app {
             delta,
         );
 
-        ctx.shared.dribbler_uart.lock(|uart| {
-            send_command(
-                dribbler_speed as i32,
-                ctx.local.dribbler_tx,
-                uart,
-                0,
-            )
-        });
+        ctx.shared
+            .dribbler_uart
+            .lock(|uart| send_command(dribbler_speed as i32, ctx.local.dribbler_tx, uart, 0));
         ctx.shared
             .motor_one_uart
             .lock(|uart| send_command(wheel_velocities[0], ctx.local.motor_one_tx, uart, 0));
@@ -1045,15 +1042,17 @@ mod app {
         priority = 1
     )]
     async fn non_critical_task(mut ctx: non_critical_task::Context) {
-        let battery_sense = (ctx.shared.adc1, ctx.shared.batt_sense).lock(|adc, batt_sense| {
-            adc.read_blocking(batt_sense)
-        });
+        let battery_sense = (ctx.shared.adc1, ctx.shared.batt_sense)
+            .lock(|adc, batt_sense| adc.read_blocking(batt_sense));
         let battery_voltage = (battery_sense as f32) * 3.3 / 1023.0;
         log::info!("Battery Voltage: {}", battery_voltage);
 
         // Maximum Voltage of batteries is roughly 2.69, so we're making a random
         // linear interpolation between the max and min voltage
-        let battery_percent = unsafe { ((battery_voltage - MIN_BATTERY_VOLTAGE) / (2.69 - MIN_BATTERY_VOLTAGE) * 100.0).to_int_unchecked() };
+        let battery_percent = unsafe {
+            ((battery_voltage - MIN_BATTERY_VOLTAGE) / (2.69 - MIN_BATTERY_VOLTAGE) * 100.0)
+                .to_int_unchecked()
+        };
 
         let _status = ctx.shared.robot_status.lock(|robot_status| {
             robot_status.battery_voltage = battery_percent;

@@ -35,8 +35,8 @@ mod app {
     use bsp::board::{self, LPSPI_FREQUENCY};
     use graphics::startup_screen::StartScreen;
     use rtic_monotonics::systick::fugit::{Duration, Instant};
-    use teensy4_pins::common::{P19, P18};
     use teensy4_bsp as bsp;
+    use teensy4_pins::common::{P18, P19};
 
     use hal::gpio::Trigger;
     use hal::lpspi::Pins;
@@ -49,16 +49,16 @@ mod app {
 
     use rtic_monotonics::{systick::*, Monotonic};
 
-    use robojackets_robocup_rtp::{BASE_STATION_ADDRESSES, ROBOT_RADIO_ADDRESSES};
     use robojackets_robocup_rtp::{ControlMessage, CONTROL_MESSAGE_SIZE};
     use robojackets_robocup_rtp::{RobotStatusMessage, RobotStatusMessageBuilder};
+    use robojackets_robocup_rtp::{BASE_STATION_ADDRESSES, ROBOT_RADIO_ADDRESSES};
 
     use embedded_graphics::prelude::*;
     use ssd1306::{prelude::*, I2CDisplayInterface, Ssd1306};
 
     use robojackets_robocup_control::{
-        Delay2, Display, Gpio2, RFRadio, RadioInterrupt, RadioSPI, CHANNEL, GPT_CLOCK_SOURCE, GPT_DIVIDER, GPT_FREQUENCY, RADIO_ADDRESS,
-        MotorEn, Killn
+        Delay2, Display, Gpio2, Killn, MotorEn, RFRadio, RadioInterrupt, RadioSPI, CHANNEL,
+        GPT_CLOCK_SOURCE, GPT_DIVIDER, GPT_FREQUENCY, RADIO_ADDRESS,
     };
 
     use embedded_hal::blocking::delay::DelayMs;
@@ -215,11 +215,12 @@ mod app {
             ctx.shared.radio,
             ctx.shared.shared_spi,
             ctx.shared.delay2,
-            ctx.shared.gpio2
-        ).lock(|rx_int, radio, spi, delay, gpio2| {
-            radio.start_listening(spi, delay);
-            gpio2.set_interrupt(&rx_int, Some(Trigger::FallingEdge));
-        });
+            ctx.shared.gpio2,
+        )
+            .lock(|rx_int, radio, spi, delay, gpio2| {
+                radio.start_listening(spi, delay);
+                gpio2.set_interrupt(&rx_int, Some(Trigger::FallingEdge));
+            });
     }
 
     #[task(
@@ -283,9 +284,12 @@ mod app {
             ctx.shared.display.lock(|display| {
                 display.clear();
                 let _ = Text::new(
-                    &format!("RX Delay: {}ms", calculate_rx_delay(ctx.local.rx_timestamps).to_millis()),
+                    &format!(
+                        "RX Delay: {}ms",
+                        calculate_rx_delay(ctx.local.rx_timestamps).to_millis()
+                    ),
                     Point { x: 0, y: 32 },
-                    char_style
+                    char_style,
                 )
                 .draw(display);
                 display.flush().ok();
@@ -303,7 +307,7 @@ mod app {
     fn calculate_rx_delay(instants: &[Instant<u32, 1, 1_000>]) -> Duration<u32, 1, 1_000> {
         let mut total_duration = Duration::<u32, 1, 1_000>::millis(0);
         for i in 0..(instants.len() - 1) {
-            total_duration += instants[i+1] - instants[i];
+            total_duration += instants[i + 1] - instants[i];
         }
         total_duration / ((instants.len() - 1) as u32)
     }

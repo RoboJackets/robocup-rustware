@@ -1,10 +1,12 @@
 //!
 //! On Robot PID Implementation
-//! 
+//!
 
 use core::cmp::min;
 
-use super::{WHEEL_RADIUS, REAR_WHEEL_DIST, FRONT_WHEEL_DIST, FRONT_ANGLE, BACK_ANGLE, TICKS_PER_ROTATION};
+use super::{
+    BACK_ANGLE, FRONT_ANGLE, FRONT_WHEEL_DIST, REAR_WHEEL_DIST, TICKS_PER_ROTATION, WHEEL_RADIUS,
+};
 
 /// The length of the window used to report the current velocity of the robot
 pub const VELOCITY_WINDOW: usize = 5;
@@ -43,12 +45,7 @@ pub struct Pid {
 
 impl Pid {
     /// Create a new pid controller
-    pub fn new(
-        maximum_output: u16,
-        kp: f32,
-        ki: f32,
-        kd: f32,
-    ) -> Self {
+    pub fn new(maximum_output: u16, kp: f32, ki: f32, kd: f32) -> Self {
         Self {
             maximum_output,
             kp,
@@ -65,7 +62,7 @@ impl Pid {
             value_idx: 0,
         }
     }
-    
+
     /// Set the maximum p value
     pub fn set_p_limit(&mut self, p_limit: f32) {
         self.p_limit = Some(p_limit);
@@ -87,7 +84,7 @@ impl Pid {
     }
 
     /// Apply the pid controller to determine the next control output
-    /// 
+    ///
     /// Returns: The new setpoint
     pub fn update(&mut self, setpoint: f32, measurement: f32) -> f32 {
         let error = (setpoint - measurement) as f32;
@@ -96,14 +93,22 @@ impl Pid {
         let mut p = error * self.kp;
         if let Some(p_limit) = self.p_limit {
             if p.abs() > p_limit {
-                if p > 0.0 { p = p_limit } else { p = -p_limit };
+                if p > 0.0 {
+                    p = p_limit
+                } else {
+                    p = -p_limit
+                };
             }
         }
 
         self.integral_term = self.integral_term + error * self.ki;
         if let Some(i_limit) = self.i_limit {
             if self.integral_term.abs() > i_limit {
-                if self.integral_term > 0.0 { self.integral_term = i_limit } else { self.integral_term = -i_limit };
+                if self.integral_term > 0.0 {
+                    self.integral_term = i_limit
+                } else {
+                    self.integral_term = -i_limit
+                };
             }
         }
 
@@ -117,17 +122,20 @@ impl Pid {
         if let Some(d_limit) = self.d_limit {
             if d.abs() > d_limit {
                 if d.abs() > d_limit {
-                    if d > 0.0 { d = d_limit } else { d = -d_limit };
+                    if d > 0.0 {
+                        d = d_limit
+                    } else {
+                        d = -d_limit
+                    };
                 }
             }
         }
-
 
         0.0
     }
 
     // /// Apply the pid controller to determine the next control output
-    // /// 
+    // ///
     // /// Returns: (pwm, clockwise)
     // pub fn update(&mut self, setpoint: i32, encoders_count: u16) -> (u16, bool) {
 

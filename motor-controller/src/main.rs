@@ -163,13 +163,7 @@ mod app {
 
         let max_duty = ch1.get_max_duty() / 2;
 
-        let mut pid = Pid::new(
-            max_duty,
-            4.0,
-            0.2,
-            0.5,
-            MOTION_CONTROL_FREQUENCY
-        );
+        let mut pid = Pid::new(max_duty, 4.0, 0.2, 0.5, MOTION_CONTROL_FREQUENCY);
         pid.set_i_limit(7_000.0);
 
         (
@@ -252,11 +246,7 @@ mod app {
             .lock(|velocity| *velocity = ctx.local.pid.current_velocity);
 
         let phases = if ctx.local.overcurrent_comparator.is_tripped() {
-            [
-                Phase::Zero,
-                Phase::Zero,
-                Phase::Zero
-            ]
+            [Phase::Zero, Phase::Zero, Phase::Zero]
         } else {
             hall_to_phases(
                 ctx.local.hs1.is_high().unwrap(),

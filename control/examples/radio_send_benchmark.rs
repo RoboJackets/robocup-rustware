@@ -194,11 +194,15 @@ mod app {
                 radio.flush_tx(spi, delay);
 
                 ctx.local.success_buffer[*ctx.local.success_idx] = report;
-                *ctx.local.success_idx = (*ctx.local.success_idx + 1) % ctx.local.success_buffer.len();
+                *ctx.local.success_idx =
+                    (*ctx.local.success_idx + 1) % ctx.local.success_buffer.len();
             });
 
         if *ctx.local.success_idx == 0 {
-            log::info!("Transmit Success Percent: {}%", ctx.local.success_buffer.iter().filter(|v| **v).count() * 5);
+            log::info!(
+                "Transmit Success Percent: {}%",
+                ctx.local.success_buffer.iter().filter(|v| **v).count() * 5
+            );
         }
 
         wait_for_next_send::spawn().ok();
@@ -219,9 +223,8 @@ mod app {
     async fn print_error(ctx: print_error::Context) {
         Systick::delay(1_000u32.millis()).await;
 
-        let config = (ctx.shared.shared_spi, ctx.shared.radio, ctx.shared.delay2).lock(|spi, radio, delay| {
-            radio.get_registers(spi, delay)
-        });
+        let config = (ctx.shared.shared_spi, ctx.shared.radio, ctx.shared.delay2)
+            .lock(|spi, radio, delay| radio.get_registers(spi, delay));
 
         loop {
             log::error!("Unexpected Configuration");

@@ -164,7 +164,7 @@ mod app {
             unsafe { KP },
             unsafe { KI },
             unsafe { KD },
-            MOTION_CONTROL_FREQUENCY
+            MOTION_CONTROL_FREQUENCY,
         );
         pid.set_i_limit(5000.0);
 
