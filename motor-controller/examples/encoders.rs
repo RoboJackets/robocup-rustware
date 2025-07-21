@@ -16,10 +16,6 @@ mod app {
     use motor_controller::TIM2_CLOCK_HZ;
     use rtic_monotonics::stm32::prelude::*;
     use stm32f0xx_hal::{
-        gpio::{
-            Floating, Input, PullDown, PullUp,
-            gpioa::{PA6, PA7},
-        },
         pac::TIM3,
         prelude::*,
         qei::{Direction, Qei},

@@ -13,8 +13,6 @@ use rtic_nrf24l01::config::power_amplifier::PowerAmplifier;
 #[global_allocator]
 static HEAP: Heap = Heap::empty();
 
-// Number of Packets to Send
-const TOTAL_SEND_PACKETS: usize = 100;
 // PA Level
 const PA_LEVEL: PowerAmplifier = PowerAmplifier::PALow;
 // Delay between Packet Sends
@@ -164,13 +162,12 @@ mod app {
             successful_sends: usize = 0,
             last_ball_sense: bool = false,
             last_kick_status: bool = true,
+            success_buffer: [bool; 20] = [false; 20],
+            success_idx: usize = 0,
         ],
         priority = 2,
     )]
     async fn send_status(ctx: send_status::Context) {
-        Systick::delay(1_000u32.millis()).await;
-
-        log::info!("Sending Statuses");
         (
             ctx.shared.robot_status,
             ctx.shared.radio,
@@ -180,7 +177,7 @@ mod app {
             .lock(|robot_status, radio, spi, delay| {
                 let new_robot_status = RobotStatusMessageBuilder::new()
                     .robot_id(ROBOT_ID)
-                    .team(Team::Yellow)
+                    .team(Team::Blue)
                     .ball_sense_status(!*ctx.local.last_ball_sense)
                     .kick_status(!*ctx.local.last_kick_status)
                     .build();
@@ -190,33 +187,25 @@ mod app {
 
                 *robot_status = new_robot_status;
 
-                log::info!("Sending {:?}", new_robot_status);
-
                 let mut packed_data = [0u8; ROBOT_STATUS_SIZE];
                 robot_status.pack(&mut packed_data).unwrap();
 
                 let report = radio.write(&packed_data, spi, delay);
                 radio.flush_tx(spi, delay);
 
-                if report {
-                    log::info!("Received Acknowledgement From Transmission");
-                    *ctx.local.successful_sends += 1;
-                } else {
-                    log::info!("No Ack Received");
-                }
-
-                *ctx.local.total_sends += 1;
-
-                if *ctx.local.total_sends >= TOTAL_SEND_PACKETS {
-                    log::info!(
-                        "{} / {} Packets Successfully Acknowledged",
-                        ctx.local.successful_sends,
-                        ctx.local.total_sends,
-                    )
-                } else {
-                    wait_for_next_send::spawn().ok();
-                }
+                ctx.local.success_buffer[*ctx.local.success_idx] = report;
+                *ctx.local.success_idx =
+                    (*ctx.local.success_idx + 1) % ctx.local.success_buffer.len();
             });
+
+        if *ctx.local.success_idx == 0 {
+            log::info!(
+                "Transmit Success Percent: {}%",
+                ctx.local.success_buffer.iter().filter(|v| **v).count() * 5
+            );
+        }
+
+        wait_for_next_send::spawn().ok();
     }
 
     #[task(priority = 1)]
@@ -234,13 +223,13 @@ mod app {
     async fn print_error(ctx: print_error::Context) {
         Systick::delay(1_000u32.millis()).await;
 
-        log::info!("ERROR");
+        let config = (ctx.shared.shared_spi, ctx.shared.radio, ctx.shared.delay2)
+            .lock(|spi, radio, delay| radio.get_registers(spi, delay));
 
-        (ctx.shared.shared_spi, ctx.shared.radio, ctx.shared.delay2).lock(|spi, radio, delay| {
-            log::info!("Configuration: {:?}", radio.get_registers(spi, delay));
-        });
-
-        // panic!("Error Occurred: {:?}", error);
+        loop {
+            log::error!("Unexpected Configuration");
+            log::error!("Found: {:?}", config);
+        }
     }
 
     /// This task runs when the USB1 interrupt activates.

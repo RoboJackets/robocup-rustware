@@ -134,7 +134,7 @@ impl From<ControlMessage> for KickerCommand {
             kick_type: value.shoot_mode.into(),
             kick_trigger: value.trigger_mode.into(),
             kick_strength: value.kick_strength as f32 * 255.0 / 15.0,
-            charge_allowed: value.trigger_mode != TriggerMode::StandDown,
+            charge_allowed: true,
         }
     }
 }

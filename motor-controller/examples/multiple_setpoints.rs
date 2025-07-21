@@ -159,6 +159,15 @@ mod app {
 
         let max_duty = ch1.get_max_duty() / 4;
 
+        let mut pid = Pid::new(
+            max_duty,
+            unsafe { KP },
+            unsafe { KI },
+            unsafe { KD },
+            MOTION_CONTROL_FREQUENCY,
+        );
+        pid.set_i_limit(5000.0);
+
         (
             Shared {
                 setpoint: 0,

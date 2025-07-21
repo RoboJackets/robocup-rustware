@@ -1,5 +1,6 @@
 //!
-//! PID Tuning for the motor board
+//! Make a big jump in setpoint (0->X) so we can make sure the robot won't be blowing any
+//! fuses
 //!
 
 #![no_std]
@@ -12,24 +13,30 @@ use defmt_rtt as _;
 
 #[rtic::app(device = stm32f0xx_hal::pac, peripherals = true, dispatchers = [TSC])]
 mod app {
-    use motor_controller::{HS1, HS2, HS3, OvercurrentComparator, Phase, hall_to_phases, pid::Pid};
+    use motion_control::Pid;
+    use motor_controller::{HS1, HS2, HS3, OvercurrentComparator, Phase, hall_to_phases};
     use stm32f0xx_hal::{
-        pac::{TIM1, TIM2, TIM3},
+        gpio::{Output, PushPull, gpiob::PB1},
+        pac::{TIM1, TIM2, TIM3, TIM14},
         prelude::*,
         pwm::{self, C1, C1N, C2, C2N, C3, C3N, ComplementaryPwm, PwmChannels},
-        qei::{Direction, Qei},
+        qei::Qei,
         timers::{Event, Timer},
     };
 
     /// The maximum PWM that is sendable to the motors
     pub const MAXIMUM_OUTPUT: u16 = 100;
+    /// The timeout (in milliseconds)
+    pub const TIMEOUT_MS: u32 = 100;
+    /// The frequency of the motion control loop
+    pub const MOTION_CONTROL_FREQUENCY: u32 = 1000;
 
     /// The kp constant for the pid controller
-    static mut KP: f32 = 1.0;
+    static mut KP: f32 = 2.5;
     /// The ki constant for the pid controller
-    static mut KI: f32 = 0.0;
+    static mut KI: f32 = 0.2;
     /// the kd constant for the pid controller
-    static mut KD: f32 = 0.0;
+    static mut KD: f32 = 0.5;
 
     #[local]
     struct Local {
@@ -58,16 +65,23 @@ mod app {
 
         // Overcurrent Comparator
         overcurrent_comparator: OvercurrentComparator,
-        /// Timer 2 (used to schedule the motion control updates)
+        // Timer 2 (used to schedule the motion control updates)
         tim2: Timer<TIM2>,
-        /// The pid controller
+        // The pid controller
         pid: Pid,
+
+        // The motor board led
+        led: PB1<Output<PushPull>>,
+        // The tim14 peripheral
+        tim14: Timer<TIM14>,
     }
 
     #[shared]
     struct Shared {
-        /// The target number of ticks per second to move the motor at
+        // The target number of ticks per second to move the motor at
         setpoint: i32,
+        // The current velocity (in ticks per second) of the motor
+        current_velocity: i32,
     }
 
     #[init]
@@ -93,11 +107,11 @@ mod app {
             )
         });
 
-        let pwm = pwm::tim1(ctx.device.TIM1, pwm_channels, &mut rcc, 30u32.khz());
+        let pwm = pwm::tim1(ctx.device.TIM1, pwm_channels, &mut rcc, 6u32.khz());
 
         let (mut ch1, mut ch1n, mut ch2, mut ch2n, mut ch3, mut ch3n) = pwm;
 
-        ch1.set_dead_time(pwm::DTInterval::DT_5);
+        ch1.set_dead_time(pwm::DTInterval::DT_7);
         ch1.set_duty(0);
         ch2.set_duty(0);
         ch3.set_duty(0);
@@ -116,6 +130,9 @@ mod app {
         });
         let encoders = Qei::tim3(ctx.device.TIM3, qei_pins, &mut rcc);
 
+        let mut led = cortex_m::interrupt::free(|cs| gpiob.pb1.into_push_pull_output(cs));
+        led.set_high().unwrap();
+
         let hs1 = cortex_m::interrupt::free(|cs| gpioa.pa0.into_pull_down_input(cs));
         let hs2 = cortex_m::interrupt::free(|cs| gpioa.pa1.into_pull_down_input(cs));
         let hs3 = cortex_m::interrupt::free(|cs| gpioa.pa2.into_pull_down_input(cs));
@@ -130,15 +147,32 @@ mod app {
 
         let mut overcurrent_comparator = OvercurrentComparator::new(pa11, pf6, pf7, pb12);
         overcurrent_comparator.stop_gate_drivers(false);
-        overcurrent_comparator.set_threshold(motor_controller::OvercurrentThreshold::T1);
+        overcurrent_comparator.set_threshold(motor_controller::OvercurrentThreshold::T2);
         overcurrent_comparator.set_interrupt(&syscfg, &exti);
         overcurrent_comparator.clear_interrupt(&exti);
 
-        let mut tim2 = Timer::tim2(ctx.device.TIM2, 2_000.hz(), &mut rcc);
+        let mut tim2 = Timer::tim2(ctx.device.TIM2, MOTION_CONTROL_FREQUENCY.hz(), &mut rcc);
+        let mut tim14 = Timer::tim14(ctx.device.TIM14, 1.hz(), &mut rcc);
+
+        // Start Interrupts
         tim2.listen(Event::TimeOut);
+        tim14.listen(Event::TimeOut);
+
+        let max_duty = ch1.get_max_duty() / 4;
+        let mut pid = Pid::new(
+            max_duty,
+            unsafe { KP },
+            unsafe { KI },
+            unsafe { KD },
+            MOTION_CONTROL_FREQUENCY,
+        );
+        pid.set_i_limit(5_000.0);
 
         (
-            Shared { setpoint: 2500 * 2 },
+            Shared {
+                setpoint: 0,
+                current_velocity: 0,
+            },
             Local {
                 encoders,
                 hs1,
@@ -152,7 +186,9 @@ mod app {
                 ch3n,
                 overcurrent_comparator,
                 tim2,
-                pid: Pid::new(MAXIMUM_OUTPUT, unsafe { KP }, unsafe { KI }, unsafe { KD }),
+                led,
+                pid,
+                tim14,
             },
         )
     }
@@ -162,6 +198,39 @@ mod app {
         loop {
             cortex_m::asm::wfi();
         }
+    }
+
+    #[task(
+        local = [
+            tim14,
+            led,
+            last_led_state: bool = true,
+        ],
+        shared = [
+            setpoint,
+        ],
+        binds = TIM14
+    )]
+    fn setpoint_update(mut ctx: setpoint_update::Context) {
+        if *ctx.local.last_led_state {
+            ctx.local.led.set_low().unwrap();
+            *ctx.local.last_led_state = false;
+        } else {
+            ctx.local.led.set_high().unwrap();
+            *ctx.local.last_led_state = true;
+        }
+
+        ctx.shared.setpoint.lock(|setpoint| {
+            match *setpoint {
+                198400 => *setpoint = 0,
+                0 => *setpoint = 198400,
+                _ => {
+                    *setpoint = 198400;
+                }
+            }
+            defmt::info!("New Setpoint: {}", *setpoint);
+        });
+        ctx.local.tim14.clear_irq();
     }
 
     #[task(
@@ -178,56 +247,47 @@ mod app {
             ch3n,
             tim2,
             pid,
-            last_encoders_value: u16 = 0,
-            iteration: u32 = 0,
-            errors: [f32; 500] = [0.0; 500],
+            overcurrent_comparator,
+            last_setpoint: i32 = 0,
+            iterations: u32 = 0,
         ],
         shared = [
             setpoint,
+            current_velocity,
         ],
         binds = TIM2,
         priority = 1
     )]
     /// Update the speed of the motors.  The timer calls an interrupt every 1ms
     fn motion_control_update(mut ctx: motion_control_update::Context) {
-        let encoder_count = ctx.local.encoders.count();
-        let elapsed_encoders =
-            if encoder_count < 1000 && *ctx.local.last_encoders_value > u16::MAX - 1000 {
-                // Overflow
-                (u16::MAX - *ctx.local.last_encoders_value + encoder_count) as i32
-            } else if *ctx.local.last_encoders_value < 1000 && encoder_count > u16::MAX - 1000 {
-                // Underflow
-                -((*ctx.local.last_encoders_value + u16::MAX - encoder_count) as i32)
-            } else {
-                // Normal
-                (encoder_count as i32) - (*ctx.local.last_encoders_value as i32)
-            };
-        let ticks_per_second = elapsed_encoders * 2_000;
-
-        if *ctx.local.iteration % 100 == 0 {
-            defmt::info!("Ticks Per Second: {}", ticks_per_second);
+        // Setpoint in ticks per second
+        let setpoint = ctx.shared.setpoint.lock(|setpoint| *setpoint);
+        if setpoint != *ctx.local.last_setpoint {
+            defmt::info!(
+                "Found New Setpoint: {}; Iterations: {}",
+                setpoint,
+                *ctx.local.iterations
+            );
+            *ctx.local.last_setpoint = setpoint;
+            *ctx.local.iterations = 0;
         }
-        *ctx.local.last_encoders_value = encoder_count;
 
-        let pwm = ctx.local.ch1.get_max_duty() / 5;
-        let clockwise = true;
+        let (pwm, clockwise) = ctx.local.pid.update(setpoint, ctx.local.encoders.count());
 
-        // let setpoint = ctx.shared.setpoint.lock(|setpoint| *setpoint);
+        ctx.shared
+            .current_velocity
+            .lock(|velocity| *velocity = ctx.local.pid.current_velocity);
 
-        // let (pwm, clockwise) = ctx.local.pid.update(
-        //     setpoint,
-        //     ticks_per_second
-        // );
-        // if *ctx.local.iteration % 2 == 0 {
-        //     ctx.local.errors[*ctx.local.iteration as usize / 2] = ctx.local.pid.last_error();
-        // }
-
-        let phases = hall_to_phases(
-            ctx.local.hs1.is_high().unwrap(),
-            ctx.local.hs2.is_high().unwrap(),
-            ctx.local.hs3.is_high().unwrap(),
-            clockwise,
-        );
+        let phases = if ctx.local.overcurrent_comparator.is_tripped() {
+            [Phase::Zero, Phase::Zero, Phase::Zero]
+        } else {
+            hall_to_phases(
+                ctx.local.hs1.is_high().unwrap(),
+                ctx.local.hs2.is_high().unwrap(),
+                ctx.local.hs3.is_high().unwrap(),
+                clockwise,
+            )
+        };
 
         match phases[0] {
             Phase::Positive => {
@@ -280,7 +340,7 @@ mod app {
             }
         }
 
-        *ctx.local.iteration += 1;
+        *ctx.local.iterations += 1;
         ctx.local.tim2.clear_irq();
     }
 }

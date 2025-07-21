@@ -56,7 +56,7 @@ mod app {
         ch3n: PwmChannels<TIM1, C3N>,
 
         // Overcurrent Comparator
-        overcurrent_comparator: OvercurrentComparator,
+        _overcurrent_comparator: OvercurrentComparator,
 
         /// The motor board led
         led: PB1<Output<PushPull>>,
@@ -172,7 +172,7 @@ mod app {
                 ch2n,
                 ch3,
                 ch3n,
-                overcurrent_comparator,
+                _overcurrent_comparator: overcurrent_comparator,
                 led,
             },
         )

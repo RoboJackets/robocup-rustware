@@ -12,19 +12,12 @@ use defmt_rtt as _;
 
 #[rtic::app(device = stm32f0xx_hal::pac, peripherals = true, dispatchers = [TSC])]
 mod app {
-    use motor_controller::{
-        HS1, HS2, HS3, OvercurrentComparator, Phase, hall_to_phases, set_pwm_output,
-    };
-    use rtic_monotonics::stm32::prelude::*;
     use stm32f0xx_hal::{
         gpio::{Output, PushPull, gpiob::PB1},
-        pac::{EXTI, TIM1, TIM2},
+        pac::TIM2,
         prelude::*,
-        pwm::{C1, C1N, C2, C2N, C3, C3N, ComplementaryPwm, PwmChannels},
         timers::{Event, Timer},
     };
-
-    const PWM_DUTY_CYCLE: u16 = 200;
 
     #[local]
     struct Local {

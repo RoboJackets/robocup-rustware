@@ -13,8 +13,9 @@ use crate::{BACK_ANGLE, FRONT_ANGLE, WHEEL_DIST};
 
 /// Wheel Radius (m)
 pub const WHEEL_RADIUS: f32 = 0.02786;
-/// The number of encoder ticks per rotation
-pub const TICKS_PER_ROTATION: f32 = 6200.0;
+/// The number of encoder ticks per rotation (Wheels have a gear ration of 1:3 and encoders have
+/// 2048 counts per rotation)
+pub const TICKS_PER_ROTATION: f32 = 6144.0;
 
 pub const SCALE_FACTOR: f32 = 0.75;
 /// Weighting for IMU Sensor Readings

@@ -31,6 +31,9 @@ use rtic_sync::channel::Receiver;
 
 pub mod spi;
 
+/// At 2.372V, our batteries have depleted to 18.5V (see voltage divider in schematics)
+pub const MIN_BATTERY_VOLTAGE: f32 = 2.384615;
+
 /// The current state of the program.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum State {

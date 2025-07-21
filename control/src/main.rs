@@ -30,9 +30,13 @@ mod app {
     use bsp::board::PERCLK_FREQUENCY;
     use bsp::board::{self, LPSPI_FREQUENCY};
     use nalgebra::{Vector3, Vector4};
-    use robojackets_robocup_control::{Gpio1, Gpio2, Killn, MotorEn, PowerSwitch, RadioSPI};
+    use robojackets_robocup_control::{
+        Adc1, Gpio1, Gpio2, Killn, MotorEn, PowerSwitch, RadioSPI, MIN_BATTERY_VOLTAGE,
+    };
+    use robojackets_robocup_rtp::control_message::{ShootMode, TriggerMode};
     use teensy4_bsp as bsp;
 
+    use hal::adc::AnalogInput;
     use hal::gpio::Trigger;
     use hal::lpspi::Pins;
     use hal::lpuart;
@@ -89,19 +93,22 @@ mod app {
         channel::{Receiver, Sender},
         make_channel,
     };
+    use teensy4_pins::tmm::P15;
 
     const HEAP_SIZE: usize = 1024;
     static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
 
-    /// The amount of time (in ms) between each motion control delay
+    /// The amount of time (in us) between each motion control delay
     const MOTION_CONTROL_DELAY_US: u32 = 1_000_000 / 60;
+    /// The amount of time (in us) between each not-time-critical interrupt
+    const NON_CRITICAL_DELAY_US: u32 = 1_000_000 / 2;
     /// The amount of time (in ms) between servicing the kicker
     const KICKER_SERVICE_DELAY_US: u32 = 50_000;
     /// The number of motion control updates between servicing the kicker
     const KICKER_SERVICE_DELAY_TICKS: u32 = KICKER_SERVICE_DELAY_US / MOTION_CONTROL_DELAY_US;
     /// The amount of time the robot should continue moving without receiving a
     /// new message from the base station before it stops moving
-    const DIE_TIME_US: u32 = 500_000;
+    const DIE_TIME_US: u32 = 1_000_000;
 
     /// Helper method to disable radio interrupts and prepare to
     /// send messages of `message_size` over the radio
@@ -195,6 +202,10 @@ mod app {
         counter: u32,
         elapsed_time: u32,
 
+        // Periodic Interupt for non-time critical stuff
+        pit1: Pit<1>,
+        adc1: Adc1,
+        batt_sense: AnalogInput<P15, 1>,
         //Display
         display: Display,
 
@@ -246,12 +257,13 @@ mod app {
             lpspi4,
             mut gpt1,
             mut gpt2,
-            pit: (pit0, _pit1, pit2, pit3),
+            pit: (pit0, pit1, pit2, pit3),
             lpuart1,
             lpuart4,
             lpuart6,
             lpuart7,
             lpuart8,
+            mut adc1,
             ..
         } = board::t41(ctx.device);
 
@@ -288,7 +300,7 @@ mod app {
         kill_n.set();
         let power_switch: PowerSwitch = gpio1.input(pins.p40);
 
-        delay2.delay_ms(500u32);
+        delay2.delay_ms(1_500u32);
 
         let mut motor_one_uart = board::lpuart(lpuart6, pins.p1, pins.p0, 115200);
         motor_one_uart.disable(|uart| {
@@ -388,6 +400,10 @@ mod app {
 
         let kicker_controller = Kicker::new(gpio1.output(pins.p38), gpio2.output(pins.p37));
 
+        adc1.calibrate();
+        let mut batt_sense = AnalogInput::new(pins.p15);
+        adc1.read_blocking(&mut batt_sense);
+
         // End Initialize Kicker //
 
         rx_int.clear_triggered();
@@ -397,6 +413,7 @@ mod app {
         (
             Shared {
                 pit0,
+                pit1,
                 gpt: gpt1,
                 radio_spi,
                 blocking_delay: delay2,
@@ -415,6 +432,8 @@ mod app {
                 fake_spi,
                 display,
                 state: State::default(),
+                adc1,
+                batt_sense,
 
                 // Motor Board
                 motor_one_uart,
@@ -634,7 +653,7 @@ mod app {
 
     /// Have the radio start listening for incoming commands
     #[task(
-        shared = [radio, radio_spi, blocking_delay, gpio1, power_switch, gpio2, rx_int, pit0],
+        shared = [radio, radio_spi, blocking_delay, gpio1, power_switch, gpio2, rx_int, pit0, pit1],
         priority = 1
     )]
     async fn start_listening(mut ctx: start_listening::Context) {
@@ -657,6 +676,13 @@ mod app {
             pit.set_interrupt_enable(true);
             pit.enable();
         });
+
+        ctx.shared.pit1.lock(|pit| {
+            pit.clear_elapsed();
+            pit.set_load_timer_value(NON_CRITICAL_DELAY_US);
+            pit.set_interrupt_enable(true);
+            pit.enable();
+        })
     }
 
     /// Interrupt called when the radio receives new data
@@ -677,13 +703,55 @@ mod app {
         }
     }
 
-    ///This task kills the motor board when the power switch is pressed.
-    #[task(binds = GPIO1_COMBINED_16_31, shared = [power_switch, kill_n])]
-    fn power_switch_interrupt(mut ctx: power_switch_interrupt::Context) {
-        log::info!("Killing Motor Board!");
+    /// This task kills the motor board when the power switch is pressed.
+    #[task(binds = GPIO1_COMBINED_16_31)]
+    fn power_switch_interrupt(_: power_switch_interrupt::Context) {
+        kill_self::spawn().ok();
+    }
+
+    #[task(shared=[power_switch, kill_n,gpio2,rx_int,control_message,kicker_controller,fake_spi],priority=2)]
+    async fn kill_self(mut ctx: kill_self::Context) {
+        // Disable new radio events from coming in by disabling the interrupt
+        (ctx.shared.gpio2, ctx.shared.rx_int).lock(|gpio2, rx_int| {
+            gpio2.set_interrupt(rx_int, None);
+        });
+        log::info!("Radio Disabled!");
+
+        // Set Control Message to stop all movement
+        (ctx.shared.control_message).lock(|message| {
+            *message = None;
+        });
+        log::info!("Freezed Motors!");
+
+        //trigger kicker repeatedly to force discharge
+        (ctx.shared.kicker_controller, ctx.shared.fake_spi).lock(|controller, fake_spi| {
+            match controller.take() {
+                Some(mut kicker) => {
+                    for _ in 0..5 {
+                        let command = KickerCommand {
+                            kick_type: KickType::Kick,
+                            kick_trigger: KickTrigger::Immediate,
+                            kick_strength: 1.0,
+                            charge_allowed: false,
+                        };
+                        kicker.service(command, fake_spi).unwrap();
+
+                        cortex_m::asm::delay(200_000_000); // 333ms
+                    }
+                }
+                None => {
+                    //If we never initialized the kicker, we never told it to charge
+                    //Thus, it's unlikely to have any charge and we can kill immediately
+                    return;
+                }
+            }
+        });
+        log::info!("Discharged Kicker!");
+
         (ctx.shared.kill_n).lock(|kill_n| {
             kill_n.clear();
         });
+        log::info!("Killed Motor Board!");
     }
 
     /// Task that decodes the command received via the radio.  This task is directly
@@ -705,7 +773,13 @@ mod app {
                 let mut read_buffer = [0u8; CONTROL_MESSAGE_SIZE];
                 radio.read(&mut read_buffer, spi, delay);
 
-                let control_message = ControlMessage::unpack(&read_buffer).unwrap();
+                let mut control_message = ControlMessage::unpack(&read_buffer).unwrap();
+                control_message.body_y =
+                    unsafe { ((control_message.body_y as f32) * -2.1).to_int_unchecked() };
+                control_message.body_x =
+                    unsafe { ((control_message.body_x as f32) * -2.1).to_int_unchecked() };
+                control_message.body_w *= -1;
+                // control_message.body_w = unsafe { ((control_message.body_w as f32) * -2.1).to_int_unchecked() };
 
                 *counter = 0;
 
@@ -745,7 +819,7 @@ mod app {
     /// State machine task that handles running the currently selected task using a
     /// pit countdown timer
     #[task(
-        shared = [state, pit0],
+        shared = [state, pit0, pit1],
         priority = 1,
         binds = PIT
     )]
@@ -756,6 +830,19 @@ mod app {
             pit.set_interrupt_enable(true);
             pit.enable();
         });
+
+        if ctx.shared.pit1.lock(|pit| {
+            let elapsed = pit.is_elapsed();
+            if elapsed {
+                pit.clear_elapsed();
+                pit.set_load_timer_value(NON_CRITICAL_DELAY_US);
+                pit.set_interrupt_enable(true);
+                pit.enable();
+            }
+            elapsed
+        }) {
+            non_critical_task::spawn().ok();
+        }
 
         // Most of the testing programs ceil the priority and should not
         // be interruptable but the only way for spawning them to error is if
@@ -838,15 +925,15 @@ mod app {
             *ctx.local.last_time = ctx.shared.gpt.lock(|gpt| gpt.count());
         }
 
-        let (mut body_velocities, dribbler_enabled) =
+        let (mut body_velocities, dribbler_speed) =
             ctx.shared
                 .control_message
                 .lock(|control_message| match control_message {
                     Some(control_message) => (
                         control_message.get_velocity(),
-                        control_message.dribbler_speed != 0,
+                        control_message.dribbler_speed,
                     ),
-                    None => (Vector3::new(0.0, 0.0, 0.0), false),
+                    None => (Vector3::new(0.0, 0.0, 0.0), 0),
                 });
 
         let (gyro, accel_x, accel_y) = ctx.shared.imu.lock(|imu| {
@@ -880,20 +967,15 @@ mod app {
             .lock(|one, two, three, four| Vector4::new(*one, *two, *three, *four));
 
         let wheel_velocities = ctx.local.motion_controller.control_update(
-            Vector3::new(-accel_y, accel_x, gyro),
+            Vector3::new(-accel_y, -accel_x, -gyro),
             last_encoders,
             body_velocities,
             delta,
         );
 
-        ctx.shared.dribbler_uart.lock(|uart| {
-            send_command(
-                if dribbler_enabled { 6200 } else { 0 },
-                ctx.local.dribbler_tx,
-                uart,
-                0,
-            )
-        });
+        ctx.shared
+            .dribbler_uart
+            .lock(|uart| send_command(dribbler_speed as i32, ctx.local.dribbler_tx, uart, 0));
         ctx.shared
             .motor_one_uart
             .lock(|uart| send_command(wheel_velocities[0], ctx.local.motor_one_tx, uart, 0));
@@ -912,13 +994,14 @@ mod app {
 
         // Service the kicker
         if *ctx.local.iteration % KICKER_SERVICE_DELAY_TICKS == 0 {
-            let kicker_command = ctx.shared.control_message.lock(|control_message| {
+            let mut kicker_command = ctx.shared.control_message.lock(|control_message| {
                 if let Some(control_message) = control_message {
                     (*control_message).into()
                 } else {
                     KickerCommand::default()
                 }
             });
+            kicker_command.charge_allowed = true;
             (
                 ctx.shared.kicker_controller,
                 ctx.shared.kicker_programmer,
@@ -952,6 +1035,36 @@ mod app {
         }
 
         *ctx.local.iteration = ctx.local.iteration.wrapping_add(1);
+    }
+
+    #[task(
+        shared = [display, adc1, batt_sense, robot_status],
+        priority = 1
+    )]
+    async fn non_critical_task(mut ctx: non_critical_task::Context) {
+        let battery_sense = (ctx.shared.adc1, ctx.shared.batt_sense)
+            .lock(|adc, batt_sense| adc.read_blocking(batt_sense));
+        let battery_voltage = (battery_sense as f32) * 3.3 / 1023.0;
+        log::info!("Battery Voltage: {}", battery_voltage);
+
+        // Maximum Voltage of batteries is roughly 2.69, so we're making a random
+        // linear interpolation between the max and min voltage
+        let battery_percent = unsafe {
+            ((battery_voltage - MIN_BATTERY_VOLTAGE) / (2.69 - MIN_BATTERY_VOLTAGE) * 100.0)
+                .to_int_unchecked()
+        };
+
+        let _status = ctx.shared.robot_status.lock(|robot_status| {
+            robot_status.battery_voltage = battery_percent;
+            robot_status.clone()
+        });
+
+        // // Battery is under voltaged so we should die
+        // if battery_voltage < MIN_BATTERY_VOLTAGE {
+        //     kill_self::spawn().ok();
+        // }
+
+        // TODO: Display robot status on display
     }
 
     /// Stop the motors from moving and discharge the kicker.

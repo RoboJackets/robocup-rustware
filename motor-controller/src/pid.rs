@@ -118,7 +118,9 @@ impl Pid {
 
         let output: i32 = unsafe { (p + self.integral_term + d).to_int_unchecked() };
 
-        if output > 0 {
+        if setpoint == 0 {
+            (0, true)
+        } else if output > 0 {
             (max(output as u16, self.maximum_output), true)
         } else {
             (max(output.abs() as u16, self.maximum_output), false)
