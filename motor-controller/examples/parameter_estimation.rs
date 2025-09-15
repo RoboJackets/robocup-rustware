@@ -14,7 +14,7 @@ use defmt_rtt as _;
 mod app {
     use motion_control::Pid;
     use motor_controller::{
-        HS1, HS2, HS3, MOTION_CONTROL_FREQUENCY, OvercurrentComparator, Phase, SerialInterface,
+        HS1, HS2, HS3, MOTION_CONTROL_FREQUENCY, OvercurrentComparator, Phase,
         hall_to_phases,
     };
     use stm32f0xx_hal::{
@@ -23,7 +23,6 @@ mod app {
         prelude::*,
         pwm::{self, C1, C1N, C2, C2N, C3, C3N, ComplementaryPwm, PwmChannels},
         qei::Qei,
-        serial::{self, Serial},
         timers::{Event, Timer},
     };
 
@@ -204,7 +203,7 @@ mod app {
             pid,
             led,
             last_led: bool = false,
-            time_var: f32 = 0,
+            time_var: f32 = 0f32,
         ],
         shared = [
             setpoint,
@@ -215,8 +214,6 @@ mod app {
     )]
     /// Update the speed of the motors.  The timer calls an interrupt every 1ms
     fn motion_control_update(mut ctx: motion_control_update::Context) {
-        let time_var = (*ctx.local.iteration as f32) / 1000.;
-
         if *ctx.local.iteration % 2_000 == 0 {
             if *ctx.local.last_led {
                 ctx.local.led.set_low().unwrap();
@@ -229,31 +226,28 @@ mod app {
 
         let max_duty = ctx.local.ch1.get_max_duty() / 2;
 
-        if ((*ctx.local.iteration % 6000) >= 0 && (*ctx.local.iteration % 6000) < 1000){
-            let setpoint = (max_duty/6);
-        }
-        else if ((*ctx.local.iteration % 6000) >= 1000 && (*ctx.local.iteration % 6000) < 2000){
-            let setpoint = 2*(max_duty/6);
-        }
-        else if ((*ctx.local.iteration % 6000) >= 2000 && (*ctx.local.iteration % 6000) < 3000){
-            let setpoint = 3*(max_duty/6);
-        }
-        else if ((*ctx.local.iteration % 6000) >= 3000 && (*ctx.local.iteration % 6000) < 4000){
-            let setpoint = 4*(max_duty/6);
-        }
-        else if ((*ctx.local.iteration % 6000) >= 4000 && (*ctx.local.iteration % 6000) < 5000){
-            let setpoint = 5*(max_duty/6);
-        }
-        else if ((*ctx.local.iteration % 6000) >= 5000 && (*ctx.local.iteration % 6000) < 6000){
-            let setpoint = 6*(max_duty/6);
-        }
+        let setpoint = if (*ctx.local.iteration % 6000) < 1000 {
+            max_duty / 6
+        } else if (*ctx.local.iteration % 6000) >= 1000 && (*ctx.local.iteration % 6000) < 2000 {
+            2 * max_duty / 6
+        } else if (*ctx.local.iteration % 6000) >= 2000 && (*ctx.local.iteration % 6000) < 3000 {
+            3 * max_duty / 6
+        } else if (*ctx.local.iteration % 6000) >= 3000 && (*ctx.local.iteration % 6000) < 4000 {
+            4 * max_duty / 6
+        } else if (*ctx.local.iteration % 6000) >= 4000 && (*ctx.local.iteration % 6000) < 5000 {
+            5 * max_duty / 6
+        } else if (*ctx.local.iteration % 6000) >= 5000 && (*ctx.local.iteration % 6000) < 6000 {
+            6 * max_duty / 6
+        } else {
+            0
+        };
 
         // Setpoint in ticks per second
         //let setpoint = ctx.shared.setpoint.lock(|setpoint| *setpoint);
 
         //let (pwm, clockwise) = ctx.local.pid.update(setpoint, ctx.local.encoders.count());
 
-        ctx.local.pid.update(setpoint, ctx.local.encoders.count());
+        ctx.local.pid.update(setpoint.into(), ctx.local.encoders.count());
 
         let (pwm, clockwise) = (setpoint, true);
 
@@ -323,7 +317,7 @@ mod app {
             }
         }
 
-        if ((*ctx.local.iteration % 100) == 0){
+        if (*ctx.local.iteration % 100) == 0 {
             defmt::info!(
                 "Setpoint: {}; Actual Velocity: {}",
                 setpoint,
