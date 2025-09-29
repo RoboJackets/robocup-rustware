@@ -7,7 +7,7 @@ if ! command -v 'cargo'; then
 	exit 1
 fi
 
-rustup default nightly
+rustup default nightly-2025-02-20
 rustup target add thumbv7em-none-eabihf
 
 echo "Installing cargo-binutils for rust-objcopy"
