@@ -9,3 +9,7 @@ edition = "2021"
 bitflags = "2.4.1"
 embedded-hal = "0.2.7"
 log = "0.4"
+
+[dependencies.rtic-monotonics]
+version = "1.0.0"
+features = ["cortex-m-systick"]
