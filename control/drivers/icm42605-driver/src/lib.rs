@@ -12,6 +12,8 @@ use core::fmt::Debug;
 use embedded_hal::blocking::{delay::DelayMs, i2c};
 use registers::{Bank, BankSelect, WHO_AM_I};
 
+use rtic_monotonics::{systick::*, Monotonic};
+
 mod registers;
 
 const ICM_ADDR: u8 = 0b1101000;
@@ -19,6 +21,12 @@ const WHO_AM_I_EXPECTED: u8 = 0x42;
 const LSB_TO_G: f32 = 16.0 / 32768.0;
 
 const LSB_TO_DPS: f32 = 1000.0 / 32768.0;
+
+// Offsets determined from calibration. THIS WILL CHANGE BETWEEN IMUs
+// Need to make a calibration routine later
+static mut OFFSET_GZ: Option<f32> = None;
+static mut OFFSET_AX: Option<f32> = None;
+static mut OFFSET_AY: Option<f32> = None;
 
 #[inline]
 /// Convert the high and low bits obtained from the IMU into a gyrometer
@@ -122,6 +130,27 @@ impl<I2C: i2c::Write<Error = E> + i2c::Read<Error = E>, E: Debug> IMU<I2C> {
 
         self.initialized = true;
 
+        let t0 = Systick::now().ticks();
+        let mut count: i64 = 0;
+        let mut running_sum_GZ: f32 = 0.0;
+        let mut running_sum_AX: f32 = 0.0;
+        let mut running_sum_AY: f32 = 0.0;
+
+        while Systick::now().ticks() - t0 < 1_000 {
+            // collect raw values for 1 second
+            //MAKE SURE IMU IS STILL/FLAT during this time
+            running_sum_GZ += self.gyro_z().unwrap_or_default();
+            running_sum_AX += self.accel_x().unwrap_or_default();
+            running_sum_AY += self.accel_y().unwrap_or_default();
+            count += 1;
+        }
+
+        unsafe {
+            OFFSET_GZ = Some((running_sum_GZ / count as f32) as f32);
+            OFFSET_AX = Some((running_sum_AX / count as f32) as f32);
+            OFFSET_AY = Some((running_sum_AY / count as f32) as f32);
+        }
+
         Ok(())
     }
 
@@ -134,7 +163,7 @@ impl<I2C: i2c::Write<Error = E> + i2c::Read<Error = E>, E: Debug> IMU<I2C> {
         let hi = self.read(Bank::Bank0, registers::GYRO_DATA_Z1)?;
         let lo = self.read(Bank::Bank0, registers::GYRO_DATA_Z0)?;
 
-        Ok(reading_to_gyro(hi, lo))
+        Ok(reading_to_gyro(hi, lo) - unsafe { OFFSET_GZ.unwrap_or(0.0) })
     }
 
     /// Read the acceleration in the x direction
@@ -146,7 +175,7 @@ impl<I2C: i2c::Write<Error = E> + i2c::Read<Error = E>, E: Debug> IMU<I2C> {
         let hi = self.read(Bank::Bank0, registers::ACCEL_DATA_X1)?;
         let lo = self.read(Bank::Bank0, registers::ACCEL_DATA_X0)?;
 
-        Ok(reading_to_accel(hi, lo))
+        Ok(reading_to_accel(hi, lo) - unsafe { OFFSET_AX.unwrap_or(0.0) })
     }
 
     /// Read the acceleration in the y direction
@@ -158,7 +187,7 @@ impl<I2C: i2c::Write<Error = E> + i2c::Read<Error = E>, E: Debug> IMU<I2C> {
         let hi = self.read(Bank::Bank0, registers::ACCEL_DATA_Y1)?;
         let lo = self.read(Bank::Bank0, registers::ACCEL_DATA_Y0)?;
 
-        Ok(reading_to_accel(hi, lo))
+        Ok(reading_to_accel(hi, lo) - unsafe { OFFSET_AY.unwrap_or(0.0) })
     }
 
     /// Write the raw register address and data over the i2c line
