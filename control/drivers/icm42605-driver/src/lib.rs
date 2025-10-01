@@ -130,26 +130,7 @@ impl<I2C: i2c::Write<Error = E> + i2c::Read<Error = E>, E: Debug> IMU<I2C> {
 
         self.initialized = true;
 
-        let t0 = Systick::now().ticks();
-        let mut count: i64 = 0;
-        let mut running_sum_GZ: f32 = 0.0;
-        let mut running_sum_AX: f32 = 0.0;
-        let mut running_sum_AY: f32 = 0.0;
-
-        while Systick::now().ticks() - t0 < 1_000 {
-            // collect raw values for 1 second
-            //MAKE SURE IMU IS STILL/FLAT during this time
-            running_sum_GZ += self.gyro_z().unwrap_or_default();
-            running_sum_AX += self.accel_x().unwrap_or_default();
-            running_sum_AY += self.accel_y().unwrap_or_default();
-            count += 1;
-        }
-
-        unsafe {
-            OFFSET_GZ = Some((running_sum_GZ / count as f32) as f32);
-            OFFSET_AX = Some((running_sum_AX / count as f32) as f32);
-            OFFSET_AY = Some((running_sum_AY / count as f32) as f32);
-        }
+        self.calibrate_offsets(delay, 1000); //1 second calibration
 
         Ok(())
     }
@@ -227,6 +208,31 @@ impl<I2C: i2c::Write<Error = E> + i2c::Read<Error = E>, E: Debug> IMU<I2C> {
 
         self.raw_write(address, value)?;
         Ok(())
+    }
+
+    /// Calibrate the offsets for the gyro and accelerometer
+    fn calibrate_offsets(&mut self, delay: &mut impl DelayMs<u8>, cal_time_ms: u32) {
+        let t0 = Systick::now().ticks();
+        let mut count: i64 = 0;
+        let mut running_sum_GZ: f32 = 0.0;
+        let mut running_sum_AX: f32 = 0.0;
+        let mut running_sum_AY: f32 = 0.0;
+
+        while Systick::now().ticks() - t0 < cal_time_ms {
+            // collect raw values for 1 second
+            //MAKE SURE IMU IS STILL/FLAT during this time
+            running_sum_GZ += self.gyro_z().unwrap_or_default();
+            running_sum_AX += self.accel_x().unwrap_or_default();
+            running_sum_AY += self.accel_y().unwrap_or_default();
+            count += 1;
+            delay.delay_ms(5); //maybe change this later?
+        }
+
+        unsafe {
+            OFFSET_GZ = Some((running_sum_GZ / count as f32) as f32);
+            OFFSET_AX = Some((running_sum_AX / count as f32) as f32);
+            OFFSET_AY = Some((running_sum_AY / count as f32) as f32);
+        }
     }
 }
 
