@@ -23,14 +23,13 @@ const LSB_TO_G: f32 = 16.0 / 32768.0;
 const LSB_TO_DPS: f32 = 1000.0 / 32768.0;
 
 // Offsets determined from calibration. THIS WILL CHANGE BETWEEN IMUs
-// Need to make a calibration routine later
 static mut OFFSET_GZ: Option<f32> = None;
 static mut OFFSET_AX: Option<f32> = None;
 static mut OFFSET_AY: Option<f32> = None;
 
 #[inline]
-/// Convert the high and low bits obtained from the IMU into a gyrometer
-/// reading (in degrees per second)
+// Convert the high and low bits obtained from the IMU into a gyrometer
+// reading (in degrees per second)
 pub fn reading_to_gyro(high: u8, low: u8) -> f32 {
     let value = i16::from_be_bytes([high, low]);
     ((value as f32) * LSB_TO_DPS).to_radians()
@@ -214,24 +213,24 @@ impl<I2C: i2c::Write<Error = E> + i2c::Read<Error = E>, E: Debug> IMU<I2C> {
     fn calibrate_offsets(&mut self, delay: &mut impl DelayMs<u8>, cal_time_ms: u32) {
         let t0 = Systick::now().ticks();
         let mut count: i64 = 0;
-        let mut running_sum_GZ: f32 = 0.0;
-        let mut running_sum_AX: f32 = 0.0;
-        let mut running_sum_AY: f32 = 0.0;
+        let mut running_sum_gz: f32 = 0.0;
+        let mut running_sum_ax: f32 = 0.0;
+        let mut running_sum_ay: f32 = 0.0;
 
         while Systick::now().ticks() - t0 < cal_time_ms {
             // collect raw values for 1 second
             //MAKE SURE IMU IS STILL/FLAT during this time
-            running_sum_GZ += self.gyro_z().unwrap_or_default();
-            running_sum_AX += self.accel_x().unwrap_or_default();
-            running_sum_AY += self.accel_y().unwrap_or_default();
+            running_sum_gz += self.gyro_z().unwrap_or_default();
+            running_sum_ax += self.accel_x().unwrap_or_default();
+            running_sum_ay += self.accel_y().unwrap_or_default();
             count += 1;
-            delay.delay_ms(5); //maybe change this later?
+            delay.delay_ms(5); //maybe change this later? Seems to work fine
         }
 
         unsafe {
-            OFFSET_GZ = Some((running_sum_GZ / count as f32) as f32);
-            OFFSET_AX = Some((running_sum_AX / count as f32) as f32);
-            OFFSET_AY = Some((running_sum_AY / count as f32) as f32);
+            OFFSET_GZ = Some((running_sum_gz / count as f32) as f32);
+            OFFSET_AX = Some((running_sum_ax / count as f32) as f32);
+            OFFSET_AY = Some((running_sum_ay / count as f32) as f32);
         }
     }
 }
