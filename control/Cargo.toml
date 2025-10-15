@@ -30,6 +30,7 @@ usb-device = "0.2.9"
 usbd-serial = "0.1.1"
 imxrt-log = "0.1.2"
 display-interface = "=0.4.1"
+kfilter = "0.4.0"
 
 [dependencies.rtic-nrf24l01]
 git = "https://github.com/N8BWert/rtic-nrf24l01.git"

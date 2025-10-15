@@ -14,6 +14,12 @@ use registers::{Bank, BankSelect, WHO_AM_I};
 
 use rtic_monotonics::{systick::*, Monotonic};
 
+//Kalman filter libraries
+use kfilter::{kalman::Kalman1M, KalmanFilter, KalmanPredictInput};
+use nalgebra::{Matrix1, Matrix1x2, Matrix2, Matrix2x1, SMatrix};
+use rand::thread_rng;
+use rand_distr::Distribution;
+
 mod registers;
 
 const ICM_ADDR: u8 = 0b1101000;
@@ -27,14 +33,14 @@ static mut OFFSET_GZ: Option<f32> = None;
 static mut OFFSET_AX: Option<f32> = None;
 static mut OFFSET_AY: Option<f32> = None;
 
+/// Convert the high and low bits obtained from the IMU into a gyrometer
+/// reading (in degrees per second).
 #[inline]
-// Convert the high and low bits obtained from the IMU into a gyrometer
-// reading (in degrees per second)
 pub fn reading_to_gyro(high: u8, low: u8) -> f32 {
     let value = i16::from_be_bytes([high, low]);
     ((value as f32) * LSB_TO_DPS).to_radians()
 }
-
+#[allow(missing_docs)]
 #[inline]
 /// Convert the high and low bits obtained from the IMU into an accelerometer
 /// reading (in g's)
@@ -129,7 +135,9 @@ impl<I2C: i2c::Write<Error = E> + i2c::Read<Error = E>, E: Debug> IMU<I2C> {
 
         self.initialized = true;
 
-        self.calibrate_offsets(delay, 1000); //1 second calibration
+        //1 second calibration to determine offsets
+        //MAKE SURE IMU IS STILL/FLAT during this time
+        self.calibrate_offsets(delay, 1000);
 
         Ok(())
     }
@@ -233,6 +241,7 @@ impl<I2C: i2c::Write<Error = E> + i2c::Read<Error = E>, E: Debug> IMU<I2C> {
             OFFSET_AY = Some((running_sum_ay / count as f32) as f32);
         }
     }
+
 }
 
 #[cfg(test)]
