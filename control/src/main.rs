@@ -493,7 +493,7 @@ mod app {
                 kicker_controller: Some(kicker_controller),
                 screen,
                 kicker_spi,
-                display,
+                screen,
                 state: State::default(),
                 adc1,
                 batt_sense,

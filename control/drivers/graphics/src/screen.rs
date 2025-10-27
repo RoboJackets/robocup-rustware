@@ -1,13 +1,15 @@
 use alloc::string::ToString;
-use ssd1306::Ssd1306;
 use ssd1306::mode::{BufferedGraphicsMode, DisplayConfig};
 use ssd1306::prelude::I2CInterface;
 use ssd1306::size::DisplaySize128x64;
+use ssd1306::Ssd1306;
 
-use embedded_graphics::{pixelcolor::BinaryColor, prelude::*};
-use {
-    crate::error_screen::ErrorScreen, crate::main_window::MainWindow,
-    crate::startup_screen::StartScreen,
+use {crate::startup_screen::StartScreen,
+    crate::error_screen::ErrorScreen,
+    crate::main_window::MainWindow};
+use embedded_graphics::{
+    prelude::*,
+    pixelcolor::BinaryColor,
 };
 
 /// States for the onboard display that determine what is shown on screen.
@@ -26,7 +28,7 @@ pub enum DisplayState {
 /// clearDisp must remove all contents from the display
 /// flushDisp must send to the display all data currently in the queue if it exists.
 ///     Returns Result<(), Self::DisplayError>
-pub trait ScreenDisplay<Color>: DrawTarget<Color = Color> {
+pub trait ScreenDisplay<Color>: DrawTarget<Color=Color> {
     type DisplayError;
     fn initDisp(&mut self) -> Result<(), Self::DisplayError>;
     fn clearDisp(&mut self);
