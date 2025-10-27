@@ -53,7 +53,7 @@ mod app {
 
     // Includes for display module
     use embedded_graphics::prelude::*;
-    use graphics::{screen::Screen};
+    use graphics::screen::Screen;
     use ssd1306::{prelude::*, I2CDisplayInterface, Ssd1306};
     use teensy4_pins::t41::{P18, P19};
 
@@ -1061,7 +1061,12 @@ mod app {
         // }
 
         ctx.shared.screen.lock(|screen| {
-            screen.main_loop_update(_status.battery_voltage.into(), _status.kick_status, _status.ball_sense_status, 0);
+            screen.main_loop_update(
+                _status.battery_voltage.into(),
+                _status.kick_status,
+                _status.ball_sense_status,
+                0,
+            );
             screen.draw().ok();
         });
     }

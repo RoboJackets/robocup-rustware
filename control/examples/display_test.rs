@@ -109,7 +109,8 @@ mod app {
         let error_screen = ErrorScreen::new(
             "Example Program",
             "Lorem ipsum dolor sit amet, consectetur adipiscing elit, 
-            sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.".to_string(),
+            sed do eiusmod tempor incididunt ut labore et dolore magna aliqua."
+                .to_string(),
         );
         let latency_placeholder: u16 = 0;
 
