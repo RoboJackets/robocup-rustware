@@ -1,15 +1,13 @@
 use alloc::string::ToString;
+use ssd1306::Ssd1306;
 use ssd1306::mode::{BufferedGraphicsMode, DisplayConfig};
 use ssd1306::prelude::I2CInterface;
 use ssd1306::size::DisplaySize128x64;
-use ssd1306::Ssd1306;
 
-use {crate::startup_screen::StartScreen,
-    crate::error_screen::ErrorScreen,
-    crate::main_window::MainWindow};
-use embedded_graphics::{
-    prelude::*,
-    pixelcolor::BinaryColor,
+use embedded_graphics::{pixelcolor::BinaryColor, prelude::*};
+use {
+    crate::error_screen::ErrorScreen, crate::main_window::MainWindow,
+    crate::startup_screen::StartScreen,
 };
 
 /// States for the onboard display that determine what is shown on screen.
