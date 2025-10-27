@@ -6,6 +6,8 @@
 
 use core::convert::Infallible;
 
+use embedded_graphics::pixelcolor::BinaryColor;
+use graphics::screen::ScreenDisplay;
 use teensy4_pins::t41::*;
 
 use teensy4_bsp::board::{
