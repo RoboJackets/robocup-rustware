@@ -9,7 +9,14 @@ edition = "2021"
 bitflags = "2.4.1"
 embedded-hal = "0.2.7"
 log = "0.4"
+kfilter = "0.4.0"
 
 [dependencies.rtic-monotonics]
 version = "1.0.0"
 features = ["cortex-m-systick"]
+
+[dependencies.nalgebra]
+version = "0.33.0"
+default-features = false
+features = ["libm", "nalgebra-macros", "alloc"]
+
