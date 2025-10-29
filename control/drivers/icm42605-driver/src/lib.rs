@@ -228,7 +228,7 @@ impl<I2C: i2c::Write<Error = E> + i2c::Read<Error = E>, E: Debug> IMU<I2C> {
         self.p_gz = *kf.covariance();
 
         // 7. RETURN THE FILTERED VALUE
-        Ok(self.x_gz[0] - self.offset_gz) //INCLUDE OFFSET SUBTRACTION
+        Ok(self.x_gz[0]) //INCLUDE OFFSET SUBTRACTION
       }
 
 /// Read the acceleration in the x direction
