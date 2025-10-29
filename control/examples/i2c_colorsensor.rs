@@ -114,7 +114,7 @@ mod app {
 
         let i2c = board::lpi2c(lpi2c1, pins.p19, pins.p18, board::Lpi2cClockSpeed::KHz400);
 
-        scan_i2c_devices::spawn().ok();
+        start_color_sensor::spawn().ok();
 
         (Shared { i2c }, Local { poller })
     }
@@ -166,14 +166,23 @@ mod app {
     fn write_to_command(i2c: &mut Lpi2c1, command_code: u8, data: u16) {
         let low_byte: u8 = (data % 0b1_0000_0000) as u8;
         let high_byte: u8 = (data / 0b1_0000_0000) as u8;
-        (*i2c).write_read(SENSOR_ADDRESS, &[command_code, low_byte, high_byte], &mut []);
+        match (*i2c).write_read(SENSOR_ADDRESS, &[command_code, low_byte, high_byte], &mut []) {
+            Err(err) => {
+                log::info!("An error occured. {:?}", err);
+            }
+            _ => {}
+        }
     }
 
     fn read_from_command(i2c: &mut Lpi2c1, command_code: u8, data: &mut u16) {
-        let mut low_byte: u8 = 0;
-        let mut high_byte: u8 = 0;
-        (*i2c).write_read(SENSOR_ADDRESS, &[command_code], &mut [low_byte, high_byte]);
-        *data = (high_byte as u16) << 8 + (low_byte as u16);
+        let mut buffer = [0u8, 0u8];
+        match (*i2c).write_read(SENSOR_ADDRESS, &[command_code], &mut buffer) {
+            Err(err) => {
+                log::info!("An error occured. {:?}", err);
+            }
+            _ => {}
+        };
+        *data = (buffer[1] as u16) << 8 + (buffer[0] as u16);
     }
 
     fn init_color_sensor(i2c: &mut Lpi2c1, ps: PowerState, cts: ColorsToSense, dg: DigitalGain, g: Gain, s: Sensitivity, it: IntegrationTime, fm: ForceMode) {
@@ -224,23 +233,6 @@ mod app {
         read_from_command(i2c, 0x06, &mut sd.green);
         read_from_command(i2c, 0x07, &mut sd.blue);
         read_from_command(i2c, 0x08, &mut sd.infrared);
-    }
-
-    #[task(shared=[i2c], priority=1)]
-    async fn scan_i2c_devices(mut ctx: scan_i2c_devices::Context) {
-        Systick::delay(TASK_START_DELAY_MS.millis()).await;
-
-        let mut buffer = [0u8];
-
-        ctx.shared.i2c.lock(|i2c| {
-            if let Err(err) = i2c.write_read(0b1101000, &[0x75], &mut buffer) {
-                log::info!("Error Occurred: {:?}", err);
-            }
-        });
-
-        log::info!("Who Am I: {:#01x}", buffer[0]);
-
-        log::info!("Completed I2C Devices Scan");
     }
 
     /// This task runs when the USB1 interrupt activates.
