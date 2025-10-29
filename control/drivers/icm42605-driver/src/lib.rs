@@ -15,10 +15,14 @@ use registers::{Bank, BankSelect, WHO_AM_I};
 use rtic_monotonics::{systick::*, Monotonic};
 
 //Kalman filter libraries
-use kfilter::{kalman::Kalman1M, KalmanFilter, KalmanPredictInput};
-use nalgebra::{Matrix1, Matrix1x2, Matrix2, Matrix2x1, SMatrix};
-use rand::thread_rng;
-use rand_distr::Distribution;
+use kfilter::kalman::{Kalman1M, KalmanFilter, KalmanPredict, KalmanUpdate};
+use kfilter::measurement::LinearMeasurement;
+use kfilter::system::LinearNoInputSystem;
+use kfilter::Kalman1MLinearNoInput;
+use nalgebra::{Matrix1, Matrix1x2, Matrix2, Matrix2x1, SMatrix, Vector2, SVector};
+
+// The correct type alias for a filter with a 2-dimensional state and f32 numbers.
+type ImuKalmanFilter = Kalman1MLinearNoInput<f32, 2, 1>;
 
 mod registers;
 
@@ -28,10 +32,10 @@ const LSB_TO_G: f32 = 16.0 / 32768.0;
 
 const LSB_TO_DPS: f32 = 1000.0 / 32768.0;
 
-// Offsets determined from calibration. THIS WILL CHANGE BETWEEN IMUs
-static mut OFFSET_GZ: Option<f32> = None;
-static mut OFFSET_AX: Option<f32> = None;
-static mut OFFSET_AY: Option<f32> = None;
+// // Offsets determined from calibration. THIS WILL CHANGE BETWEEN IMUs
+// static mut OFFSET_GZ: Option<f32> = None;
+// static mut OFFSET_AX: Option<f32> = None;
+// static mut OFFSET_AY: Option<f32> = None;
 
 /// Convert the high and low bits obtained from the IMU into a gyrometer
 /// reading (in degrees per second).
@@ -66,6 +70,24 @@ pub struct IMU<I2C> {
     i2c: I2C,
     /// The currently selected register bank
     current_bank: Bank,
+
+    //Offsets determined during calibration
+    offset_gz: f32,
+    offset_ax: f32,
+    offset_ay: f32,
+
+    //Kalman filter state
+    x_gz: Vector2<f32>,
+    p_gz: Matrix2<f32>,
+
+    // State for the accel X-axis filter
+    x_ax: Vector2<f32>,
+    p_ax: Matrix2<f32>,
+
+    // State for the accel Y-axis filter
+    x_ay: Vector2<f32>,
+    p_ay: Matrix2<f32>, 
+
     /// Whether or not the IMU has been initialized
     pub initialized: bool,
 }
@@ -80,6 +102,16 @@ impl<I2C: i2c::Write<Error = E> + i2c::Read<Error = E>, E: Debug> IMU<I2C> {
             i2c,
             current_bank: Default::default(),
             initialized: false,
+            offset_ax: 0.0,
+            offset_ay: 0.0,
+            offset_gz: 0.0,
+            //Kalman filter initializations
+            x_gz: Vector2::zeros(),
+            p_gz: Matrix2::identity(),
+            x_ax: Vector2::zeros(),
+            p_ax: Matrix2::identity(),
+            x_ay: Vector2::zeros(),
+            p_ay: Matrix2::identity(),
         }
     }
 
@@ -139,6 +171,21 @@ impl<I2C: i2c::Write<Error = E> + i2c::Read<Error = E>, E: Debug> IMU<I2C> {
         //MAKE SURE IMU IS STILL/FLAT during this time
         self.calibrate_offsets(delay, 1000);
 
+        //Initialize KALMAN FILTERS
+
+        let initial_covariance = Matrix2::identity() * 1000.0; // High initial uncertainty
+
+        self.x_gz = Vector2::zeros();
+        self.p_gz = initial_covariance;
+
+        self.x_ax = Vector2::zeros();
+        self.p_ax = initial_covariance;
+
+        self.x_ay = Vector2::zeros();
+        self.p_ay = initial_covariance;
+
+        self.initialized = true;
+
         Ok(())
     }
 
@@ -148,22 +195,52 @@ impl<I2C: i2c::Write<Error = E> + i2c::Read<Error = E>, E: Debug> IMU<I2C> {
             return Err(ImuError::Uninitialized);
         }
 
+                // 1. CALCULATE DT (This is a placeholder, use your Systick logic)
+        // NOTE: For this to work, you will need a `last_update` field in your struct.
+        // For simplicity, I'm using a fixed dt here. You should replace this.
+        let dt = 1.0 / 1000.0;
+
+        // 2. CREATE MATRICES FOR THIS STEP
+        let f = Matrix2::new(1.0, dt, 0.0, 1.0);
+        let q = Matrix2::new(0.1, 0.0, 0.0, 1.0);
+        let h = Matrix1x2::new(1.0, 0.0);
+        let r = Matrix1::new(1.0);
+
+        // 3. CREATE THE FILTER COMPONENTS
+        // We create the system object, passing in the F, Q, and last state `x`.
+        let system = LinearNoInputSystem::new(f, q, self.x_gz);
+        // We create the measurement handler object.
+        let measurement_handler = LinearMeasurement::new(h, r, Matrix1::zeros());
+
+        // 4. CREATE A TEMPORARY FILTER
+        // Use `new_custom` to build the filter from our components and the last covariance `P`.
+        let mut kf = Kalman1M::new_custom(system, self.p_gz, measurement_handler);
+
+        // 5. RUN PREDICT AND UPDATE
+        kf.predict();
         let hi = self.read(Bank::Bank0, registers::GYRO_DATA_Z1)?;
         let lo = self.read(Bank::Bank0, registers::GYRO_DATA_Z0)?;
+        let raw_value = reading_to_gyro(hi, lo) - self.offset_gz;
+        kf.update(Matrix1::new(raw_value));
 
-        Ok(reading_to_gyro(hi, lo) - unsafe { OFFSET_GZ.unwrap_or(0.0) })
+        // 6. SAVE THE NEW STATE FOR THE NEXT CALL
+        self.x_gz = *kf.state();
+        self.p_gz = *kf.covariance();
+
+        // 7. RETURN THE FILTERED VALUE
+        Ok(self.x_gz[0] - self.offset_gz) //INCLUDE OFFSET SUBTRACTION
+      }
+
+/// Read the acceleration in the x direction
+pub fn accel_x(&mut self) -> Result<f32, ImuError<E>> {
+    if !self.initialized {
+        return Err(ImuError::Uninitialized);
     }
 
-    /// Read the acceleration in the x direction
-    pub fn accel_x(&mut self) -> Result<f32, ImuError<E>> {
-        if !self.initialized {
-            return Err(ImuError::Uninitialized);
-        }
+    let hi = self.read(Bank::Bank0, registers::ACCEL_DATA_X1)?;
+    let lo = self.read(Bank::Bank0, registers::ACCEL_DATA_X0)?;
 
-        let hi = self.read(Bank::Bank0, registers::ACCEL_DATA_X1)?;
-        let lo = self.read(Bank::Bank0, registers::ACCEL_DATA_X0)?;
-
-        Ok(reading_to_accel(hi, lo) - unsafe { OFFSET_AX.unwrap_or(0.0) })
+    Ok(reading_to_accel(hi, lo) - self.offset_ax)
     }
 
     /// Read the acceleration in the y direction
@@ -175,7 +252,7 @@ impl<I2C: i2c::Write<Error = E> + i2c::Read<Error = E>, E: Debug> IMU<I2C> {
         let hi = self.read(Bank::Bank0, registers::ACCEL_DATA_Y1)?;
         let lo = self.read(Bank::Bank0, registers::ACCEL_DATA_Y0)?;
 
-        Ok(reading_to_accel(hi, lo) - unsafe { OFFSET_AY.unwrap_or(0.0) })
+        Ok(reading_to_accel(hi, lo) - self.offset_ay)
     }
 
     /// Write the raw register address and data over the i2c line
@@ -235,11 +312,9 @@ impl<I2C: i2c::Write<Error = E> + i2c::Read<Error = E>, E: Debug> IMU<I2C> {
             delay.delay_ms(5); //maybe change this later? Seems to work fine
         }
 
-        unsafe {
-            OFFSET_GZ = Some((running_sum_gz / count as f32) as f32);
-            OFFSET_AX = Some((running_sum_ax / count as f32) as f32);
-            OFFSET_AY = Some((running_sum_ay / count as f32) as f32);
-        }
+        self.offset_gz = running_sum_gz / count as f32;
+        self.offset_ax = running_sum_ax / count as f32;
+        self.offset_ay = running_sum_ay / count as f32;
     }
 
 }
