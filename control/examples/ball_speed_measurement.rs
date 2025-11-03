@@ -31,8 +31,6 @@ mod app {
     use teensy4_pins::t41::*;
 
     use rtic_monotonics::systick::*;
-    use teensy4_bsp::ral::gpio::GPIO1;
-    use robojackets_robocup_control::Adc1;
 
     const VCC: f32 = 3.3;
     const ADC_MAX: u16 = 4095; // max value for adc according to internet forums
@@ -109,6 +107,7 @@ mod app {
 
         let digital0 = gpio1.output(pins.p0);
         calibration::spawn().ok();
+        // blink_led::spawn().ok();
         (Shared {voltages: [0.0; 6], high_avg: 0f32, low_avg: 0f32}, Local {
             adc: adc1,
             pin18,
@@ -124,44 +123,46 @@ mod app {
 
     #[task(priority = 1, local = [digital0, adc, pin18, pin19, pin20, pin21, pin22, pin23], shared = [voltages, high_avg, low_avg])]
     async fn calibration(mut cx: calibration::Context) {
-        cx.local.digital0.set_low().expect("TODO: panic message");
-        Systick::delay(1_000u32.millis()).await; // blocking delay
-        let low_voltages = read_all_volts(
-            cx.local.adc,
-            cx.local.pin18,
-            cx.local.pin19,
-            cx.local.pin20,
-            cx.local.pin21,
-            cx.local.pin22,
-            cx.local.pin23,
-        );
-        let low_avg_local = avg_f32_array(&low_voltages);
-        cx.shared.high_avg.lock(|low_avg| {
-            *low_avg = low_avg_local;
-        });
+        loop {
+            cx.local.digital0.set_low().expect("TODO: panic message");
+            Systick::delay(50u32.millis()).await; // blocking delay
+            let low_voltages = read_all_volts(
+                cx.local.adc,
+                cx.local.pin18,
+                cx.local.pin19,
+                cx.local.pin20,
+                cx.local.pin21,
+                cx.local.pin22,
+                cx.local.pin23,
+            );
+            let low_avg_local = avg_f32_array(&low_voltages);
+            cx.shared.high_avg.lock(|low_avg| {
+                *low_avg = low_avg_local;
+            });
 
-        log::info!("Low Voltages: {:?}", low_voltages);
-        log::info!("Low Avg: {}", low_avg_local);
+            log::info!("Low Voltages: {:?}", low_voltages);
+            log::info!("Low Avg: {}", low_avg_local);
 
 
-        cx.local.digital0.set_high().expect("TODO: panic message");
-        Systick::delay(1_000u32.millis()).await; // blocking delay
-        let high_voltages = read_all_volts(
-            cx.local.adc,
-            cx.local.pin18,
-            cx.local.pin19,
-            cx.local.pin20,
-            cx.local.pin21,
-            cx.local.pin22,
-            cx.local.pin23,
-        );
-        let high_avg_local = avg_f32_array(&high_voltages);
-        cx.shared.high_avg.lock(|high_avg| {
-            *high_avg = high_avg_local;
-        });
+            cx.local.digital0.set_high().expect("TODO: panic message");
+             Systick::delay(50u32.millis()).await; // blocking delay
+            let high_voltages = read_all_volts(
+                cx.local.adc,
+                cx.local.pin18,
+                cx.local.pin19,
+                cx.local.pin20,
+                cx.local.pin21,
+                cx.local.pin22,
+                cx.local.pin23,
+            );
+            let high_avg_local = avg_f32_array(&high_voltages);
+            cx.shared.high_avg.lock(|high_avg| {
+                *high_avg = high_avg_local;
+            });
 
-        log::info!("High Voltages: {:?}", low_voltages);
-        log::info!("High Avg: {}", low_avg_local);
+            log::info!("High Voltages: {:?}", high_voltages);
+            log::info!("High Avg: {}", high_avg_local);
+    }
     }
 
 
@@ -187,7 +188,7 @@ mod app {
 
     /// This task runs when the USB1 interrupt activates.
     /// Simply poll the logger to control the logging process.
-    #[task(binds = USB_OTG1, local = [poller])]
+    #[task(priority = 2, binds = USB_OTG1, local = [poller])]
     fn usb_interrupt(cx: usb_interrupt::Context) {
         cx.local.poller.poll();
     }
