@@ -169,8 +169,8 @@ mod app {
         match (*i2c).write_read(SENSOR_ADDRESS, &[command_code, low_byte, high_byte], &mut []) {
             Err(err) => {
                 log::info!("An error occured. {:?}", err);
-            }
-            _ => {}
+            },
+            _ => {},
         }
     }
 
@@ -179,8 +179,8 @@ mod app {
         match (*i2c).write_read(SENSOR_ADDRESS, &[command_code], &mut buffer) {
             Err(err) => {
                 log::info!("An error occured. {:?}", err);
-            }
-            _ => {}
+            },
+            _ => {},
         };
         *data = (buffer[1] as u16) << 8 + (buffer[0] as u16);
     }
