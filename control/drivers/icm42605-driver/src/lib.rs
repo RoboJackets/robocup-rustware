@@ -32,6 +32,9 @@ const LSB_TO_G: f32 = 16.0 / 32768.0;
 
 const LSB_TO_DPS: f32 = 1000.0 / 32768.0;
 
+const TICK_PERIOD: rtic_monotonics::systick::fugit::Duration<u32, 1, 1000> = <rtic_monotonics::systick::Systick as Monotonic>::TICK_PERIOD;
+const SECONDS_PER_TICK: f32 = TICK_PERIOD.to_micros() as f32 / 1_000_000.0; 
+
 /// Convert the high and low bits obtained from the IMU into a gyrometer
 /// reading (in degrees per second).
 #[inline]
@@ -84,6 +87,14 @@ pub struct IMU<I2C> {
     x_ay: Vector2<f32>,
     p_ay: Matrix2<f32>, 
 
+    //Timstamp of last update. For dt calculation
+    /// Timestamp of the last gyro Z update.
+    last_update_gz: Option<u32>,
+    /// Timestamp of the last accel X update.
+    last_update_ax: Option<u32>,
+    /// Timestamp of the last accel Y update.
+    last_update_ay: Option<u32>,
+
     /// Whether or not the IMU has been initialized
     pub initialized: bool,
 }
@@ -108,6 +119,9 @@ impl<I2C: i2c::Write<Error = E> + i2c::Read<Error = E>, E: Debug> IMU<I2C> {
             p_ax: Matrix2::identity(),
             x_ay: Vector2::zeros(),
             p_ay: Matrix2::identity(),
+            last_update_gz: None,
+            last_update_ax: None,
+            last_update_ay: None,            
         }
     }
 
@@ -191,12 +205,14 @@ impl<I2C: i2c::Write<Error = E> + i2c::Read<Error = E>, E: Debug> IMU<I2C> {
             return Err(ImuError::Uninitialized);
         }
 
-        // 1. CALCULATE DT (This is a placeholder, use your Systick logic)
-        // NOTE: For this to work, you will need a `last_update` field in your struct.
-        // For simplicity, I'm using a fixed dt here. You should replace this.
-        let dt = 1.0 / 1000.0;
+        // 1. CALCULATE DT
+        let now_tick = Systick::now().ticks();
 
-        // 2. CREATE MATRICES FOR THIS STEP
+        
+        let dt_ticks: f32 =  (now_tick - self.last_update_gz.unwrap_or(now_tick)) as f32; // Convert milliseconds to seconds
+        let dt: f32 = dt_ticks * SECONDS_PER_TICK;
+
+        // m2. CREATE MATRICES FOR THIS STEP
         let f = Matrix2::new(1.0, dt, 0.0, 1.0);
         let q = Matrix2::new(0.1, 0.0, 0.0, 1.0);
         let h = Matrix1x2::new(1.0, 0.0);
@@ -221,6 +237,9 @@ impl<I2C: i2c::Write<Error = E> + i2c::Read<Error = E>, E: Debug> IMU<I2C> {
         self.x_gz = *kf.state();
         self.p_gz = *kf.covariance();
 
+        //update last update time
+        self.last_update_gz = Some(now_tick);
+
         // 7. RETURN THE FILTERED VALUE
         Ok(self.x_gz[0])
       }
@@ -231,7 +250,9 @@ impl<I2C: i2c::Write<Error = E> + i2c::Read<Error = E>, E: Debug> IMU<I2C> {
             return Err(ImuError::Uninitialized);
         }
 
-        let dt = 1.0 / 1000.0;
+        let now_tick = Systick::now().ticks();
+        let dt_ticks: f32 = (now_tick - self.last_update_ax.unwrap_or(now_tick)) as f32; // Convert milliseconds to seconds
+        let dt: f32 = dt_ticks * SECONDS_PER_TICK;
 
         let f = Matrix2::new(1.0, dt, 0.0, 1.0);
         let q = Matrix2::new(0.1, 0.0, 0.0, 1.0);
@@ -251,6 +272,9 @@ impl<I2C: i2c::Write<Error = E> + i2c::Read<Error = E>, E: Debug> IMU<I2C> {
         self.x_ax = *kf.state();
         self.p_ax = *kf.covariance();
 
+        //update last update time
+        self.last_update_ax = Some(now_tick);
+
         Ok(self.x_ax[0])
         }
 
@@ -259,8 +283,10 @@ impl<I2C: i2c::Write<Error = E> + i2c::Read<Error = E>, E: Debug> IMU<I2C> {
         if !self.initialized {
             return Err(ImuError::Uninitialized);
         }
-
-        let dt = 1.0 / 1000.0;
+        
+        let now_tick = Systick::now().ticks();
+        let dt_ticks: f32 = (now_tick - self.last_update_ay.unwrap_or(now_tick)) as f32; // Convert milliseconds to seconds
+        let dt: f32 = dt_ticks * SECONDS_PER_TICK;
 
         let f = Matrix2::new(1.0, dt, 0.0, 1.0);
         let q = Matrix2::new(0.1, 0.0, 0.0, 1.0);
@@ -278,6 +304,9 @@ impl<I2C: i2c::Write<Error = E> + i2c::Read<Error = E>, E: Debug> IMU<I2C> {
 
         self.x_ay = *kf.state();
         self.p_ay = *kf.covariance();
+
+        //update last update time
+        self.last_update_ay = Some(now_tick);
 
         Ok(self.x_ay[0])
     }
