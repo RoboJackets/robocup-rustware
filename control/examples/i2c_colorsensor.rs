@@ -1,5 +1,5 @@
 //!
-//! This Example scans the i2c interface for devices connected.
+//! This Example tests the i2c color sensor.
 //!
 
 #![no_std]
