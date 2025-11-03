@@ -446,7 +446,9 @@ version = "0.1.0"
 dependencies = [
  "bitflags 2.9.4",
  "embedded-hal 0.2.7",
+ "kfilter",
  "log",
+ "nalgebra 0.33.2",
  "rtic-monotonics",
 ]
 
