@@ -13,6 +13,8 @@
 /// Please follow this example for future examples and sanity tests
 ///
 use embedded_alloc::Heap;
+use embedded_graphics::prelude::*;
+use ssd1306::{mode::BufferedGraphicsMode, prelude::*, I2CDisplayInterface, Ssd1306};
 
 #[global_allocator]
 static HEAP: Heap = Heap::empty();
@@ -23,8 +25,9 @@ use teensy4_panic as _;
 mod app {
     use super::*;
     use bsp::board;
+    use graphics::error_screen::ErrorScreen;
     use embedded_hal::digital::v2::OutputPin;
-    use rtic::Mutex;
+    use teensy4_bsp::board::Lpi2c3;
     use teensy4_bsp::hal::adc::AnalogInput;
     use teensy4_bsp::hal::gpio::Output;
     use teensy4_bsp as bsp;
@@ -32,8 +35,13 @@ mod app {
 
     use rtic_monotonics::systick::*;
 
+    use core::mem::MaybeUninit;
+
+    const HEAP_SIZE: usize = 1024 * 8;
+    static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
+
     const VCC: f32 = 3.3;
-    const ADC_MAX: u16 = 4095; // max value for adc according to internet forums
+    const ADC_MAX: u16 = 1023; // max value for adc according to internet forums
 
     #[local]
     struct Local {
@@ -46,14 +54,19 @@ mod app {
         pin23: AnalogInput<P23, 1>,
         digital0: Output<P0>,
         poller: imxrt_log::Poller,
-
+        error_screen: ErrorScreen<'static>
     }
 
     #[shared]
     struct Shared {
         voltages: [f32; 6],
         high_avg: f32,
-        low_avg: f32
+        low_avg: f32,
+        display: Ssd1306<
+            I2CInterface<imxrt_hal::lpi2c::Lpi2c<imxrt_hal::lpi2c::Pins<P16, P17>, 3>>,
+            DisplaySize128x64,
+            ssd1306::mode::BufferedGraphicsMode<DisplaySize128x64>,
+        >,
     }
     fn read_all_volts(
         adc: &mut bsp::hal::adc::Adc<1>,
@@ -91,7 +104,11 @@ mod app {
 
     #[init]
     fn init(ctx: init::Context) -> (Shared, Local) {
-        let board::Resources {usb, pins, mut gpio1, adc1, ..}= board::t41(ctx.device);
+        unsafe { // as of now, the code does not run without this block. Figure out why!
+            #[allow(static_mut_refs)]
+            HEAP.init(HEAP_MEM.as_ptr() as usize, HEAP_SIZE);
+        }
+        let board::Resources {usb, lpi2c3, pins, mut gpio1, adc1, ..}= board::t41(ctx.device);
         let poller = imxrt_log::log::usbd(usb, imxrt_log::Interrupts::Enabled).unwrap();
 
 
@@ -106,9 +123,26 @@ mod app {
         let pin23 = AnalogInput::<P23, 1>::new(pins.p23);
 
         let digital0 = gpio1.output(pins.p0);
+
+        let i2c: Lpi2c3 = board::lpi2c(lpi2c3, pins.p16, pins.p17, board::Lpi2cClockSpeed::MHz1);
+        let interface = I2CDisplayInterface::new(i2c);
+        let display: Ssd1306<
+            I2CInterface<imxrt_hal::lpi2c::Lpi2c<imxrt_hal::lpi2c::Pins<P16, P17>, 3>>,
+            DisplaySize128x64,
+            BufferedGraphicsMode<DisplaySize128x64>,
+        > = Ssd1306::new(interface, DisplaySize128x64, DisplayRotation::Rotate0)
+            .into_buffered_graphics_mode();
+
+        let error_screen = ErrorScreen::new(
+            "Example Program",
+            "Lorem ipsum dolor sit amet, consectetur adipiscing elit, 
+            sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.",
+        );
+
         calibration::spawn().ok();
+        init_display::spawn().ok();
         // blink_led::spawn().ok();
-        (Shared {voltages: [0.0; 6], high_avg: 0f32, low_avg: 0f32}, Local {
+        (Shared {voltages: [0.0; 6], high_avg: 0f32, low_avg: 0f32, display}, Local {
             adc: adc1,
             pin18,
             pin19,
@@ -117,15 +151,27 @@ mod app {
             pin22,
             pin23,
             digital0,
-            poller
+            poller,
+            error_screen
         })
+    }
+
+    #[task(priority=1, shared = [display], local = [error_screen])]
+    async fn init_display(mut _cx: init_display::Context) {
+    
+        _cx.shared.display.lock(|display| {
+            display.init().ok();
+            display.clear();
+            _cx.local.error_screen.draw(display).ok();
+            display.flush().ok();
+        });
     }
 
     #[task(priority = 1, local = [digital0, adc, pin18, pin19, pin20, pin21, pin22, pin23], shared = [voltages, high_avg, low_avg])]
     async fn calibration(mut cx: calibration::Context) {
         loop {
             cx.local.digital0.set_low().expect("TODO: panic message");
-            Systick::delay(50u32.millis()).await; // blocking delay
+            Systick::delay(1000u32.millis()).await; // blocking delay
             let low_voltages = read_all_volts(
                 cx.local.adc,
                 cx.local.pin18,
@@ -145,7 +191,7 @@ mod app {
 
 
             cx.local.digital0.set_high().expect("TODO: panic message");
-             Systick::delay(50u32.millis()).await; // blocking delay
+             Systick::delay(1000u32.millis()).await; // blocking delay
             let high_voltages = read_all_volts(
                 cx.local.adc,
                 cx.local.pin18,
