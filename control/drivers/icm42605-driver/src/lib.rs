@@ -205,42 +205,42 @@ impl<I2C: i2c::Write<Error = E> + i2c::Read<Error = E>, E: Debug> IMU<I2C> {
             return Err(ImuError::Uninitialized);
         }
 
-        // 1. CALCULATE DT
+        // CALCULATE DT
         let now_tick = Systick::now().ticks();
 
         
         let dt_ticks: f32 =  (now_tick - self.last_update_gz.unwrap_or(now_tick)) as f32; // Convert milliseconds to seconds
         let dt: f32 = dt_ticks * SECONDS_PER_TICK;
 
-        // m2. CREATE MATRICES FOR THIS STEP
+        // CREATE MATRICES FOR THIS STEP
         let f = Matrix2::new(1.0, dt, 0.0, 1.0);
         let q = Matrix2::new(0.1, 0.0, 0.0, 1.0);
         let h = Matrix1x2::new(1.0, 0.0);
         let r = Matrix1::new(1.0);
 
-        // 3. CREATE THE FILTER COMPONENTS
+        // CREATE THE FILTER COMPONENTS
         // We create the system object, passing in the F, Q, and last state `x`.
         let system: LinearNoInputSystem<f32, 2> = LinearNoInputSystem::new(f, q, self.x_gz);
         // We create the measurement handler object.
         let measurement_handler = LinearMeasurement::new(h, r, Matrix1::zeros());
 
-        // 4. CREATE A TEMPORARY FILTER
+        // CREATE A TEMPORARY FILTER
         // Use `new_custom` to build the filter from our components and the last covariance `P`.
         let mut kf = Kalman1M::new_custom(system, self.p_gz, measurement_handler);
 
-        // 5. RUN PREDICT AND UPDATE
+        // RUN PREDICT AND UPDATE
         kf.predict();
         let raw_value = self.raw_gyro_z()? - self.offset_gz;
         kf.update(Matrix1::new(raw_value));
 
-        // 6. SAVE THE NEW STATE FOR THE NEXT CALL
+        // SAVE THE NEW STATE FOR THE NEXT CALL
         self.x_gz = *kf.state();
         self.p_gz = *kf.covariance();
 
         //update last update time
         self.last_update_gz = Some(now_tick);
 
-        // 7. RETURN THE FILTERED VALUE
+        // RETURN THE FILTERED VALUE
         Ok(self.x_gz[0])
       }
 
