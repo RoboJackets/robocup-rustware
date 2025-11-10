@@ -15,14 +15,11 @@ use registers::{Bank, BankSelect, WHO_AM_I};
 use rtic_monotonics::{systick::*, Monotonic};
 
 //Kalman filter libraries
-use kfilter::kalman::{Kalman1M, KalmanFilter, KalmanPredict, KalmanUpdate};
+use kfilter::kalman::{Kalman1M, KalmanFilter, KalmanPredict};
 use kfilter::measurement::LinearMeasurement;
 use kfilter::system::LinearNoInputSystem;
-use kfilter::Kalman1MLinearNoInput;
-use nalgebra::{Matrix1, Matrix1x2, Matrix2, Matrix2x1, SMatrix, Vector2, SVector};
+use nalgebra::{Matrix1, Matrix1x2, Matrix2, Vector2};
 
-// The correct type alias for a filter with a 2-dimensional state and f32 numbers.
-type ImuKalmanFilter = Kalman1MLinearNoInput<f32, 2, 1>;
 
 mod registers;
 
@@ -384,6 +381,18 @@ impl<I2C: i2c::Write<Error = E> + i2c::Read<Error = E>, E: Debug> IMU<I2C> {
 
         let hi = self.read(Bank::Bank0, registers::ACCEL_DATA_Y1)?;
         let lo = self.read(Bank::Bank0, registers::ACCEL_DATA_Y0)?;
+
+        Ok(reading_to_accel(hi, lo))
+    }
+
+    /// Without the Kalman Filter, read the acceleration in the z direction. This is gravity!
+    pub fn raw_accel_z(&mut self) -> Result<f32, ImuError<E>> {
+        if !self.initialized {
+            return Err(ImuError::Uninitialized);
+        }
+
+        let hi = self.read(Bank::Bank0, registers::ACCEL_DATA_Z1)?;
+        let lo = self.read(Bank::Bank0, registers::ACCEL_DATA_Z0)?;
 
         Ok(reading_to_accel(hi, lo))
     }
