@@ -81,7 +81,7 @@ mod app {
     }
 
     #[task(shared=[i2c], priority=1)]
-    async fn start_i2c_switch(mut ctx: start_color_sensor::Context) {
+    async fn start_i2c_switch(mut ctx: start_i2c_switch::Context) {
         Systick::delay(TASK_START_DELAY_MS.millis()).await;
         ctx.shared.i2c.lock(|i2c| {
             init_i2c_switch(i2c);
@@ -90,7 +90,7 @@ mod app {
 
     #[task(shared=[i2c], priority=1)]
     async fn log_sensor_data(mut ctx: log_sensor_data::Context) {
-        loop {
+        /* loop {
             let mut data = SensorData {
                 clear: 0, 
                 red: 0, 
@@ -107,12 +107,12 @@ mod app {
             log::info!("Green: {}", data.green);
             log::info!("Blue: {}", data.blue);
             log::info!("Infrared: {}", data.infrared);
-        }
+        } */
     }
 
     // ??? dunno if needed
     fn write_to_switch(i2c: &mut Lpi2c1, data: &[u8]) {
-        match (*i2c).write_read(SWITCH_ADDRESS, data, []) {
+        match (*i2c).write_read(SWITCH_ADDRESS, data, &mut []) {
             Err(err) => {
                 log::info!("An error occured. {:?}", err);
             },
@@ -122,7 +122,7 @@ mod app {
 
     // ??? dunno if needed
     fn read_from_switch(i2c: &mut Lpi2c1, data: &mut [u8]) {
-        match (*i2c).write_read(SWITCH_ADDRESS, [], data) {
+        match (*i2c).write_read(SWITCH_ADDRESS, &[], data) {
             Err(err) => {
                 log::info!("An error occured. {:?}", err);
             },
@@ -132,13 +132,13 @@ mod app {
 
     // hopefully would work?
     fn write_to_register(i2c: &mut Lpi2c1, register: u8, data: &[u8]) {
-        match (*i2c).write_read(SWITCH_ADDRESS, [1 << register], []) {
+        match (*i2c).write_read(SWITCH_ADDRESS, &[1 << register], &mut []) {
             Err(err) => {
                 log::info!("An error occured. {:?}", err);
             },
             _ => {},
         }
-        match (*i2c).write_read(SENSOR_ADDRESS, data, []) {
+        match (*i2c).write_read(SENSOR_ADDRESS, data, &mut []) {
             Err(err) => {
                 log::info!("An error occured. {:?}", err);
             },
@@ -148,13 +148,13 @@ mod app {
 
     // hopefully would work?
     fn read_from_register(i2c: &mut Lpi2c1, register: u8, data: &mut [u8]) {
-        match (*i2c).write_read(SWITCH_ADDRESS, [1 << register], []) {
+        match (*i2c).write_read(SWITCH_ADDRESS, &[1 << register], &mut []) {
             Err(err) => {
                 log::info!("An error occured. {:?}", err);
             },
             _ => {},
         }
-        match (*i2c).write_read(SENSOR_ADDRESS, [], data) {
+        match (*i2c).write_read(SENSOR_ADDRESS, &[], data) {
             Err(err) => {
                 log::info!("An error occured. {:?}", err);
             },
@@ -190,12 +190,12 @@ mod app {
         // pull reset high somehow lol
     }
 
-    fn read_sensor_values(i2c: &mut Lpi2c1, sd: &mut SensorData) {
-        read_from_command(i2c, 0x04, &mut sd.clear);
+    fn read_sensor_values(i2c: &mut Lpi2c1) { //, sd: &mut SensorData) {
+        /* read_from_command(i2c, 0x04, &mut sd.clear);
         read_from_command(i2c, 0x05, &mut sd.red);
         read_from_command(i2c, 0x06, &mut sd.green);
         read_from_command(i2c, 0x07, &mut sd.blue);
-        read_from_command(i2c, 0x08, &mut sd.infrared);
+        read_from_command(i2c, 0x08, &mut sd.infrared); */
     }
 
     /// This task runs when the USB1 interrupt activates.
