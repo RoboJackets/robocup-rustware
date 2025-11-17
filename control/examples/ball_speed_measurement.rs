@@ -170,7 +170,7 @@ mod app {
     #[task(priority = 1, local = [digital0, adc, pin18, pin19, pin20, pin21, pin22, pin23], shared = [voltages, high_avg, low_avg])]
     async fn calibration(mut cx: calibration::Context) {
         loop {
-            cx.local.digital0.set_low().expect("TODO: panic message");
+            cx.local.digital0.set_high().expect("TODO: panic message");
             Systick::delay(1000u32.millis()).await; // blocking delay
             let low_voltages = read_all_volts(
                 cx.local.adc,
@@ -186,11 +186,11 @@ mod app {
                 *low_avg = low_avg_local;
             });
 
-            log::info!("Low Voltages: {:?}", low_voltages);
-            log::info!("Low Avg: {}", low_avg_local);
+            log::info!("Dark Voltages: {:?}", low_voltages);
+            log::info!("Dark Avg: {}", low_avg_local);
 
 
-            cx.local.digital0.set_high().expect("TODO: panic message");
+            cx.local.digital0.set_low().expect("TODO: panic message");
              Systick::delay(1000u32.millis()).await; // blocking delay
             let high_voltages = read_all_volts(
                 cx.local.adc,
@@ -206,8 +206,8 @@ mod app {
                 *high_avg = high_avg_local;
             });
 
-            log::info!("High Voltages: {:?}", high_voltages);
-            log::info!("High Avg: {}", high_avg_local);
+            log::info!("Bright Voltages: {:?}", high_voltages);
+            log::info!("Bright Avg: {}", high_avg_local);
     }
     }
 
