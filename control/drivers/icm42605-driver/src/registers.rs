@@ -14,6 +14,13 @@ pub(crate) const ACCEL_DATA_Y1: u8 = 0x21;
 /// The register number of the register containing the low byte of the
 /// y direction acceleration
 pub(crate) const ACCEL_DATA_Y0: u8 = 0x22;
+/// The register number of the register containing the low byte of the
+/// z direction acceleration
+pub(crate) const ACCEL_DATA_Z0: u8 = 0x24;
+/// The register number of the register containing the high byte of the
+/// z direction acceleration
+pub(crate) const ACCEL_DATA_Z1: u8 = 0x23;
+
 /// The register number of the register containing the high byte of the
 /// z direction velocity
 pub(crate) const GYRO_DATA_Z1: u8 = 0x29;
@@ -21,11 +28,17 @@ pub(crate) const GYRO_DATA_Z1: u8 = 0x29;
 /// z direction velocity
 pub(crate) const GYRO_DATA_Z0: u8 = 0x2A;
 /// The register number of the register containing the low byte of the
-/// z direction acceleration
-pub(crate) const ACCEL_DATA_Z0: u8 = 0x24;
+/// y direction velocity
+pub(crate) const GYRO_DATA_Y0: u8 = 0x28;
 /// The register number of the register containing the high byte of the
-/// z direction acceleration
-pub(crate) const ACCEL_DATA_Z1: u8 = 0x23;
+/// y direction velocity
+pub(crate) const GYRO_DATA_Y1: u8 = 0x27;
+/// The register number of the register containing the low byte of the
+/// x direction velocity
+pub(crate) const GYRO_DATA_X0: u8 = 0x26;
+/// The register number of the register containing the high byte of the
+/// x direction velocity
+pub(crate) const GYRO_DATA_X1: u8 = 0x25;
 
 /// The expected return value from checking the device identification from
 /// the IMU.

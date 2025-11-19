@@ -18,7 +18,7 @@ use rtic_monotonics::{systick::*, Monotonic};
 use kfilter::kalman::{Kalman1M, KalmanFilter, KalmanPredict};
 use kfilter::measurement::LinearMeasurement;
 use kfilter::system::LinearNoInputSystem;
-use nalgebra::{Matrix1, Matrix1x2, Matrix2, Vector2};
+use nalgebra::{Matrix1, Matrix1x2, Matrix2, Vector2, Vector3, SVector, UnitQuaternion};
 
 
 mod registers;
@@ -175,7 +175,7 @@ impl<I2C: i2c::Write<Error = E> + i2c::Read<Error = E>, E: Debug> IMU<I2C> {
         self.initialized = true;
 
         //1 second calibration to determine offsets
-        //MAKE SURE IMU IS STILL/FLAT during this time
+        //MAKE SURE IMU IS STILL during this time
         self.calibrate_offsets(delay, 1000);
 
         //Initialize KALMAN FILTERS
@@ -282,7 +282,7 @@ impl<I2C: i2c::Write<Error = E> + i2c::Read<Error = E>, E: Debug> IMU<I2C> {
         }
         
         let now_tick = Systick::now().ticks();
-        let dt_ticks: f32 = (now_tick - self.last_update_ay.unwrap_or(now_tick)) as f32; // Convert milliseconds to seconds
+        let dt_ticks: f32 = (now_tick - self.last_update_ay.unwrap_or(now_tick)) as f32;
         let dt: f32 = dt_ticks * SECONDS_PER_TICK;
 
         let f = Matrix2::new(1.0, dt, 0.0, 1.0);
@@ -350,13 +350,37 @@ impl<I2C: i2c::Write<Error = E> + i2c::Read<Error = E>, E: Debug> IMU<I2C> {
 
     
     /// Without the Kalman Filter, read the gyro velocity in the z direction
-    fn raw_gyro_z(&mut self) -> Result<f32, ImuError<E>> {
+    pub fn raw_gyro_z(&mut self) -> Result<f32, ImuError<E>> {
         if !self.initialized {
             return Err(ImuError::Uninitialized);
         }
 
         let hi = self.read(Bank::Bank0, registers::GYRO_DATA_Z1)?;
         let lo = self.read(Bank::Bank0, registers::GYRO_DATA_Z0)?;
+
+        Ok(reading_to_gyro(hi, lo))
+    }
+
+    /// Without the Kalman Filter, read the gyro velocity in the x direction
+    pub fn raw_gyro_x(&mut self) -> Result<f32, ImuError<E>> {
+        if !self.initialized {
+            return Err(ImuError::Uninitialized);
+        }
+
+        let hi = self.read(Bank::Bank0, registers::GYRO_DATA_X1)?;
+        let lo = self.read(Bank::Bank0, registers::GYRO_DATA_X0)?;
+
+        Ok(reading_to_gyro(hi, lo))
+    }
+
+    /// Without the Kalman Filter, read the gyro velocity in the x direction
+    pub fn raw_gyro_y(&mut self) -> Result<f32, ImuError<E>> {
+        if !self.initialized {
+            return Err(ImuError::Uninitialized);
+        }
+
+        let hi = self.read(Bank::Bank0, registers::GYRO_DATA_Y1)?;
+        let lo = self.read(Bank::Bank0, registers::GYRO_DATA_Y0)?;
 
         Ok(reading_to_gyro(hi, lo))
     }
@@ -399,16 +423,18 @@ impl<I2C: i2c::Write<Error = E> + i2c::Read<Error = E>, E: Debug> IMU<I2C> {
 
     
     /// Calibrate the offsets for the gyro and accelerometer
+    /// MAKE SURE IMU IS STILL during this time
     fn calibrate_offsets(&mut self, delay: &mut impl DelayMs<u8>, cal_time_ms: u32) {
         let t0 = Systick::now().ticks();
         let mut count: i64 = 0;
         let mut running_sum_gz: f32 = 0.0;
         let mut running_sum_ax: f32 = 0.0;
         let mut running_sum_ay: f32 = 0.0;
+        let mut running_sum_az: f32 = 0.0;
+
 
         while Systick::now().ticks() - t0 < cal_time_ms {
-            // collect raw values for 1 second
-            //MAKE SURE IMU IS STILL/FLAT during this time
+            // collect raw for specified calibration time
             running_sum_gz += self.raw_gyro_z().unwrap_or_default();
             running_sum_ax += self.raw_accel_x().unwrap_or_default();
             running_sum_ay += self.raw_accel_y().unwrap_or_default();
@@ -419,6 +445,7 @@ impl<I2C: i2c::Write<Error = E> + i2c::Read<Error = E>, E: Debug> IMU<I2C> {
         self.offset_gz = running_sum_gz / count as f32;
         self.offset_ax = running_sum_ax / count as f32;
         self.offset_ay = running_sum_ay / count as f32;
+        // self.offset_az = (running_sum_az / count as f32); //should be 1 for gravity
     }
 
 }
