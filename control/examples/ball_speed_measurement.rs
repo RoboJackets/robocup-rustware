@@ -1,17 +1,8 @@
-//!
-//! This demo example shows how a teensy 4 RTIC application can be set up
-//! and spawns a software task that blinks an onboard led.
-//!
-
 #![no_std]
 #![no_main]
 #![feature(type_alias_impl_trait)]
+extern crate alloc;
 
-///
-/// This is a demo example file that turns on and off the onboard led.
-///
-/// Please follow this example for future examples and sanity tests
-///
 use embedded_alloc::Heap;
 use embedded_graphics::prelude::*;
 use ssd1306::{mode::BufferedGraphicsMode, prelude::*, I2CDisplayInterface, Ssd1306};
@@ -21,8 +12,9 @@ static HEAP: Heap = Heap::empty();
 
 use teensy4_panic as _;
 
-#[rtic::app(device = teensy4_bsp, peripherals = true, dispatchers = [GPT2])]
+#[rtic::app(device = teensy4_bsp, peripherals = true, dispatchers = [GPT1, GPT2])]
 mod app {
+    use alloc::format;
     use super::*;
     use bsp::board;
     use graphics::error_screen::ErrorScreen;
@@ -36,6 +28,11 @@ mod app {
     use rtic_monotonics::systick::*;
 
     use core::mem::MaybeUninit;
+    use embedded_graphics::mono_font::ascii::FONT_6X10;
+    use embedded_graphics::mono_font::MonoTextStyle;
+    use embedded_graphics::pixelcolor::BinaryColor;
+    use embedded_graphics::text::Text;
+    use rtic::Mutex;
 
     const HEAP_SIZE: usize = 1024 * 8;
     static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
@@ -54,44 +51,18 @@ mod app {
         pin23: AnalogInput<P23, 1>,
         digital0: Output<P0>,
         poller: imxrt_log::Poller,
-        error_screen: ErrorScreen<'static>
     }
 
     #[shared]
     struct Shared {
         voltages: [f32; 6],
-        high_avg: f32,
-        low_avg: f32,
+        dark_avg: f32,
+        bright_avg: f32,
         display: Ssd1306<
             I2CInterface<imxrt_hal::lpi2c::Lpi2c<imxrt_hal::lpi2c::Pins<P16, P17>, 3>>,
             DisplaySize128x64,
             ssd1306::mode::BufferedGraphicsMode<DisplaySize128x64>,
         >,
-    }
-    fn read_all_volts(
-        adc: &mut bsp::hal::adc::Adc<1>,
-        pin18: &mut AnalogInput<P18, 1>,
-        pin19: &mut AnalogInput<P19, 1>,
-        pin20: &mut AnalogInput<P20, 1>,
-        pin21: &mut AnalogInput<P21, 1>,
-        pin22: &mut AnalogInput<P22, 1>,
-        pin23: &mut AnalogInput<P23, 1>,
-    ) -> [f32; 6] {
-        let raw0 = adc.read_blocking(pin18);
-        let raw1 = adc.read_blocking(pin19);
-        let raw2 = adc.read_blocking(pin20);
-        let raw3 = adc.read_blocking(pin21);
-        let raw4 = adc.read_blocking(pin22);
-        let raw5 = adc.read_blocking(pin23);
-
-        [
-            raw0 as f32 * VCC / ADC_MAX as f32,
-            raw1 as f32 * VCC / ADC_MAX as f32,
-            raw2 as f32 * VCC / ADC_MAX as f32,
-            raw3 as f32 * VCC / ADC_MAX as f32,
-            raw4 as f32 * VCC / ADC_MAX as f32,
-            raw5 as f32 * VCC / ADC_MAX as f32,
-        ]
     }
 
     fn avg_f32_array(arr: &[f32]) -> f32 {
@@ -104,7 +75,7 @@ mod app {
 
     #[init]
     fn init(ctx: init::Context) -> (Shared, Local) {
-        unsafe { // as of now, the code does not run without this block. Figure out why!
+        unsafe { // needed, unfortunately
             #[allow(static_mut_refs)]
             HEAP.init(HEAP_MEM.as_ptr() as usize, HEAP_SIZE);
         }
@@ -126,23 +97,18 @@ mod app {
 
         let i2c: Lpi2c3 = board::lpi2c(lpi2c3, pins.p16, pins.p17, board::Lpi2cClockSpeed::MHz1);
         let interface = I2CDisplayInterface::new(i2c);
-        let display: Ssd1306<
+        let mut display: Ssd1306<
             I2CInterface<imxrt_hal::lpi2c::Lpi2c<imxrt_hal::lpi2c::Pins<P16, P17>, 3>>,
             DisplaySize128x64,
             BufferedGraphicsMode<DisplaySize128x64>,
         > = Ssd1306::new(interface, DisplaySize128x64, DisplayRotation::Rotate0)
             .into_buffered_graphics_mode();
+        display.init().ok();
 
-        let error_screen = ErrorScreen::new(
-            "Example Program",
-            "Lorem ipsum dolor sit amet, consectetur adipiscing elit, 
-            sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.",
-        );
-
+        read_voltages::spawn().ok();
         calibration::spawn().ok();
-        init_display::spawn().ok();
-        // blink_led::spawn().ok();
-        (Shared {voltages: [0.0; 6], high_avg: 0f32, low_avg: 0f32, display}, Local {
+
+        (Shared {voltages: [0.0; 6], dark_avg: 0f32, bright_avg: 0f32, display}, Local {
             adc: adc1,
             pin18,
             pin19,
@@ -152,63 +118,64 @@ mod app {
             pin23,
             digital0,
             poller,
-            error_screen
+        })
+    }
+    #[task(priority=1, shared = [voltages, dark_avg, bright_avg], local = [adc, pin18, pin19, pin20, pin21, pin22, pin23])]
+    async fn read_voltages(mut cx: read_voltages::Context) {
+        let v = [
+            cx.local.adc.read_blocking(cx.local.pin18) as f32 * VCC / ADC_MAX as f32,
+            cx.local.adc.read_blocking(cx.local.pin19) as f32 * VCC / ADC_MAX as f32,
+            cx.local.adc.read_blocking(cx.local.pin20) as f32 * VCC / ADC_MAX as f32,
+            cx.local.adc.read_blocking(cx.local.pin21) as f32 * VCC / ADC_MAX as f32,
+            cx.local.adc.read_blocking(cx.local.pin22) as f32 * VCC / ADC_MAX as f32,
+            cx.local.adc.read_blocking(cx.local.pin23) as f32 * VCC / ADC_MAX as f32
+        ];
+        cx.shared.voltages.lock(|voltages| *voltages = v);
+        (cx.shared.dark_avg, cx.shared.bright_avg).lock(|dark, bright| {
+            if (*dark != 0f32 && *bright != 0f32) { // calibration complete
+                // TODO: check if any are low or high. write actual speed logic
+            }
         })
     }
 
-    #[task(priority=1, shared = [display], local = [error_screen])]
-    async fn init_display(mut _cx: init_display::Context) {
-    
-        _cx.shared.display.lock(|display| {
-            display.init().ok();
+
+    #[task(priority = 2, local = [digital0], shared = [voltages, dark_avg, bright_avg, display])]
+    async fn calibration(mut cx: calibration::Context) {
+        cx.local.digital0.set_high().expect("TODO: panic message");
+        Systick::delay(1000u32.millis()).await; // blocking delay
+        // TODO: Verify that the prior task is actually running.
+
+        let dark_voltages = (cx.shared.voltages).lock(|voltages| *voltages);
+        let dark_avg_local: f32 = avg_f32_array(&dark_voltages);
+        cx.shared.dark_avg.lock(|dark_avg| *dark_avg = dark_avg_local);
+
+
+        cx.local.digital0.set_low().expect("TODO: panic message");
+         Systick::delay(1000u32.millis()).await; // blocking delay
+        // TODO: Verify that the prior task is actually running.
+
+        let bright_voltages = (cx.shared.voltages).lock(|voltages| *voltages);
+        let bright_avg_local = avg_f32_array(&bright_voltages);
+        cx.shared.bright_avg.lock(|bright_avg| {
+            *bright_avg = bright_avg_local;
+        });
+
+        log::info!("Dark Voltages: {:?}", dark_voltages);
+        log::info!("Dark Avg: {}", dark_avg_local);
+        log::info!("Bright Voltages: {:?}", bright_voltages);
+        log::info!("Bright Avg: {}", bright_avg_local);
+        cx.shared.display.lock(|display| {
             display.clear();
-            _cx.local.error_screen.draw(display).ok();
+            Text::new(
+                &format!(
+                    "Dark Voltages: {:?}\nDark Avg: {}\nBright Voltages: {:?}\nBright Avg: {}\n",
+                    dark_voltages, dark_avg_local, bright_voltages, bright_avg_local
+                ),
+                Point { x: 0, y: 32 },
+                MonoTextStyle::new(&FONT_6X10, BinaryColor::On),
+            ).draw(display).expect("TODO: panic message");
             display.flush().ok();
         });
-    }
-
-    #[task(priority = 1, local = [digital0, adc, pin18, pin19, pin20, pin21, pin22, pin23], shared = [voltages, high_avg, low_avg])]
-    async fn calibration(mut cx: calibration::Context) {
-        loop {
-            cx.local.digital0.set_high().expect("TODO: panic message");
-            Systick::delay(1000u32.millis()).await; // blocking delay
-            let low_voltages = read_all_volts(
-                cx.local.adc,
-                cx.local.pin18,
-                cx.local.pin19,
-                cx.local.pin20,
-                cx.local.pin21,
-                cx.local.pin22,
-                cx.local.pin23,
-            );
-            let low_avg_local = avg_f32_array(&low_voltages);
-            cx.shared.high_avg.lock(|low_avg| {
-                *low_avg = low_avg_local;
-            });
-
-            log::info!("Dark Voltages: {:?}", low_voltages);
-            log::info!("Dark Avg: {}", low_avg_local);
-
-
-            cx.local.digital0.set_low().expect("TODO: panic message");
-             Systick::delay(1000u32.millis()).await; // blocking delay
-            let high_voltages = read_all_volts(
-                cx.local.adc,
-                cx.local.pin18,
-                cx.local.pin19,
-                cx.local.pin20,
-                cx.local.pin21,
-                cx.local.pin22,
-                cx.local.pin23,
-            );
-            let high_avg_local = avg_f32_array(&high_voltages);
-            cx.shared.high_avg.lock(|high_avg| {
-                *high_avg = high_avg_local;
-            });
-
-            log::info!("Bright Voltages: {:?}", high_voltages);
-            log::info!("Bright Avg: {}", high_avg_local);
-    }
     }
 
 
@@ -216,19 +183,6 @@ mod app {
     fn idle(_: idle::Context) -> ! {
         loop {
             cortex_m::asm::wfi();
-        }
-    }
-
-    #[task(priority = 1)]
-    async fn blink_led(_ctx: blink_led::Context) {
-        loop {
-            log::info!("On");
-
-            Systick::delay(1000u32.millis()).await;
-
-            log::info!("Off");
-
-            Systick::delay(1000u32.millis()).await;
         }
     }
 
