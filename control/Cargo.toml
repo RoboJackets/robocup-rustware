@@ -64,7 +64,7 @@ features = ["thumbv7-backend"]
 
 [dependencies.rtic-monotonics]
 version = "1.0.0"
-features = ["cortex-m-systick"]
+features = ["cortex-m-systick", "systick-10khz"]
 
 # teensy4-bsp is the board support package for teensy 4.0/4.1
 [dependencies.teensy4-bsp]

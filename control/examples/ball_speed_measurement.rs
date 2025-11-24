@@ -28,17 +28,20 @@ mod app {
     use rtic_monotonics::systick::*;
 
     use core::mem::MaybeUninit;
-    use embedded_graphics::mono_font::ascii::FONT_6X10;
+    use embedded_graphics::mono_font::ascii::*;
     use embedded_graphics::mono_font::MonoTextStyle;
     use embedded_graphics::pixelcolor::BinaryColor;
     use embedded_graphics::text::Text;
-    use rtic::Mutex;
+    use rtic_monotonics::Monotonic; // for Systick::now()
 
     const HEAP_SIZE: usize = 1024 * 8;
     static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
 
-    const VCC: f32 = 3.3;
-    const ADC_MAX: u16 = 1023; // max value for adc according to internet forums
+    const LASERS: usize = 4;
+    const GAP_CM: f32 = 5f32;
+    const MPH_PER_CM_PER_TENTH_MS: f32 = 22.369362920544;
+    const VCC: f32 = 3.3f32;
+    const ADC_MAX: u16 = 1023u16; // max value for adc according to internet forums
 
     #[local]
     struct Local {
@@ -51,11 +54,13 @@ mod app {
         pin23: AnalogInput<P23, 1>,
         digital0: Output<P0>,
         poller: imxrt_log::Poller,
+        last_voltages: [f32; 4],
+        timestamps: [i32; 4], // if not signed, subtraction underflow later on
     }
 
     #[shared]
     struct Shared {
-        voltages: [f32; 6],
+        voltages: [f32; 4],
         dark_avg: f32,
         bright_avg: f32,
         display: Ssd1306<
@@ -108,7 +113,7 @@ mod app {
         read_voltages::spawn().ok();
         calibration::spawn().ok();
 
-        (Shared {voltages: [0.0; 6], dark_avg: 0f32, bright_avg: 0f32, display}, Local {
+        (Shared {voltages: [0f32; 4], dark_avg: 0f32, bright_avg: 0f32, display}, Local {
             adc: adc1,
             pin18,
             pin19,
@@ -118,24 +123,66 @@ mod app {
             pin23,
             digital0,
             poller,
+            last_voltages: [0f32; 4],
+            timestamps: [0i32; 4] 
         })
     }
-    #[task(priority=1, shared = [voltages, dark_avg, bright_avg], local = [adc, pin18, pin19, pin20, pin21, pin22, pin23])]
+    #[task(priority=1, shared = [voltages, dark_avg, bright_avg, display], local = [adc, pin18, pin19, pin20, pin21, pin22, pin23, last_voltages, timestamps])]
     async fn read_voltages(mut cx: read_voltages::Context) {
-        let v = [
-            cx.local.adc.read_blocking(cx.local.pin18) as f32 * VCC / ADC_MAX as f32,
-            cx.local.adc.read_blocking(cx.local.pin19) as f32 * VCC / ADC_MAX as f32,
-            cx.local.adc.read_blocking(cx.local.pin20) as f32 * VCC / ADC_MAX as f32,
-            cx.local.adc.read_blocking(cx.local.pin21) as f32 * VCC / ADC_MAX as f32,
-            cx.local.adc.read_blocking(cx.local.pin22) as f32 * VCC / ADC_MAX as f32,
-            cx.local.adc.read_blocking(cx.local.pin23) as f32 * VCC / ADC_MAX as f32
-        ];
-        cx.shared.voltages.lock(|voltages| *voltages = v);
-        (cx.shared.dark_avg, cx.shared.bright_avg).lock(|dark, bright| {
-            if (*dark != 0f32 && *bright != 0f32) { // calibration complete
-                // TODO: check if any are low or high. write actual speed logic
-            }
-        })
+        loop {
+            let v = [
+                cx.local.adc.read_blocking(cx.local.pin18) as f32 * VCC / ADC_MAX as f32,
+                cx.local.adc.read_blocking(cx.local.pin19) as f32 * VCC / ADC_MAX as f32,
+                cx.local.adc.read_blocking(cx.local.pin20) as f32 * VCC / ADC_MAX as f32,
+                cx.local.adc.read_blocking(cx.local.pin21) as f32 * VCC / ADC_MAX as f32,
+                /*cx.local.adc.read_blocking(cx.local.pin22) as f32 * VCC / ADC_MAX as f32,
+                cx.local.adc.read_blocking(cx.local.pin23) as f32 * VCC / ADC_MAX as f32*/
+            ];
+            cx.shared.voltages.lock(|voltages| {
+                *cx.local.last_voltages = *voltages;
+                *voltages = v
+            });
+            (cx.shared.dark_avg).lock(|dark| {
+                if *dark != 0f32 {
+                    (cx.shared.bright_avg).lock(|bright| {
+                        if *bright != 0f32 { // calibration complete
+                            'a: for i in 0..LASERS {
+                                if ((cx.local.last_voltages[i] - *bright).abs() > (cx.local.last_voltages[i] - *dark).abs())
+                                        && ((v[i] - *bright).abs() <= (v[i] - *dark).abs()) {
+                                    cx.local.timestamps[i] = Systick::now().ticks() as i32;
+                                    log::info!("For {}, {}", i, cx.local.timestamps[i]);
+                                    if i == LASERS - 1 { // last laser
+                                        let mut totalTenthMs: u32 = 0;
+                                        for i in 1..LASERS {
+                                            let diff = cx.local.timestamps[i] - cx.local.timestamps[i-1];
+                                            if diff <= 0 || diff > 5000  { // needs to be at least 500 ms between each, that makes 500ms total for a ball crossing path
+                                                break 'a;
+                                            }
+                                            
+                                            totalTenthMs += (cx.local.timestamps[i] - cx.local.timestamps[i-1]) as u32;
+                                            
+                                        } // if we exit loop cleanly, then totalMs is valid.
+                                    
+                                        let mph = ((GAP_CM * ((LASERS - 1) as f32)) / ((totalTenthMs as f32) / 10f32)) * MPH_PER_CM_PER_TENTH_MS;
+                                        log::info!("MPH: {}", mph);
+                                        cx.shared.display.lock(|display| {
+                                            display.clear();
+                                            Text::new(
+                                                &format!("MPH: {}", mph),
+                                                Point { x: 0, y: 32 },
+                                                MonoTextStyle::new(&FONT_8X13, BinaryColor::On),
+                                            ).draw(display).expect("TODO: panic message");
+                                            display.flush().ok();
+                                        });
+                                        
+                                    }
+                                }
+                            }
+                        }
+                    });
+                }            
+            });
+        }
     }
 
 
@@ -148,10 +195,11 @@ mod app {
         let dark_voltages = (cx.shared.voltages).lock(|voltages| *voltages);
         let dark_avg_local: f32 = avg_f32_array(&dark_voltages);
         cx.shared.dark_avg.lock(|dark_avg| *dark_avg = dark_avg_local);
-
+        log::info!("Dark Voltages: {:?}", dark_voltages);
+        log::info!("Dark Avg: {}", dark_avg_local);
 
         cx.local.digital0.set_low().expect("TODO: panic message");
-         Systick::delay(1000u32.millis()).await; // blocking delay
+        Systick::delay(1000u32.millis()).await; // blocking delay
         // TODO: Verify that the prior task is actually running.
 
         let bright_voltages = (cx.shared.voltages).lock(|voltages| *voltages);
@@ -159,11 +207,9 @@ mod app {
         cx.shared.bright_avg.lock(|bright_avg| {
             *bright_avg = bright_avg_local;
         });
-
-        log::info!("Dark Voltages: {:?}", dark_voltages);
-        log::info!("Dark Avg: {}", dark_avg_local);
         log::info!("Bright Voltages: {:?}", bright_voltages);
         log::info!("Bright Avg: {}", bright_avg_local);
+
         cx.shared.display.lock(|display| {
             display.clear();
             Text::new(
