@@ -39,7 +39,8 @@ mod app {
 
     const LASERS: usize = 4;
     const GAP_CM: f32 = 5f32;
-    const MPH_PER_CM_PER_TENTH_MS: f32 = 22.369362920544;
+    const MPH_PER_CM_PER_TENTH_MS: f32 = 223.69362920544;
+    const METERS_PER_SECOND_PER_CM_PER_TENTH_MS: f32 = 100f32;
     const VCC: f32 = 3.3f32;
     const ADC_MAX: u16 = 1023u16; // max value for adc according to internet forums
 
@@ -54,8 +55,8 @@ mod app {
         pin23: AnalogInput<P23, 1>,
         digital0: Output<P0>,
         poller: imxrt_log::Poller,
-        last_voltages: [f32; 4],
-        timestamps: [i32; 4], // if not signed, subtraction underflow later on
+        last_voltages: [f32; LASERS],
+        timestamps: [i32; LASERS], // if not signed, subtraction underflow later on
     }
 
     #[shared]
@@ -123,8 +124,8 @@ mod app {
             pin23,
             digital0,
             poller,
-            last_voltages: [0f32; 4],
-            timestamps: [0i32; 4] 
+            last_voltages: [0f32; LASERS],
+            timestamps: [0i32; LASERS] 
         })
     }
     #[task(priority=1, shared = [voltages, dark_avg, bright_avg, display], local = [adc, pin18, pin19, pin20, pin21, pin22, pin23, last_voltages, timestamps])]
@@ -163,12 +164,12 @@ mod app {
                                             
                                         } // if we exit loop cleanly, then totalMs is valid.
                                     
-                                        let mph = ((GAP_CM * ((LASERS - 1) as f32)) / ((totalTenthMs as f32) / 10f32)) * MPH_PER_CM_PER_TENTH_MS;
-                                        log::info!("MPH: {}", mph);
+                                        let speed = ((GAP_CM * ((LASERS - 1) as f32)) / totalTenthMs as f32) * METERS_PER_SECOND_PER_CM_PER_TENTH_MS;
+                                        log::info!("M/S: {}", speed);
                                         cx.shared.display.lock(|display| {
                                             display.clear();
                                             Text::new(
-                                                &format!("MPH: {}", mph),
+                                                &format!("Speed (m/s): {}", speed),
                                                 Point { x: 0, y: 32 },
                                                 MonoTextStyle::new(&FONT_8X13, BinaryColor::On),
                                             ).draw(display).expect("TODO: panic message");
