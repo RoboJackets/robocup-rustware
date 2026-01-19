@@ -159,17 +159,15 @@ mod app {
         priority = 1,
     )]
     async fn imu_test(mut ctx: imu_test::Context) {
-        let (gyro_z, accel_x, accel_y, accel_z) = ctx.shared.imu.lock(|imu| {
+        let (gyro_z, accel_x, accel_y) = ctx.shared.imu.lock(|imu| {
             (
                 imu.gyro_z().unwrap_or_default(),
                 imu.accel_x().unwrap_or_default(),
                 imu.accel_y().unwrap_or_default(),
-                imu.raw_accel_z().unwrap_or_default(),
             )
         });
 
-        // log::info!("X: {}, Y: {}, Z: {}", accel_x, accel_y, gyro_z);
-        log::info!("AZ: {}", accel_z);
+        log::info!("X: {}, Y: {}, Z: {}", accel_x, accel_y, gyro_z);
 
         short_delay::spawn().ok();
     }

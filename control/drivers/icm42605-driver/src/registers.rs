@@ -61,7 +61,7 @@ pub mod flags {
         }
 
         #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-        /// A bitfag containing the device configuration options for the IMU.
+        /// A bitflag containing the device configuration options for the IMU.
         pub struct DeviceConfig: u8 {
             const SPI_MODE_0_AND_3 = 0b0 << 4;
             const SPI_MODE_1_AND_2 = 0b1 << 4;

@@ -18,7 +18,7 @@ use rtic_monotonics::{systick::*, Monotonic};
 use kfilter::kalman::{Kalman1M, KalmanFilter, KalmanPredict};
 use kfilter::measurement::LinearMeasurement;
 use kfilter::system::LinearNoInputSystem;
-use nalgebra::{Matrix1, Matrix1x2, Matrix2, Vector2, Vector3, SVector, UnitQuaternion};
+use nalgebra::{Matrix1, Matrix1x2, Matrix2, UnitQuaternion, Vector2, Vector3};
 
 
 mod registers;
@@ -66,10 +66,14 @@ pub struct IMU<I2C> {
     /// The currently selected register bank
     current_bank: Bank,
 
-    //Offsets determined during calibration
-    offset_gz: f32,
-    offset_ax: f32,
-    offset_ay: f32,
+    /// Gyro Bias: Average noise XYZ when still
+    gyro_bias: Vector3<f32>,
+
+    /// Accel Rotation: Rotates sensor frame to robot frame (fix tilt)
+    accel_correction: UnitQuaternion<f32>,
+
+    /// Accel Scale: Scales gravity to exactly 1.0g
+    accel_scale: f32,
 
     /// Kalman filter state
     /// State for the gyro Z-axis filter
@@ -106,9 +110,10 @@ impl<I2C: i2c::Write<Error = E> + i2c::Read<Error = E>, E: Debug> IMU<I2C> {
             i2c,
             current_bank: Default::default(),
             initialized: false,
-            offset_ax: 0.0,
-            offset_ay: 0.0,
-            offset_gz: 0.0,
+            // Initialize Calibration to "Identity" (No effect)
+            gyro_bias: Vector3::zeros(),
+            accel_correction: UnitQuaternion::identity(),
+            accel_scale: 1.0,
             //Kalman filter initializations
             x_gz: Vector2::zeros(),
             p_gz: Matrix2::identity(),
@@ -227,8 +232,8 @@ impl<I2C: i2c::Write<Error = E> + i2c::Read<Error = E>, E: Debug> IMU<I2C> {
 
         // RUN PREDICT AND UPDATE
         kf.predict();
-        let raw_value = self.raw_gyro_z()? - self.offset_gz;
-        kf.update(Matrix1::new(raw_value));
+        let corrected_vec = self.get_corrected_gyro_vector()?;
+        kf.update(Matrix1::new(corrected_vec.z));
 
         // SAVE THE NEW STATE FOR THE NEXT CALL
         self.x_gz = *kf.state();
@@ -263,8 +268,8 @@ impl<I2C: i2c::Write<Error = E> + i2c::Read<Error = E>, E: Debug> IMU<I2C> {
         let mut kf = Kalman1M::new_custom(system, self.p_ax, measurement_handler);
 
         kf.predict();
-        let raw_value = self.raw_accel_x()? - self.offset_ax;
-        kf.update(Matrix1::new(raw_value));
+        let corrected_vec = self.get_corrected_accel_vector()?;
+        kf.update(Matrix1::new(corrected_vec.x));
 
         self.x_ax = *kf.state();
         self.p_ax = *kf.covariance();
@@ -296,8 +301,8 @@ impl<I2C: i2c::Write<Error = E> + i2c::Read<Error = E>, E: Debug> IMU<I2C> {
         let mut kf = Kalman1M::new_custom(system, self.p_ay, measurement_handler);
 
         kf.predict();
-        let raw_value = self.raw_accel_y()? - self.offset_ay;
-        kf.update(Matrix1::new(raw_value));
+        let corrected_vec = self.get_corrected_accel_vector()?;
+        kf.update(Matrix1::new(corrected_vec.y));
 
         self.x_ay = *kf.state();
         self.p_ay = *kf.covariance();
@@ -350,7 +355,7 @@ impl<I2C: i2c::Write<Error = E> + i2c::Read<Error = E>, E: Debug> IMU<I2C> {
 
     
     /// Without the Kalman Filter, read the gyro velocity in the z direction
-    pub fn raw_gyro_z(&mut self) -> Result<f32, ImuError<E>> {
+    fn raw_gyro_z(&mut self) -> Result<f32, ImuError<E>> {
         if !self.initialized {
             return Err(ImuError::Uninitialized);
         }
@@ -362,7 +367,7 @@ impl<I2C: i2c::Write<Error = E> + i2c::Read<Error = E>, E: Debug> IMU<I2C> {
     }
 
     /// Without the Kalman Filter, read the gyro velocity in the x direction
-    pub fn raw_gyro_x(&mut self) -> Result<f32, ImuError<E>> {
+    fn raw_gyro_x(&mut self) -> Result<f32, ImuError<E>> {
         if !self.initialized {
             return Err(ImuError::Uninitialized);
         }
@@ -374,7 +379,7 @@ impl<I2C: i2c::Write<Error = E> + i2c::Read<Error = E>, E: Debug> IMU<I2C> {
     }
 
     /// Without the Kalman Filter, read the gyro velocity in the x direction
-    pub fn raw_gyro_y(&mut self) -> Result<f32, ImuError<E>> {
+    fn raw_gyro_y(&mut self) -> Result<f32, ImuError<E>> {
         if !self.initialized {
             return Err(ImuError::Uninitialized);
         }
@@ -410,7 +415,7 @@ impl<I2C: i2c::Write<Error = E> + i2c::Read<Error = E>, E: Debug> IMU<I2C> {
     }
 
     /// Without the Kalman Filter, read the acceleration in the z direction. This is gravity!
-    pub fn raw_accel_z(&mut self) -> Result<f32, ImuError<E>> {
+    fn raw_accel_z(&mut self) -> Result<f32, ImuError<E>> {
         if !self.initialized {
             return Err(ImuError::Uninitialized);
         }
@@ -427,25 +432,85 @@ impl<I2C: i2c::Write<Error = E> + i2c::Read<Error = E>, E: Debug> IMU<I2C> {
     fn calibrate_offsets(&mut self, delay: &mut impl DelayMs<u8>, cal_time_ms: u32) {
         let t0 = Systick::now().ticks();
         let mut count: i64 = 0;
-        let mut running_sum_gz: f32 = 0.0;
-        let mut running_sum_ax: f32 = 0.0;
-        let mut running_sum_ay: f32 = 0.0;
-        let mut running_sum_az: f32 = 0.0;
 
+        let mut sum_gyro = Vector3::zeros();
+        let mut sum_accel = Vector3::zeros();
 
-        while Systick::now().ticks() - t0 < cal_time_ms {
-            // collect raw for specified calibration time
-            running_sum_gz += self.raw_gyro_z().unwrap_or_default();
-            running_sum_ax += self.raw_accel_x().unwrap_or_default();
-            running_sum_ay += self.raw_accel_y().unwrap_or_default();
+        let max_ticks = (cal_time_ms as f32 / 1000.0 / SECONDS_PER_TICK) as u32;
+
+        while (Systick::now().ticks().wrapping_sub(t0)) < max_ticks {
+            // Read raw axes
+            let gx = self.raw_gyro_x().unwrap_or(0.0);
+            let gy = self.raw_gyro_y().unwrap_or(0.0);
+            let gz = self.raw_gyro_z().unwrap_or(0.0);
+            
+            let ax = self.raw_accel_x().unwrap_or(0.0);
+            let ay = self.raw_accel_y().unwrap_or(0.0);
+            let az = self.raw_accel_z().unwrap_or(0.0);
+
+            sum_gyro += Vector3::new(gx, gy, gz);
+            sum_accel += Vector3::new(ax, ay, az);
+            
             count += 1;
-            delay.delay_ms(5); //maybe change this later? Seems to work fine
+            delay.delay_ms(5);
         }
 
-        self.offset_gz = running_sum_gz / count as f32;
-        self.offset_ax = running_sum_ax / count as f32;
-        self.offset_ay = running_sum_ay / count as f32;
-        // self.offset_az = (running_sum_az / count as f32); //should be 1 for gravity
+        if count == 0 { return; }
+
+        // GYRO BIAS (Average noise)
+        self.gyro_bias = sum_gyro / (count as f32);
+
+        // ACCEL CALIBRATION (Rotation & Scaling)
+        let avg_accel = sum_accel / (count as f32);
+
+        // Calculate Scaling: Force magnitude to be exactly 1.0
+        let current_magnitude = avg_accel.norm();
+        if current_magnitude > 0.001 {
+            self.accel_scale = 1.0 / current_magnitude;
+        }
+
+        // Calculate Rotation: Rotate measured direction to point UP/DOWN (Z-axis)
+        // Assuming +Z is "Up/Down" relative to the robot chassis.
+        let measured_direction = avg_accel.normalize();
+        let target_direction = Vector3::z_axis(); // Points to +Z (0, 0, 1)
+
+        // This creates a rotation that aligns "Measured" -> "Target"
+        self.accel_correction = UnitQuaternion::rotation_between(&measured_direction, &target_direction)
+            .unwrap_or(UnitQuaternion::identity());
+    }
+
+    /// Reads raw Accel, applies Scaling, then Rotation
+    fn get_corrected_accel_vector(&mut self) -> Result<Vector3<f32>, ImuError<E>> {
+        let ax = self.raw_accel_x()?;
+        let ay = self.raw_accel_y()?;
+        let az = self.raw_accel_z()?;
+        
+        let raw = Vector3::new(ax, ay, az);
+        
+        // Scale (fix magnitude error)
+        let scaled = raw * self.accel_scale;
+
+        // Rotate (fix mounting tilt)
+        let rotated = self.accel_correction * scaled;
+        
+        Ok(rotated)
+    }
+
+    /// Reads raw Gyro, subtracts Bias, then applies Rotation
+    fn get_corrected_gyro_vector(&mut self) -> Result<Vector3<f32>, ImuError<E>> {
+        let gx = self.raw_gyro_x()?;
+        let gy = self.raw_gyro_y()?;
+        let gz = self.raw_gyro_z()?;
+        
+        let raw = Vector3::new(gx, gy, gz);
+
+        // Remove Bias
+        let unbiased = raw - self.gyro_bias;
+
+        // Rotate (Align to robot frame)
+        let rotated = self.accel_correction * unbiased;
+
+        Ok(rotated)
     }
 
 }
