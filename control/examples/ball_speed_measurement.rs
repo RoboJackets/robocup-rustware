@@ -43,7 +43,7 @@ mod app {
     const METERS_PER_SECOND_PER_CM_PER_TENTH_MS: f32 = 100f32;
     const VCC: f32 = 3.3f32;
     const ADC_MAX: u16 = 1023u16; // max value for adc according to internet forums
-    const SECONDS_PER_TICK: f32 = 1e-4f32;
+    const CLOCK_RATE: u32 = 600_000_000;
 
     #[local]
     struct Local {
@@ -57,7 +57,7 @@ mod app {
         digital0: Output<P0>,
         poller: imxrt_log::Poller,
         last_voltages: [f32; LASERS],
-        timestamps: [f32; LASERS], // if not signed, subtraction underflow later on
+        timestamps: [u32; LASERS], // if not signed, subtraction underflow later on
     }
 
     #[shared]
@@ -95,7 +95,7 @@ mod app {
     }
 
     #[init]
-    fn init(ctx: init::Context) -> (Shared, Local) {
+    fn init(mut ctx: init::Context) -> (Shared, Local) {
         unsafe { // needed, unfortunately
             #[allow(static_mut_refs)]
             HEAP.init(HEAP_MEM.as_ptr() as usize, HEAP_SIZE);
@@ -103,9 +103,11 @@ mod app {
         let board::Resources {usb, lpi2c3, pins, mut gpio1, adc1, ..}= board::t41(ctx.device);
         let poller = imxrt_log::log::usbd(usb, imxrt_log::Interrupts::Enabled).unwrap();
 
+        ctx.core.DCB.enable_trace();
+        ctx.core.DWT.enable_cycle_counter();
 
         let systick_token = rtic_monotonics::create_systick_token!();
-        Systick::start(ctx.core.SYST, 600_000_000, systick_token);
+        Systick::start(ctx.core.SYST, CLOCK_RATE, systick_token);
 
         let pin18 = AnalogInput::<P18, 1>::new(pins.p18);
         let pin19 = AnalogInput::<P19, 1>::new(pins.p19);
@@ -140,7 +142,7 @@ mod app {
             digital0,
             poller,
             last_voltages: [0f32; LASERS],
-            timestamps: [0f32; LASERS]
+            timestamps: [0u32; LASERS]
         })
     }
     #[task(priority=1, shared = [voltages, dark_avg, bright_avg, display], local = [adc, pin18, pin19, pin20, pin21, pin22, pin23, last_voltages, timestamps])]
@@ -165,23 +167,28 @@ mod app {
                             'a: for i in 0..LASERS {
                                 if ((cx.local.last_voltages[i] - *bright).abs() > (cx.local.last_voltages[i] - *dark).abs())
                                         && ((v[i] - *bright).abs() <= (v[i] - *dark).abs()) {
-                                    cx.local.timestamps[i] = Systick::now().ticks() as f32 * SECONDS_PER_TICK;
+
+                                    cx.local.timestamps[i] = cortex_m::peripheral::DWT::cycle_count();
                                     log::info!("For {}, {}", i, cx.local.timestamps[i]);
+
                                     if i == LASERS - 1 { // last laser
                                         for i in 1..LASERS {
-                                            cx.local.timestamps[i] -= cx.local.timestamps[0]; // normalize
-                                            let diff = cx.local.timestamps[i] - cx.local.timestamps[i-1];
-                                            if diff <= -1e-5f32 || diff > 5e-1f32  { // error validation for longer than .5s between each. epsilon value included for nonnegative -1e-5f32
+                                            cx.local.timestamps[i] = cx.local.timestamps[i].wrapping_sub(cx.local.timestamps[0]); // normalize
+                                            let diff = cx.local.timestamps[i].wrapping_sub(cx.local.timestamps[i-1]);
+                                            if diff <= 0 || diff > CLOCK_RATE / 2  { // error validation for longer than .5s between each. epsilon value included for nonnegative -1e-5f32
                                                 break 'a;
                                             }
                                         } // if we exit loop cleanly, then we have a valid ball roll
 
-                                        let mut distance_arr = [0.0f32; LASERS - 1];
+                                        let mut timestamp_x_arr: [f32; LASERS - 1] = [0.0f32; LASERS - 1];
+                                        let mut distance_y_arr: [f32; LASERS - 1] = [0.0f32; LASERS - 1];
+
                                         for i in 1..LASERS {
-                                            distance_arr[i] = i as f32 * GAP_M;
+                                            timestamp_x_arr[i - 1] = cx.local.timestamps[i] as f32 / CLOCK_RATE as f32;
+                                            distance_y_arr[i - 1] = i as f32 * GAP_M;
                                         }
 
-                                        let speed = regression_through_origin_slope(&cx.local.timestamps[1..], &distance_arr);
+                                        let speed = regression_through_origin_slope(&timestamp_x_arr, &distance_y_arr);
 
                                         log::info!("M/S: {}", speed);
                                         cx.shared.display.lock(|display| {
