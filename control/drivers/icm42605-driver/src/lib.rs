@@ -20,17 +20,16 @@ use kfilter::measurement::LinearMeasurement;
 use kfilter::system::LinearNoInputSystem;
 use nalgebra::{Matrix1, Matrix1x2, Matrix2, UnitQuaternion, Vector2, Vector3};
 
-
 mod registers;
 
 const ICM_ADDR: u8 = 0b1101000;
 const WHO_AM_I_EXPECTED: u8 = 0x42;
 const LSB_TO_G: f32 = 16.0 / 32768.0;
-
 const LSB_TO_DPS: f32 = 1000.0 / 32768.0;
 
-const TICK_PERIOD: rtic_monotonics::systick::fugit::Duration<u32, 1, 1000> = <rtic_monotonics::systick::Systick as Monotonic>::TICK_PERIOD;
-const SECONDS_PER_TICK: f32 = TICK_PERIOD.to_micros() as f32 / 1_000_000.0; 
+const TICK_PERIOD: rtic_monotonics::systick::fugit::Duration<u32, 1, 1000> =
+    <rtic_monotonics::systick::Systick as Monotonic>::TICK_PERIOD;
+const SECONDS_PER_TICK: f32 = TICK_PERIOD.to_micros() as f32 / 1_000_000.0;
 
 /// Convert the high and low bits obtained from the IMU into a gyrometer
 /// reading (in degrees per second).
@@ -86,7 +85,7 @@ pub struct IMU<I2C> {
 
     /// State for the accel Y-axis filter
     x_ay: Vector2<f32>,
-    p_ay: Matrix2<f32>, 
+    p_ay: Matrix2<f32>,
 
     //Timstamp of last update. For dt calculation
     /// Timestamp of the last gyro Z update.
@@ -123,7 +122,7 @@ impl<I2C: i2c::Write<Error = E> + i2c::Read<Error = E>, E: Debug> IMU<I2C> {
             p_ay: Matrix2::identity(),
             last_update_gz: None,
             last_update_ax: None,
-            last_update_ay: None,            
+            last_update_ay: None,
         }
     }
 
@@ -184,7 +183,6 @@ impl<I2C: i2c::Write<Error = E> + i2c::Read<Error = E>, E: Debug> IMU<I2C> {
         self.calibrate_offsets(delay, 1000);
 
         //Initialize KALMAN FILTERS
-
         let initial_covariance = Matrix2::identity() * 1000.0; // High initial uncertainty
 
         self.x_gz = Vector2::zeros();
@@ -210,8 +208,7 @@ impl<I2C: i2c::Write<Error = E> + i2c::Read<Error = E>, E: Debug> IMU<I2C> {
         // CALCULATE DT
         let now_tick = Systick::now().ticks();
 
-        
-        let dt_ticks: f32 =  (now_tick - self.last_update_gz.unwrap_or(now_tick)) as f32; // Convert milliseconds to seconds
+        let dt_ticks: f32 = (now_tick - self.last_update_gz.unwrap_or(now_tick)) as f32; // Convert milliseconds to seconds
         let dt: f32 = dt_ticks * SECONDS_PER_TICK;
 
         // CREATE MATRICES FOR THIS STEP
@@ -244,7 +241,7 @@ impl<I2C: i2c::Write<Error = E> + i2c::Read<Error = E>, E: Debug> IMU<I2C> {
 
         // RETURN THE FILTERED VALUE
         Ok(self.x_gz[0])
-      }
+    }
 
     /// Read the acceleration in the x direction
     pub fn accel_x(&mut self) -> Result<f32, ImuError<E>> {
@@ -278,14 +275,14 @@ impl<I2C: i2c::Write<Error = E> + i2c::Read<Error = E>, E: Debug> IMU<I2C> {
         self.last_update_ax = Some(now_tick);
 
         Ok(self.x_ax[0])
-        }
+    }
 
     /// Read the acceleration in the y direction
     pub fn accel_y(&mut self) -> Result<f32, ImuError<E>> {
         if !self.initialized {
             return Err(ImuError::Uninitialized);
         }
-        
+
         let now_tick = Systick::now().ticks();
         let dt_ticks: f32 = (now_tick - self.last_update_ay.unwrap_or(now_tick)) as f32;
         let dt: f32 = dt_ticks * SECONDS_PER_TICK;
@@ -312,7 +309,6 @@ impl<I2C: i2c::Write<Error = E> + i2c::Read<Error = E>, E: Debug> IMU<I2C> {
 
         Ok(self.x_ay[0])
     }
-
 
     /// Write the raw register address and data over the i2c line
     fn raw_write(&mut self, register_addr: u8, data: u8) -> Result<(), ImuError<E>> {
@@ -353,7 +349,6 @@ impl<I2C: i2c::Write<Error = E> + i2c::Read<Error = E>, E: Debug> IMU<I2C> {
         Ok(())
     }
 
-    
     /// Without the Kalman Filter, read the gyro velocity in the z direction
     fn raw_gyro_z(&mut self) -> Result<f32, ImuError<E>> {
         if !self.initialized {
@@ -426,8 +421,8 @@ impl<I2C: i2c::Write<Error = E> + i2c::Read<Error = E>, E: Debug> IMU<I2C> {
         Ok(reading_to_accel(hi, lo))
     }
 
-    
     /// Calibrate the offsets for the gyro and accelerometer
+    /// IMU axes are adjusted to robot frame
     /// MAKE SURE IMU IS STILL during this time
     fn calibrate_offsets(&mut self, delay: &mut impl DelayMs<u8>, cal_time_ms: u32) {
         let t0 = Systick::now().ticks();
@@ -443,19 +438,21 @@ impl<I2C: i2c::Write<Error = E> + i2c::Read<Error = E>, E: Debug> IMU<I2C> {
             let gx = self.raw_gyro_x().unwrap_or(0.0);
             let gy = self.raw_gyro_y().unwrap_or(0.0);
             let gz = self.raw_gyro_z().unwrap_or(0.0);
-            
+
             let ax = self.raw_accel_x().unwrap_or(0.0);
             let ay = self.raw_accel_y().unwrap_or(0.0);
             let az = self.raw_accel_z().unwrap_or(0.0);
 
             sum_gyro += Vector3::new(gx, gy, gz);
             sum_accel += Vector3::new(ax, ay, az);
-            
+
             count += 1;
             delay.delay_ms(5);
         }
 
-        if count == 0 { return; }
+        if count == 0 {
+            return;
+        }
 
         // GYRO BIAS (Average noise)
         self.gyro_bias = sum_gyro / (count as f32);
@@ -475,8 +472,9 @@ impl<I2C: i2c::Write<Error = E> + i2c::Read<Error = E>, E: Debug> IMU<I2C> {
         let target_direction = Vector3::z_axis(); // Points to +Z (0, 0, 1)
 
         // This creates a rotation that aligns "Measured" -> "Target"
-        self.accel_correction = UnitQuaternion::rotation_between(&measured_direction, &target_direction)
-            .unwrap_or(UnitQuaternion::identity());
+        self.accel_correction =
+            UnitQuaternion::rotation_between(&measured_direction, &target_direction)
+                .unwrap_or(UnitQuaternion::identity());
     }
 
     /// Reads raw Accel, applies Scaling, then Rotation
@@ -484,15 +482,15 @@ impl<I2C: i2c::Write<Error = E> + i2c::Read<Error = E>, E: Debug> IMU<I2C> {
         let ax = self.raw_accel_x()?;
         let ay = self.raw_accel_y()?;
         let az = self.raw_accel_z()?;
-        
+
         let raw = Vector3::new(ax, ay, az);
-        
+
         // Scale (fix magnitude error)
         let scaled = raw * self.accel_scale;
 
         // Rotate (fix mounting tilt)
         let rotated = self.accel_correction * scaled;
-        
+
         Ok(rotated)
     }
 
@@ -501,7 +499,7 @@ impl<I2C: i2c::Write<Error = E> + i2c::Read<Error = E>, E: Debug> IMU<I2C> {
         let gx = self.raw_gyro_x()?;
         let gy = self.raw_gyro_y()?;
         let gz = self.raw_gyro_z()?;
-        
+
         let raw = Vector3::new(gx, gy, gz);
 
         // Remove Bias
@@ -512,7 +510,6 @@ impl<I2C: i2c::Write<Error = E> + i2c::Read<Error = E>, E: Debug> IMU<I2C> {
 
         Ok(rotated)
     }
-
 }
 
 #[cfg(test)]
