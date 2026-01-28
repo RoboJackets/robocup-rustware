@@ -38,11 +38,12 @@ mod app {
     static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
 
     const LASERS: usize = 4;
-    const GAP_CM: f32 = 5f32;
+    const GAP_M: f32 = 5e-2f32;
     const MPH_PER_CM_PER_TENTH_MS: f32 = 223.69362920544;
     const METERS_PER_SECOND_PER_CM_PER_TENTH_MS: f32 = 100f32;
     const VCC: f32 = 3.3f32;
     const ADC_MAX: u16 = 1023u16; // max value for adc according to internet forums
+    const SECONDS_PER_TICK: f32 = 1e-4f32;
 
     #[local]
     struct Local {
@@ -56,7 +57,7 @@ mod app {
         digital0: Output<P0>,
         poller: imxrt_log::Poller,
         last_voltages: [f32; LASERS],
-        timestamps: [i32; LASERS], // if not signed, subtraction underflow later on
+        timestamps: [f32; LASERS], // if not signed, subtraction underflow later on
     }
 
     #[shared]
@@ -76,6 +77,20 @@ mod app {
             0.0
         } else {
             arr.iter().sum::<f32>() / arr.len() as f32
+        }
+    }
+
+    fn regression_through_origin_slope(x_slice: &[f32], y_slice: &[f32]) -> f32 {
+        // Zip the slices and calculate sums in a single pass
+        let (sum_xy, sum_x2) = x_slice.iter().zip(y_slice)
+            .fold((0.0, 0.0), |(s_xy, s_x2), (&x, &y)| {
+                (s_xy + x * y, s_x2 + x * x)
+            });
+
+        if sum_x2 == 0.0 {
+            0.0
+        } else {
+            sum_xy / sum_x2
         }
     }
 
@@ -125,7 +140,7 @@ mod app {
             digital0,
             poller,
             last_voltages: [0f32; LASERS],
-            timestamps: [0i32; LASERS] 
+            timestamps: [0f32; LASERS]
         })
     }
     #[task(priority=1, shared = [voltages, dark_avg, bright_avg, display], local = [adc, pin18, pin19, pin20, pin21, pin22, pin23, last_voltages, timestamps])]
@@ -150,21 +165,24 @@ mod app {
                             'a: for i in 0..LASERS {
                                 if ((cx.local.last_voltages[i] - *bright).abs() > (cx.local.last_voltages[i] - *dark).abs())
                                         && ((v[i] - *bright).abs() <= (v[i] - *dark).abs()) {
-                                    cx.local.timestamps[i] = Systick::now().ticks() as i32;
+                                    cx.local.timestamps[i] = Systick::now().ticks() as f32 * SECONDS_PER_TICK;
                                     log::info!("For {}, {}", i, cx.local.timestamps[i]);
                                     if i == LASERS - 1 { // last laser
-                                        let mut totalTenthMs: u32 = 0;
                                         for i in 1..LASERS {
+                                            cx.local.timestamps[i] -= cx.local.timestamps[0]; // normalize
                                             let diff = cx.local.timestamps[i] - cx.local.timestamps[i-1];
-                                            if diff <= 0 || diff > 5000  { // needs to be at least 500 ms between each, that makes 500ms total for a ball crossing path
+                                            if diff <= -1e-5f32 || diff > 5e-1f32  { // error validation for longer than .5s between each. epsilon value included for nonnegative -1e-5f32
                                                 break 'a;
                                             }
-                                            
-                                            totalTenthMs += (cx.local.timestamps[i] - cx.local.timestamps[i-1]) as u32;
-                                            
-                                        } // if we exit loop cleanly, then totalMs is valid.
-                                    
-                                        let speed = ((GAP_CM * ((LASERS - 1) as f32)) / totalTenthMs as f32) * METERS_PER_SECOND_PER_CM_PER_TENTH_MS;
+                                        } // if we exit loop cleanly, then we have a valid ball roll
+
+                                        let mut distance_arr = [0.0f32; LASERS - 1];
+                                        for i in 1..LASERS {
+                                            distance_arr[i] = i as f32 * GAP_M;
+                                        }
+
+                                        let speed = regression_through_origin_slope(&cx.local.timestamps[1..], &distance_arr);
+
                                         log::info!("M/S: {}", speed);
                                         cx.shared.display.lock(|display| {
                                             display.clear();
