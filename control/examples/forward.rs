@@ -522,7 +522,7 @@ mod app {
 
         loop {
             ctx.shared.display.lock(|display| {
-                let err_txt = &format!("{:?}", imu_init_error);
+                let err_txt = format!("{:?}", imu_init_error);
                 let err_scrn = ErrorScreen::new("IMU Init Error", err_txt);
                 display.clear();
                 let _ = err_scrn.draw(display);
@@ -532,7 +532,7 @@ mod app {
 
             Systick::delay(3000u32.millis()).await;
             ctx.shared.display.lock(|display| {
-                let err_txt = &format!("{:?}", radio_init_error);
+                let err_txt = format!("{:?}", radio_init_error);
                 let err_scrn = ErrorScreen::new("Radio Init Error", err_txt);
                 display.clear();
                 let _ = err_scrn.draw(display);
@@ -540,7 +540,7 @@ mod app {
             });
             Systick::delay(3000u32.millis()).await;
             ctx.shared.display.lock(|display| {
-                let err_txt = &format!("{:?}", kicker_program_error);
+                let err_txt = format!("{:?}", kicker_program_error);
                 let err_scrn = ErrorScreen::new("Kicker Prog Error", err_txt);
                 display.clear();
                 let _ = err_scrn.draw(display);
@@ -548,7 +548,7 @@ mod app {
             });
             Systick::delay(3000u32.millis()).await;
             ctx.shared.display.lock(|display| {
-                let err_txt = &format!("{:?}", kicker_service_error);
+                let err_txt = format!("{:?}", kicker_service_error);
                 let err_scrn = ErrorScreen::new("Kicker Serv Error", err_txt);
                 display.clear();
                 let _ = err_scrn.draw(display);

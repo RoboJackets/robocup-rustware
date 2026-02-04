@@ -15,11 +15,11 @@ use embedded_graphics::{
 
 pub struct ErrorScreen<'a> {
     heading: &'a str,
-    message: &'a str,
+    message: alloc::string::String,
 }
 
 impl<'a> ErrorScreen<'a> {
-    pub fn new(heading: &'a str, message: &'a str) -> Self {
+    pub fn new(heading: &'a str, message: String) -> Self {
         let instance = ErrorScreen { heading, message };
         return instance;
     }
@@ -45,7 +45,7 @@ impl<'a> ErrorScreen<'a> {
         }
     }
 
-    pub fn update(&mut self, heading: &'a str, message: &'a str) {
+    pub fn update(&mut self, heading: &'a str, message: alloc::string::String) {
         self.heading = heading;
         self.message = message;
     }
@@ -68,7 +68,7 @@ impl<'a> Drawable for ErrorScreen<'a> {
 
         Text::with_text_style(self.heading, Point::new(1, 8), header_style, text_style)
             .draw(target)?;
-        let wrapped = self.wrap(self.message);
+        let wrapped = self.wrap(self.message.as_str());
         for (i, line) in wrapped.iter().enumerate() {
             Text::with_text_style(
                 line,
