@@ -18,7 +18,7 @@ use teensy4_panic as _;
 
 use embedded_alloc::Heap;
 
-const HEAP_SIZE: usize = 1024;
+const HEAP_SIZE: usize = 4096;
 static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
 #[global_allocator]
 static HEAP: Heap = Heap::empty();
