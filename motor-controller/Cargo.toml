@@ -18,6 +18,7 @@ ncomm-utils = { version = "1.1.4", default-features = false, features = ["nostd"
 motion-control = { path = "./modules/motion-control" }
 
 common = { path = "../common" }
+micromath = "2.1.0"
 
 [dependencies.stm32f0xx-hal]
 # I'm working on getting the qei changes merged into the upstream stm32f0xx-hal.  Until then, I'm going
