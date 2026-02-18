@@ -107,7 +107,7 @@ mod app {
 
         let (mut ch1, mut ch1n, mut ch2, mut ch2n, mut ch3, mut ch3n) = pwm;
 
-        ch1.set_dead_time(pwm::DTInterval::DT_5);
+        ch1.set_dead_time(&mut rcc, 1000);
         ch1.set_duty(0);
         ch2.set_duty(0);
         ch3.set_duty(0);

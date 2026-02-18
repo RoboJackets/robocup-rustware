@@ -99,7 +99,7 @@ mod app {
 
         let (mut ch1, mut ch1n, mut ch2, mut ch2n, mut ch3, mut ch3n) = pwm;
 
-        ch1.set_dead_time(pwm::DTInterval::DT_5);
+        ch1.set_dead_time(&mut rcc, 1000);
         ch1.set_duty(0);
         ch2.set_duty(0);
         ch3.set_duty(0);
@@ -220,9 +220,9 @@ mod app {
         let (pwm, clockwise) = if setpoint == 0.0 {
             (0, true)
         } else if setpoint < 125.0 {
-            (ctx.local.ch1.get_max_duty() / 4, true)
+            (ctx.local.ch1.get_max_duty() / 2, false)
         } else {
-            (ctx.local.ch1.get_max_duty() / 4, false)
+            (ctx.local.ch1.get_max_duty() / 2, true)
         };
 
         let phases = hall_to_phases(
