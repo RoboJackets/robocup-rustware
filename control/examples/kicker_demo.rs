@@ -23,6 +23,7 @@ use teensy4_panic as _;
 mod app {
     use bsp::board::{self, PERCLK_FREQUENCY};
     use embedded_hal::blocking::delay::DelayMs;
+    use embedded_hal::blocking::spi;
     use imxrt_hal::timer::Blocking;
     use teensy4_bsp as bsp;
 
