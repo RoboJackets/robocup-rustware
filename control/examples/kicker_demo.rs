@@ -23,23 +23,23 @@ use teensy4_panic as _;
 mod app {
     use bsp::board::{self, PERCLK_FREQUENCY};
     use embedded_hal::blocking::delay::DelayMs;
-    use embedded_hal::blocking::spi;
     use imxrt_hal::timer::Blocking;
     use teensy4_bsp as bsp;
+    use embedded_hal::spi::MODE_3;
 
     use rtic_monotonics::systick::*;
 
     use kicker_controller::{KickTrigger, KickType, Kicker, KickerCommand};
 
     use robojackets_robocup_control::{
-        spi::FakeSpi, KickerCSn, KickerReset, Killn, MotorEn, GPT_CLOCK_SOURCE, GPT_DIVIDER,
+        KickerCSn, KickerReset, Killn, MotorEn, GPT_CLOCK_SOURCE, GPT_DIVIDER,
         GPT_FREQUENCY,
     };
 
     #[local]
     struct Local {
         kicker_controller: Kicker<KickerCSn, KickerReset>,
-        fake_spi: FakeSpi,
+        spi: board::Lpspi4,
         poller: imxrt_log::Poller,
     }
 
@@ -54,6 +54,7 @@ mod app {
             mut gpt2,
             mut gpio1,
             mut gpio2,
+            lpspi4,
             pit: (_pit0, _pit1, _pit2, pit3),
             ..
         } = board::t41(ctx.device);
@@ -78,13 +79,20 @@ mod app {
 
         let kicker = Kicker::new(gpio1.output(pins.p38), gpio2.output(pins.p37));
 
-        let pit_delay = Blocking::<_, PERCLK_FREQUENCY>::from_pit(pit3);
-        let fake_spi = FakeSpi::new(
-            gpio1.output(pins.p27),
-            gpio1.output(pins.p26),
-            gpio1.input(pins.p39),
-            pit_delay,
+        let mut spi = bsp::hal::lpspi::Lpspi::new(
+            lpspi4,
+            board::LpspiPins {
+                sdo: pins.p11,   // MOSI
+                sdi: pins.p12,   // MISO
+                sck: pins.p13,   // SCK
+                pcs0: pins.p10,  // CS
+            },
         );
+
+        spi.disabled(|spi| {
+            spi.set_mode(MODE_3);                  // CPOL=1, CPHA=1 to match Pico
+            spi.set_clock_hz(board::LPSPI_FREQUENCY, 2_000_000);
+        });
 
         kicker_test::spawn().ok();
 
@@ -92,7 +100,7 @@ mod app {
             Shared {},
             Local {
                 kicker_controller: kicker,
-                fake_spi,
+                spi,
                 poller,
             },
         )
@@ -106,7 +114,7 @@ mod app {
     }
 
     #[task(
-        local = [kicker_controller, fake_spi],
+        local = [kicker_controller, spi],
         priority = 1
     )]
     async fn kicker_test(ctx: kicker_test::Context) {
@@ -123,7 +131,7 @@ mod app {
             let kicker_status = ctx
                 .local
                 .kicker_controller
-                .service(kicker_command, ctx.local.fake_spi)
+                .service(kicker_command, ctx.local.spi)
                 .unwrap();
             log::info!("Kicker Status: {:?}", kicker_status);
             Systick::delay(100u32.millis()).await;
@@ -139,7 +147,7 @@ mod app {
         let kicker_status = ctx
             .local
             .kicker_controller
-            .service(kicker_command, ctx.local.fake_spi)
+            .service(kicker_command, ctx.local.spi)
             .unwrap();
         log::info!("Kicker Status: {:?}", kicker_status);
 
@@ -154,7 +162,7 @@ mod app {
             let kicker_status = ctx
                 .local
                 .kicker_controller
-                .service(kicker_command, ctx.local.fake_spi)
+                .service(kicker_command, ctx.local.spi)
                 .unwrap();
             log::info!("Kicker Status: {:?}", kicker_status);
             Systick::delay(100u32.millis()).await;
@@ -170,7 +178,7 @@ mod app {
         let kicker_status = ctx
             .local
             .kicker_controller
-            .service(kicker_command, ctx.local.fake_spi)
+            .service(kicker_command, ctx.local.spi)
             .unwrap();
         log::info!("Kicker Status: {:?}", kicker_status);
 
@@ -187,7 +195,7 @@ mod app {
             let kicker_status = ctx
                 .local
                 .kicker_controller
-                .service(kicker_command, ctx.local.fake_spi)
+                .service(kicker_command, ctx.local.spi)
                 .unwrap();
             log::info!("Kicker Status: {:?}", kicker_status);
             Systick::delay(100u32.millis()).await;
@@ -204,7 +212,7 @@ mod app {
             let kicker_status = ctx
                 .local
                 .kicker_controller
-                .service(kicker_command, ctx.local.fake_spi)
+                .service(kicker_command, ctx.local.spi)
                 .unwrap();
             log::info!("Kicker Status: {:?}", kicker_status);
             Systick::delay(100u32.millis()).await;
