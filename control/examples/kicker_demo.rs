@@ -19,6 +19,7 @@ static HEAP: Heap = Heap::empty();
 
 use teensy4_panic as _;
 
+
 #[rtic::app(device = teensy4_bsp, peripherals = true, dispatchers = [GPT2])]
 mod app {
     use bsp::board::{self, PERCLK_FREQUENCY};
@@ -26,20 +27,24 @@ mod app {
     use imxrt_hal::timer::Blocking;
     use teensy4_bsp as bsp;
     use embedded_hal::spi::MODE_3;
+    use bsp::hal::lpspi::Lpspi;
+    use bsp::hal::iomuxc;
 
     use rtic_monotonics::systick::*;
 
-    use kicker_controller::{KickTrigger, KickType, Kicker, KickerCommand};
+    use kicker_controller::{KickTrigger, KickType, Kicker, KickerCommand, KickerState};
 
     use robojackets_robocup_control::{
         KickerCSn, KickerReset, Killn, MotorEn, GPT_CLOCK_SOURCE, GPT_DIVIDER,
         GPT_FREQUENCY,
     };
 
+    type Spi = bsp::hal::lpspi::Lpspi<(), 4>;
+
     #[local]
     struct Local {
         kicker_controller: Kicker<KickerCSn, KickerReset>,
-        spi: board::Lpspi4,
+        spi: Spi,
         poller: imxrt_log::Poller,
     }
 
@@ -49,7 +54,7 @@ mod app {
     #[init]
     fn init(ctx: init::Context) -> (Shared, Local) {
         let board::Resources {
-            pins,
+            mut pins,
             usb,
             mut gpt2,
             mut gpio1,
@@ -79,15 +84,13 @@ mod app {
 
         let kicker = Kicker::new(gpio1.output(pins.p38), gpio2.output(pins.p37));
 
-        let mut spi = bsp::hal::lpspi::Lpspi::new(
-            lpspi4,
-            board::LpspiPins {
-                sdo: pins.p11,   // MOSI
-                sdi: pins.p12,   // MISO
-                sck: pins.p13,   // SCK
-                pcs0: pins.p10,  // CS
-            },
-        );
+        // Manually configure the data pins for LPSPI4 function
+        iomuxc::lpspi::prepare(&mut pins.p11);  // SDO/MOSI
+        iomuxc::lpspi::prepare(&mut pins.p12);  // SDI/MISO
+        iomuxc::lpspi::prepare(&mut pins.p13);  // SCK
+
+        let mut spi: Lpspi<(), 4> = Lpspi::without_pins(lpspi4);
+        
 
         spi.disabled(|spi| {
             spi.set_mode(MODE_3);                  // CPOL=1, CPHA=1 to match Pico
