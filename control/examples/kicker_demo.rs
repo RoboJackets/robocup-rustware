@@ -22,9 +22,7 @@ use teensy4_panic as _;
 
 #[rtic::app(device = teensy4_bsp, peripherals = true, dispatchers = [GPT2])]
 mod app {
-    use bsp::board::{self, PERCLK_FREQUENCY};
-    use embedded_hal::blocking::delay::DelayMs;
-    use imxrt_hal::timer::Blocking;
+    use bsp::board::{self};
     use teensy4_bsp as bsp;
     use embedded_hal::spi::MODE_3;
     use bsp::hal::lpspi::Lpspi;
@@ -32,11 +30,10 @@ mod app {
 
     use rtic_monotonics::systick::*;
 
-    use kicker_controller::{KickTrigger, KickType, Kicker, KickerCommand, KickerState};
+    use kicker_controller::{KickTrigger, KickType, Kicker, KickerCommand};
 
     use robojackets_robocup_control::{
-        KickerCSn, KickerReset, Killn, MotorEn, GPT_CLOCK_SOURCE, GPT_DIVIDER,
-        GPT_FREQUENCY,
+        KickerCSn, KickerReset, Killn, MotorEn,
     };
 
     type Spi = bsp::hal::lpspi::Lpspi<(), 4>;
@@ -56,11 +53,9 @@ mod app {
         let board::Resources {
             mut pins,
             usb,
-            // mut gpt2,
             mut gpio1,
             mut gpio2,
             lpspi4,
-            pit: (_pit0, _pit1, _pit2, pit3),
             ..
         } = board::t41(ctx.device);
 
@@ -68,22 +63,12 @@ mod app {
 
         let systick_token = rtic_monotonics::create_systick_token!();
         Systick::start(ctx.core.SYST, 600_000_000, systick_token);
-
-        
-
-        // Gpt 2 as blocking delay
-        //gpt2.disable();
-        //gpt2.set_divider(GPT_DIVIDER);
-        //gpt2.set_clock_source(GPT_CLOCK_SOURCE);
-        //let mut delay2 = Blocking::<_, GPT_FREQUENCY>::from_gpt(gpt2);
         
 
         let motor_en: MotorEn = gpio1.output(pins.p23);
         motor_en.set();
         let kill_n: Killn = gpio2.output(pins.p36);
         kill_n.set();
-
-        //delay2.delay_ms(500u32);
 
         let kicker = Kicker::new(gpio1.output(pins.p38), gpio2.output(pins.p37));
 
