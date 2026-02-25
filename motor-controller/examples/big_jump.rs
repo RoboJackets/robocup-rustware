@@ -11,6 +11,7 @@ use panic_probe as _;
 
 use defmt_rtt as _;
 
+
 #[rtic::app(device = stm32f0xx_hal::pac, peripherals = true, dispatchers = [TSC])]
 mod app {
     use motion_control::Pid;
@@ -31,12 +32,17 @@ mod app {
     /// The frequency of the motion control loop
     pub const MOTION_CONTROL_FREQUENCY: u32 = 1000;
 
+    pub const WHEEL_RADIUS: f32 = 0.02786; //meters
+    pub const ENCODER_TICKS_PER_REVOLUTION: i32 = 6200;
+    pub const METERS_PER_TICK: f32 = 2.0 * core::f32::consts::PI * WHEEL_RADIUS / ENCODER_TICKS_PER_REVOLUTION as f32;
+    pub const TICKS_PER_METER: f32 = 1.0 / METERS_PER_TICK;
+
     /// The kp constant for the pid controller
-    static mut KP: f32 = 2.5;
+    static mut KP: f32 = 0.65856;
     /// The ki constant for the pid controller
-    static mut KI: f32 = 0.2;
+    static mut KI: f32 = 120.0;
     /// the kd constant for the pid controller
-    static mut KD: f32 = 0.5;
+    static mut KD: f32 = 0.0;
 
     #[local]
     struct Local {
@@ -111,7 +117,7 @@ mod app {
 
         let (mut ch1, mut ch1n, mut ch2, mut ch2n, mut ch3, mut ch3n) = pwm;
 
-        ch1.set_dead_time(pwm::DTInterval::DT_7);
+        ch1.set_dead_time(&mut rcc, 1000);
         ch1.set_duty(0);
         ch2.set_duty(0);
         ch3.set_duty(0);
@@ -222,10 +228,10 @@ mod app {
 
         ctx.shared.setpoint.lock(|setpoint| {
             match *setpoint {
-                198400 => *setpoint = 0,
-                0 => *setpoint = 198400,
+                5572 => *setpoint = 0,
+                0 => *setpoint = 5572,
                 _ => {
-                    *setpoint = 198400;
+                    *setpoint = 5572;
                 }
             }
             defmt::info!("New Setpoint: {}", *setpoint);
@@ -343,4 +349,91 @@ mod app {
         *ctx.local.iterations += 1;
         ctx.local.tim2.clear_irq();
     }
+
+    // /// Update the speed of the motors.  The timer calls an interrupt every 1ms
+    // fn motion_control_update_meters_per_second(mut ctx: motion_control_update::Context, meters_per_second: f32) {
+    //     let ticks_per_second = (meters_per_second / METERS_PER_TICK) as i32;
+    //     // Setpoint in ticks per second
+    //     let setpoint = ticks_per_second;
+    //     if setpoint != *ctx.local.last_setpoint {
+    //         defmt::info!(
+    //             "Found New Setpoint: {}; Iterations: {}",
+    //             setpoint,
+    //             *ctx.local.iterations
+    //         );
+    //         *ctx.local.last_setpoint = setpoint;
+    //         *ctx.local.iterations = 0;
+    //     }
+
+    //     let (pwm, clockwise) = ctx.local.pid.update(setpoint, ctx.local.encoders.count());
+
+    //     ctx.shared
+    //         .current_velocity
+    //         .lock(|velocity| *velocity = ctx.local.pid.current_velocity);
+
+    //     let phases = if ctx.local.overcurrent_comparator.is_tripped() {
+    //         [Phase::Zero, Phase::Zero, Phase::Zero]
+    //     } else {
+    //         hall_to_phases(
+    //             ctx.local.hs1.is_high().unwrap(),
+    //             ctx.local.hs2.is_high().unwrap(),
+    //             ctx.local.hs3.is_high().unwrap(),
+    //             clockwise,
+    //         )
+    //     };
+
+    //     match phases[0] {
+    //         Phase::Positive => {
+    //             ctx.local.ch1.set_duty(pwm);
+    //             ctx.local.ch1.enable();
+    //             ctx.local.ch1n.enable();
+    //         }
+    //         Phase::Zero => {
+    //             ctx.local.ch1.disable();
+    //             ctx.local.ch1n.disable();
+    //         }
+    //         Phase::Negative => {
+    //             ctx.local.ch1.set_duty(0);
+    //             ctx.local.ch1.enable();
+    //             ctx.local.ch1n.enable();
+    //         }
+    //     }
+
+    //     match phases[1] {
+    //         Phase::Positive => {
+    //             ctx.local.ch2.set_duty(pwm);
+    //             ctx.local.ch2.enable();
+    //             ctx.local.ch2n.enable();
+    //         }
+    //         Phase::Zero => {
+    //             ctx.local.ch2.disable();
+    //             ctx.local.ch2n.disable();
+    //         }
+    //         Phase::Negative => {
+    //             ctx.local.ch2.set_duty(0);
+    //             ctx.local.ch2.enable();
+    //             ctx.local.ch2n.enable();
+    //         }
+    //     }
+
+    //     match phases[2] {
+    //         Phase::Positive => {
+    //             ctx.local.ch3.set_duty(pwm);
+    //             ctx.local.ch3.enable();
+    //             ctx.local.ch3n.enable();
+    //         }
+    //         Phase::Zero => {
+    //             ctx.local.ch3.disable();
+    //             ctx.local.ch3n.disable();
+    //         }
+    //         Phase::Negative => {
+    //             ctx.local.ch3.set_duty(0);
+    //             ctx.local.ch3.enable();
+    //             ctx.local.ch3n.enable();
+    //         }
+    //     }
+
+    //     *ctx.local.iterations += 1;
+    //     ctx.local.tim2.clear_irq();
+    // }
 }

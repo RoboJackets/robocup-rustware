@@ -274,7 +274,7 @@ impl Pid {
         }
 
         let intended_velocity = p + self.integral_term + d;
-        let output: i32 = unsafe { (intended_velocity * VELOCITY_TO_PWM_MAPPING).to_int_unchecked() };
+        let output: i32 = unsafe { intended_velocity as i32 };
 
         if output > 0 {
             (

@@ -27,13 +27,22 @@ mod app {
 
     /// The number of samples to take at each frequency
     pub const SAMPLES_PER_FREQUENCY: u32 = 1000;
-    /// The frequencies to sample
-    pub const FREQUENCIES: [f32; 6] = [1.0, 5.0, 10.0, 20.0, 50.0, 100.0];
+    // A discrete list of integer frequencies from 1 to 100
+    pub const FREQUENCIES: [f32; 100] = [
+      1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0,
+      11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0,
+      21.0, 22.0, 23.0, 24.0, 25.0, 26.0, 27.0, 28.0, 29.0, 30.0,
+      31.0, 32.0, 33.0, 34.0, 35.0, 36.0, 37.0, 38.0, 39.0, 40.0,
+      41.0, 42.0, 43.0, 44.0, 45.0, 46.0, 47.0, 48.0, 49.0, 50.0,
+      51.0, 52.0, 53.0, 54.0, 55.0, 56.0, 57.0, 58.0, 59.0, 60.0,
+      61.0, 62.0, 63.0, 64.0, 65.0, 66.0, 67.0, 68.0, 69.0, 70.0,
+      71.0, 72.0, 73.0, 74.0, 75.0, 76.0, 77.0, 78.0, 79.0, 80.0,
+      81.0, 82.0, 83.0, 84.0, 85.0, 86.0, 87.0, 88.0, 89.0, 90.0,
+      91.0, 92.0, 93.0, 94.0, 95.0, 96.0, 97.0, 98.0, 99.0, 100.0,
+    ];
     /// The minimum PWM to overcome static friction
-    pub const PWM_BIAS: f32 = 10.0; // TODO: Tweak this
-    /// THe Oscillation range (around the bias)
-    pub const AMPLITUDE: f32 = 10.0; // TODO: Tweak this
-
+    pub const PWM_BIAS: f32 = 400.0; // TODO: Tweak this //235 seems to be the minimum to get the motor moving
+    pub const AMPLITUDE: f32 = 100.0; // TODO: Tweak this
 
     #[local]
     struct Local {
@@ -100,7 +109,10 @@ mod app {
         let pwm = pwm::tim1(ctx.device.TIM1, pwm_channels, &mut rcc, 6u32.khz());
 
         let (mut ch1, mut ch1n, mut ch2, mut ch2n, mut ch3, mut ch3n) = pwm;
-
+        
+        let max_duty =ch1.get_max_duty();
+        defmt::info!("Current Bias: {}", PWM_BIAS);
+        defmt::info!("Max Duty: {}", max_duty);
         ch1.set_dead_time(&mut rcc, 1000);
         ch1.set_duty(0);
         ch2.set_duty(0);
@@ -243,7 +255,7 @@ mod app {
             ).sqrt() / (SAMPLES_PER_FREQUENCY as f32);
             let phase = F32::atan2(F32(*ctx.local.imaginary_accumulator), F32(*ctx.local.real_accumulator));
 
-            defmt::info!("Freq: {} Hz, Mag: {}, Phase {} rad", frequency, average_mag, phase);
+            defmt::info!("Freq: {} Hz, Mag: {}, Phase {} rad", frequency, average_mag, phase.0);
 
             *ctx.local.iteration = 0;
             *ctx.local.frequency_idx += 1;
@@ -252,6 +264,17 @@ mod app {
 
             if *ctx.local.frequency_idx == FREQUENCIES.len() {
                 defmt::info!("Data Collection Complete");
+                ctx.local.ch1.set_duty(0);
+                ctx.local.ch1.enable();
+                ctx.local.ch1n.enable();
+
+                ctx.local.ch2.set_duty(0);
+                ctx.local.ch2.enable();
+                ctx.local.ch2n.enable();
+
+                ctx.local.ch3.set_duty(0);
+                ctx.local.ch3.enable();
+                ctx.local.ch3n.enable();
             }
         }
 
