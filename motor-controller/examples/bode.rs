@@ -26,7 +26,7 @@ mod app {
     use micromath::{F32, F32Ext};
 
     /// The number of samples to take at each frequency
-    pub const SAMPLES_PER_FREQUENCY: u32 = 1000;
+    pub const SAMPLES_PER_FREQUENCY: u32 = 3000;
     // A discrete list of integer frequencies from 1 to 100
     pub const FREQUENCIES: [f32; 100] = [
       1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0,
@@ -41,7 +41,7 @@ mod app {
       91.0, 92.0, 93.0, 94.0, 95.0, 96.0, 97.0, 98.0, 99.0, 100.0,
     ];
     /// The minimum PWM to overcome static friction
-    pub const PWM_BIAS: f32 = 400.0; // TODO: Tweak this //235 seems to be the minimum to get the motor moving
+    pub const PWM_BIAS: f32 = 550.0;  // TODO: Tweak this //235 seems to be the minimum to get the motor moving
     pub const AMPLITUDE: f32 = 100.0; // TODO: Tweak this
 
     #[local]
