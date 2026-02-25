@@ -56,7 +56,7 @@ mod app {
         let board::Resources {
             mut pins,
             usb,
-            mut gpt2,
+            // mut gpt2,
             mut gpio1,
             mut gpio2,
             lpspi4,
@@ -69,18 +69,21 @@ mod app {
         let systick_token = rtic_monotonics::create_systick_token!();
         Systick::start(ctx.core.SYST, 600_000_000, systick_token);
 
+        
+
         // Gpt 2 as blocking delay
-        gpt2.disable();
-        gpt2.set_divider(GPT_DIVIDER);
-        gpt2.set_clock_source(GPT_CLOCK_SOURCE);
-        let mut delay2 = Blocking::<_, GPT_FREQUENCY>::from_gpt(gpt2);
+        //gpt2.disable();
+        //gpt2.set_divider(GPT_DIVIDER);
+        //gpt2.set_clock_source(GPT_CLOCK_SOURCE);
+        //let mut delay2 = Blocking::<_, GPT_FREQUENCY>::from_gpt(gpt2);
+        
 
         let motor_en: MotorEn = gpio1.output(pins.p23);
         motor_en.set();
         let kill_n: Killn = gpio2.output(pins.p36);
         kill_n.set();
 
-        delay2.delay_ms(500u32);
+        //delay2.delay_ms(500u32);
 
         let kicker = Kicker::new(gpio1.output(pins.p38), gpio2.output(pins.p37));
 
@@ -91,7 +94,7 @@ mod app {
 
         let mut spi: Lpspi<(), 4> = Lpspi::without_pins(lpspi4);
         
-
+        // Config SPI
         spi.disabled(|spi| {
             spi.set_mode(MODE_3);                  // CPOL=1, CPHA=1 to match Pico
             spi.set_clock_hz(board::LPSPI_FREQUENCY, 2_000_000);
@@ -121,7 +124,10 @@ mod app {
         priority = 1
     )]
     async fn kicker_test(ctx: kicker_test::Context) {
+        
         Systick::delay(1_000u32.millis()).await;
+        
+        
 
         log::info!("Charging the Kicker");
         let kicker_command = KickerCommand {
@@ -130,6 +136,7 @@ mod app {
             kick_strength: 20.0,
             charge_allowed: true,
         };
+        
         for _ in 0..20 {
             let kicker_status = ctx
                 .local
@@ -139,6 +146,8 @@ mod app {
             log::info!("Kicker Status: {:?}", kicker_status);
             Systick::delay(100u32.millis()).await;
         }
+
+        
 
         log::info!("KICKING!!!");
         let kicker_command = KickerCommand {
