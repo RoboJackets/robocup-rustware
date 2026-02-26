@@ -121,15 +121,16 @@ mod app {
             kick_strength: 20.0,
             charge_allowed: true,
         };
+        log::info!("Raw Out: {:?}", kicker_command);
         
-        for _ in 0..20 {
+        for _ in 0..1000 {
             let kicker_status = ctx
                 .local
                 .kicker_controller
                 .service(kicker_command, ctx.local.spi)
                 .unwrap();
             log::info!("Kicker Status: {:?}", kicker_status);
-            Systick::delay(100u32.millis()).await;
+            Systick::delay(1000u32.millis()).await;
         }
 
         

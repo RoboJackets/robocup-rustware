@@ -1,51 +1,62 @@
-cmake_minimum_required(VERSION 3.14.7)
+# Generated Cmake Pico project file
 
-# set the AVR toolchain
-set( CMAKE_TOOLCHAIN_FILE ${CMAKE_CURRENT_SOURCE_DIR}/atmega_toolchain.cmake )
+cmake_minimum_required(VERSION 3.13)
 
-project(kicker LANGUAGES C)
+set(CMAKE_C_STANDARD 11)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-set( CMAKE_RUNTIME_OUTPUT_DIRECTORY  "${CMAKE_BINARY_DIR}/bin" )
-include(atmega_toolchain.cmake)
+# Initialise pico_sdk from installed location
+# (note this can come from environment, CMake cache etc)
 
-# compile executable for kicker firmware
-add_executable(kicker.elf
-    main.c
+# == DO NOT EDIT THE FOLLOWING LINES for the Raspberry Pi Pico VS Code Extension to work ==
+if(WIN32)
+    set(USERHOME $ENV{USERPROFILE})
+else()
+    set(USERHOME $ENV{HOME})
+endif()
+set(sdkVersion 2.2.0)
+set(toolchainVersion 14_2_Rel1)
+set(picotoolVersion 2.2.0-a4)
+set(picoVscode ${USERHOME}/.pico-sdk/cmake/pico-vscode.cmake)
+if (EXISTS ${picoVscode})
+    include(${picoVscode})
+endif()
+# ====================================================================================
+set(PICO_BOARD pico CACHE STRING "Board type")
+
+# Pull in Raspberry Pi Pico SDK (must be before project)
+include(pico_sdk_import.cmake)
+
+project(kicker C CXX ASM)
+
+# Initialise the Raspberry Pi Pico SDK
+pico_sdk_init()
+
+# Add executable. Default name is the project name, version 0.1
+
+add_executable(kicker kicker.cpp )
+
+pico_set_program_name(kicker "kicker")
+pico_set_program_version(kicker "0.1")
+
+# Modify the below lines to enable/disable output over UART/USB
+pico_enable_stdio_uart(kicker 0)
+pico_enable_stdio_usb(kicker 1)
+
+# Add the standard library to the build
+target_link_libraries(kicker
+        pico_stdlib)
+
+# Add the standard include files to the build
+target_include_directories(kicker PRIVATE
+        ${CMAKE_CURRENT_LIST_DIR}
 )
 
-add_executable(kicker-test.elf
-    test.c
-)
+# Add any user requested libraries
+target_link_libraries(kicker 
+        hardware_spi
+        )
 
-target_include_directories(kicker.elf PUBLIC
-    include
-)
+pico_add_extra_outputs(kicker)
 
-set(CMAKE_C_COMPILER    ${AVR_C_COMPILER})
-set(CMAKE_CXX_COMPILER  ${AVR_CXX_COMPILER})
-# custom target to convert kicker.elf to the kicker.nib binary file and place it in the 'run' directory
-add_custom_target(kicker ALL
-    # the -j options tell objcopy what sections to include in the output
-    # the -O ihex specifies what output format to use, which is the hex format needed for flashing the AVR
-    ${AVR_OBJCOPY} -j .text -j .data -O binary kicker.elf kicker.nib
-    WORKING_DIRECTORY "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}"
-    DEPENDS kicker.elf
-    COMMENT "objcopying to convert kicker.elf to kicker.nib"
-)
-
-# custom target to convert kicker-test.elf to the kicker-test.nib binary file and place it in the 'run' directory
-add_custom_target(kicker-test ALL
-    # the -j options tell objcopy what sections to include in the output
-    # the -O ihex specifies what output format to use, which is the hex format needed for flashing the AVR
-    ${AVR_OBJCOPY} -j .text -j .data -O binary kicker-test.elf kicker-test.nib
-    WORKING_DIRECTORY "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}"
-    DEPENDS kicker-test.elf
-    COMMENT "objcopying to convert kicker-test.elf to kicker-test.nib"
-)
-
-# F_CPU specifies the frequency (in Hz) of the cpu clock so that the delay functions work appropriately
-# the ATTiny13 has an internal 9.6MHz clock with the prescaler, don't scale back
-# change above to match ATTINY84A =====================================================================
-# to keep timing for neopixel
-# The -O2 turns on optimizations, which are required to use the delay_*() functions
-list(APPEND CMAKE_C_FLAGS "-std=c11 -O2 -mmcu=${AVR_TARGET_ARCH} -DF_CPU=8000000")
