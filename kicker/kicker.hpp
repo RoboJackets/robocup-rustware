@@ -35,7 +35,7 @@ struct KickerCommand {
         }
 
         charge_allowed = (command & (1 << 4)) != 0;
-        kick_strength = (float)(command & 0x0F) * 255.0f / 15.0f;
+        kick_strength = (float)(command & 0x0F) / 15.0 * 255;
     }
 
     void print() {

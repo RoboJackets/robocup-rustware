@@ -25,8 +25,10 @@ mod app {
     use bsp::board::{self};
     use teensy4_bsp as bsp;
     use embedded_hal::spi::MODE_3;
-    use bsp::hal::lpspi::Lpspi;
+    use bsp::hal::lpspi::{Lpspi, Pins};
     use bsp::hal::iomuxc;
+    use bsp::ral;
+    use ral::lpspi::LPSPI3;
 
     use rtic_monotonics::systick::*;
 
@@ -36,7 +38,7 @@ mod app {
         KickerCSn, KickerReset, Killn, MotorEn,
     };
 
-    type Spi = bsp::hal::lpspi::Lpspi<(), 4>;
+    type Spi = bsp::hal::lpspi::Lpspi<(), 3>;
 
     #[local]
     struct Local {
@@ -55,7 +57,7 @@ mod app {
             usb,
             mut gpio1,
             mut gpio2,
-            lpspi4,
+            lpspi3,
             ..
         } = board::t41(ctx.device);
 
@@ -70,20 +72,38 @@ mod app {
         let kill_n: Killn = gpio2.output(pins.p36);
         kill_n.set();
 
-        let kicker = Kicker::new(gpio1.output(pins.p38), gpio2.output(pins.p37));
+        let spi_pins = Pins {
+            pcs0: pins.p4,
+            sck: pins.p27,
+            sdo: pins.p26,
+            sdi: pins.p39,
+        };
 
-        // Manually configure the data pins for LPSPI4 function
-        iomuxc::lpspi::prepare(&mut pins.p11);  // SDO/MOSI
-        iomuxc::lpspi::prepare(&mut pins.p12);  // SDI/MISO
-        iomuxc::lpspi::prepare(&mut pins.p13);  // SCK
+        let spi_block = unsafe { LPSPI3::instance() };
+        let mut spi = Lpspi::new(spi_pins, spi_block);
 
-        let mut spi: Lpspi<(), 4> = Lpspi::without_pins(lpspi4);
-        
         // Config SPI
         spi.disabled(|spi| {
             spi.set_mode(MODE_3);                  // CPOL=1, CPHA=1 to match Pico
             spi.set_clock_hz(board::LPSPI_FREQUENCY, 2_000_000);
         });
+        
+        let (spi_pins, spi_block) = spi.release();
+        let mut spi = Lpspi::without_pins(spi_pins);
+        
+        let kicker = Kicker::new(gpio1.output(pins.p38), gpio2.output(pins.p37));
+
+
+        // Manually configure the data pins for LPSPI4 function
+        iomuxc::lpspi::prepare(&mut pins.p26);  // SDO/MOSI
+        iomuxc::lpspi::prepare(&mut pins.p39);  // SDI/MISO
+        iomuxc::lpspi::prepare(&mut pins.p27);  // SCK
+        
+        let mut spi: Lpspi<(), 3> = Lpspi::without_pins(lpspi3);
+        
+
+
+        
 
         kicker_test::spawn().ok();
 
@@ -116,7 +136,7 @@ mod app {
 
         log::info!("Charging the Kicker");
         let kicker_command = KickerCommand {
-            kick_type: KickType::Kick,
+            kick_type: KickType::Chip,
             kick_trigger: KickTrigger::Disabled,
             kick_strength: 20.0,
             charge_allowed: true,
