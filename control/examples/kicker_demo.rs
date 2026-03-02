@@ -53,11 +53,10 @@ mod app {
     #[init]
     fn init(ctx: init::Context) -> (Shared, Local) {
         let board::Resources {
-            mut pins,
+            pins,
             usb,
             mut gpio1,
             mut gpio2,
-            lpspi3,
             ..
         } = board::t41(ctx.device);
 
@@ -72,15 +71,17 @@ mod app {
         let kill_n: Killn = gpio2.output(pins.p36);
         kill_n.set();
 
+        // Define SPI pins
         let spi_pins = Pins {
-            pcs0: pins.p4,
+            pcs0: pins.p38,
             sck: pins.p27,
             sdo: pins.p26,
             sdi: pins.p39,
         };
 
+        // Generate instance of LPSPI3 to manually populate
         let spi_block = unsafe { LPSPI3::instance() };
-        let mut spi = Lpspi::new(spi_pins, spi_block);
+        let mut spi = Lpspi::new(spi_block, spi_pins);
 
         // Config SPI
         spi.disabled(|spi| {
@@ -88,22 +89,19 @@ mod app {
             spi.set_clock_hz(board::LPSPI_FREQUENCY, 2_000_000);
         });
         
-        let (spi_pins, spi_block) = spi.release();
-        let mut spi = Lpspi::without_pins(spi_pins);
-        
-        let kicker = Kicker::new(gpio1.output(pins.p38), gpio2.output(pins.p37));
-
-
-        // Manually configure the data pins for LPSPI4 function
-        iomuxc::lpspi::prepare(&mut pins.p26);  // SDO/MOSI
-        iomuxc::lpspi::prepare(&mut pins.p39);  // SDI/MISO
-        iomuxc::lpspi::prepare(&mut pins.p27);  // SCK
-        
-        let mut spi: Lpspi<(), 3> = Lpspi::without_pins(lpspi3);
+        // Release pins to split into kicker
+        let (spi_block, mut spi_pins) = spi.release();
         
 
+        // Manually configure the data pins for LPSPI3 function
+        iomuxc::lpspi::prepare(&mut spi_pins.sdo);  // SDO/MOSI
+        iomuxc::lpspi::prepare(&mut spi_pins.sdi);  // SDI/MISO
+        iomuxc::lpspi::prepare(&mut spi_pins.sck);  // SCK
 
-        
+        // Initialize SPI and Kicker controll
+        let spi = Lpspi::without_pins(spi_block);
+        let kicker = Kicker::new(gpio1.output(spi_pins.pcs0), gpio2.output(pins.p37));
+
 
         kicker_test::spawn().ok();
 
