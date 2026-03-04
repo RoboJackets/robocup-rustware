@@ -91,9 +91,11 @@ void read_command() {
 void read_voltage() {
     adc_select_input(VOLT_CHANNEL);
     uint16_t raw = adc_read();
-    voltage = VOLT_CONVERSION * raw;
+    float voltage_new = VOLT_CONVERSION * raw;
+    voltage = ((255 - KALPHA) * voltage + KALPHA * voltage_new) / 255;
+
     #if DEBUG 
-        printf("Volt Raw: %d | Volt Actual: %.2f\n", raw, voltage);
+        printf("Volt Raw: %d | Volt Actual: %.2f | Volt Normalized: %.2f\n", raw, voltage_new, voltage);
     #endif
 }
 
