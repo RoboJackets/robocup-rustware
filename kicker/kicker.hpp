@@ -19,10 +19,15 @@ enum KickTrigger {
     Immediate,
 };
 
+enum KickerError {
+    None,
+
+};
+
 struct KickerCommand {
     KickType kick_type;
     KickTrigger kick_trigger;
-    float kick_strength;
+    uint8_t kick_strength;
     bool charge_allowed;
 
     KickerCommand(char command) {
@@ -41,11 +46,11 @@ struct KickerCommand {
         }
 
         charge_allowed = (command & (1 << 4)) != 0;
-        kick_strength = (float)(command & 0x0F) / 15.0 * 255;
+        kick_strength = command & 0x0F;
     }
 
     void print() {
-        printf("Kick Type: %s | Kick Trigger: %s | Kick Strength: %.2f | Charge Allowed: %s\n",
+        printf("Kick Type: %s | Kick Trigger: %s | Kick Strength: %d | Charge Allowed: %s\n",
                 (kick_type == KickType::Chip ? "Chip" : "Kick"),
                 (kick_trigger == KickTrigger::Breakbeam ? "Breakbeam" : (kick_trigger == KickTrigger::Immediate ? "Immediate" : "Disabled")),
                 kick_strength,
