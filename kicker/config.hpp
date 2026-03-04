@@ -8,5 +8,6 @@
 #define VOLT_CONVERSION 250 / 2.025 * VOLT_RANGE
 #define VOLT_MAX 250
 #define VOLT_MIN 10
+#define KALPHA 64
 
 #define CHARGE_TIME_MAX 10000 // 10s
