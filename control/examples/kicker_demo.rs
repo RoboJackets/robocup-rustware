@@ -81,16 +81,10 @@ mod app {
 
         // Generate instance of LPSPI3 to manually populate
         let spi_block = unsafe { LPSPI3::instance() };
-        let mut spi = Lpspi::new(spi_block, spi_pins);
+        let spi_temp = Lpspi::new(spi_block, spi_pins);
 
-        // Config SPI
-        spi.disabled(|spi| {
-            spi.set_mode(MODE_3);                  // CPOL=1, CPHA=1 to match Pico
-            spi.set_clock_hz(board::LPSPI_FREQUENCY, 2_000_000);
-        });
-        
         // Release pins to split into kicker
-        let (spi_block, mut spi_pins) = spi.release();
+        let (spi_block, mut spi_pins) = spi_temp.release();
         
 
         // Manually configure the data pins for LPSPI3 function
@@ -99,8 +93,14 @@ mod app {
         iomuxc::lpspi::prepare(&mut spi_pins.sck);  // SCK
 
         // Initialize SPI and Kicker controll
-        let spi = Lpspi::without_pins(spi_block);
+        let mut spi = Lpspi::without_pins(spi_block);
         let kicker = Kicker::new(gpio1.output(spi_pins.pcs0), gpio2.output(pins.p37));
+
+        // Config SPI
+        spi.disabled(|spi| {
+            spi.set_mode(MODE_3);                  // CPOL=1, CPHA=1 to match Pico
+            spi.set_clock_hz(board::LPSPI_FREQUENCY, 2_000_000);
+        });
 
 
         kicker_test::spawn().ok();

@@ -1,42 +1,138 @@
 #include <stdio.h>
 #include "pico/stdlib.h"
 #include "hardware/spi.h"
+#include "hardware/adc.h"
 #include "pins.hpp"
 #include "config.hpp"
 #include "kicker.hpp"
 
 void init();
+void startup();
 void spi_irq_handler();
+
+void read_command();
+void read_voltage();
+void update_output();
+void hv_led_out(uint8_t);
 
 // SPI Data
 volatile uint8_t rx_data = 0;
 volatile bool data_ready = false;
 uint8_t output = 0;
+bool new_command = false;
 
+// Pub Vars
+uint64_t count = 0;
+float voltage = 0;
 
 int main()
 {
     init();
+    startup();
 
+    // Main control loop
     while (true) {
-        // Read new command
-        if (data_ready) {
-            data_ready = false;
-            KickerCommand command = KickerCommand(rx_data);
-            if (DEBUG) {
-                printf("Count: %d | Raw: %0x\n", output, rx_data);
-                command.print();
-            }
-        }
-
         
+        /// READ DATA
+        read_command();
+        read_voltage();
+
+        /// ERROR CHECKING
+
+        /// DRIVE OUTPUTS
+        update_output();
+        // Drive LEDs Basic
+        uint8_t pattern = 0b00000;
+        pattern |= voltage > VOLT_MIN;
+        pattern |= (voltage > VOLT_MAX / 4) << 1;
+        pattern |= (voltage > VOLT_MAX / 2) << 2;
+        pattern |= (voltage > 3 * VOLT_MAX / 4) << 3;
+        pattern |= (voltage > VOLT_MAX - VOLT_MIN) << 4;
+        hv_led_out(pattern);
+
+        count++;
+
+        sleep_ms(10);
+    }
+}
+
+void update_output() {
+    output = ((uint8_t) voltage) >> 1;
+    output |= 1 << 7;
+}
+
+void read_command() {
+    if (data_ready) {
+        data_ready = false;
+        KickerCommand command = KickerCommand(rx_data);
+        if (DEBUG) {
+            printf("Count: %d | Raw: %0x\n", output, rx_data);
+            command.print();
+        }
+    }
+    new_command = true;
+}
+
+void read_voltage() {
+    adc_select_input(VOLT_CHANNEL);
+    uint16_t raw = adc_read();
+    voltage = VOLT_CONVERSION * raw;
+    if (DEBUG) {
+        printf("Volt Raw: %d | Volt: %.2f\n", raw, voltage);
+    }
+}
+
+// Check all compenents health
+void startup() {
+    hv_led_out(0b10001);
+    sleep_ms(1000);
+    hv_led_out(0b11011);
+    sleep_ms(1000);
+    hv_led_out(0b11111);
+    sleep_ms(1000);
+    hv_led_out(0b00000);
+    sleep_ms(1000);
+    hv_led_out(0b11111);
+    sleep_ms(1000);
+    hv_led_out(0b00000);
+}
+
+/* 
+    Bit pattern: 000 | MAX | HIGH | MID | LOW | MIN
+    1 = ON
+*/
+void hv_led_out(uint8_t pattern) {
+    if (pattern & 0b1) {
+        gpio_put(HV_LED_MIN, 0);
+    } else {
+        gpio_put(HV_LED_MIN, 1);
+    }
+    if (pattern >> 1 & 0b1) {
+        gpio_put(HV_LED_LOW, 0);
+    } else {
+        gpio_put(HV_LED_LOW, 1);
+    }
+    if (pattern >> 2 & 0b1) {
+        gpio_put(HV_LED_MID, 0);
+    } else {
+        gpio_put(HV_LED_MID, 1);
+    }
+    if (pattern >> 3 & 0b1) {
+        gpio_put(HV_LED_HIGH, 0);
+    } else {
+        gpio_put(HV_LED_HIGH, 1);
+    }
+    if (pattern >> 4 & 0b1) {
+        gpio_put(HV_LED_MAX, 0);
+    } else {
+        gpio_put(HV_LED_MAX, 1);
     }
 }
 
 void init() {
     stdio_init_all();
 
-    // SPI initialisation
+    /// SPI initialisation
     // Mode 3, MSB First
     spi_init(SPI_PORT, SPI_CLK_FREQUENCY);
     spi_set_format(SPI_PORT, 8, SPI_CPOL_1, SPI_CPHA_1, SPI_MSB_FIRST);
@@ -52,8 +148,9 @@ void init() {
     spi_get_hw(SPI_PORT)->imsc = SPI_SSPIMSC_RXIM_BITS;
 
     // Set up the IRQ
-    irq_set_exclusive_handler(SPI1_IRQ, spi_irq_handler);
-    irq_set_enabled(SPI1_IRQ, true);
+    int irq = SPI_PORT == spi0 ? SPI0_IRQ : SPI1_IRQ;
+    irq_set_exclusive_handler(irq, spi_irq_handler);
+    irq_set_enabled(irq, true);
 
     // Preload output data
     spi_get_hw(SPI_PORT)->dr = output;
@@ -61,7 +158,40 @@ void init() {
     // Clear SPI buffers
     spi_get_hw(SPI_PORT)->cr1 &= ~SPI_SSPCR1_SSE_BITS;
     spi_get_hw(SPI_PORT)->cr1 |= SPI_SSPCR1_SSE_BITS;
-    
+
+
+    /// Charge Sync
+    GPIO_OUTPUT_INIT(CHARGE_SYNC);
+    if (!CHARGE_SYNC_EN) {
+        gpio_put(CHARGE_SYNC, 0);
+    }
+
+    /// Output pins
+    GPIO_OUTPUT_INIT(HV_LED_MIN);
+    GPIO_OUTPUT_INIT(HV_LED_LOW);
+    GPIO_OUTPUT_INIT(HV_LED_MID);
+    GPIO_OUTPUT_INIT(HV_LED_HIGH);
+    GPIO_OUTPUT_INIT(HV_LED_MAX);
+    GPIO_OUTPUT_INIT(BREAK_LED);
+    GPIO_OUTPUT_INIT(BREAK_TRIG);
+    GPIO_OUTPUT_INIT(DC_DISABLE);
+    GPIO_OUTPUT_INIT(KICK_TRIG);
+    GPIO_OUTPUT_INIT(CHIP_TRIG);
+    GPIO_OUTPUT_INIT(CHARGE_EN);
+    GPIO_OUTPUT_INIT(LED_0);
+    GPIO_OUTPUT_INIT(LED_1);
+    GPIO_OUTPUT_INIT(LED_2);
+
+    /// Button inputs
+    GPIO_INPUT_INIT(CHARGE_BTN);
+    GPIO_INPUT_INIT(CHIP_BTN);
+    GPIO_INPUT_INIT(KICK_BTN);
+
+    /// ADC inputs
+    adc_init();
+    adc_gpio_init(BREAK_SENSE);
+    adc_gpio_init(VOLT_SENSE);
+
 }
 
 void spi_irq_handler() {
