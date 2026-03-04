@@ -65,10 +65,10 @@ void read_command() {
     if (data_ready) {
         data_ready = false;
         KickerCommand command = KickerCommand(rx_data);
-        if (DEBUG) {
+        #if DEBUG
             printf("Count: %d | Raw: %0x\n", output, rx_data);
             command.print();
-        }
+        #endif
     }
     new_command = true;
 }
@@ -77,9 +77,9 @@ void read_voltage() {
     adc_select_input(VOLT_CHANNEL);
     uint16_t raw = adc_read();
     voltage = VOLT_CONVERSION * raw;
-    if (DEBUG) {
+    #if DEBUG 
         printf("Volt Raw: %d | Volt: %.2f\n", raw, voltage);
-    }
+    #endif
 }
 
 // Check all compenents health

@@ -136,7 +136,7 @@ mod app {
         let kicker_command = KickerCommand {
             kick_type: KickType::Chip,
             kick_trigger: KickTrigger::Disabled,
-            kick_strength: 20.0,
+            kick_strength: 15,
             charge_allowed: true,
         };
         log::info!("Raw Out: {:?}", kicker_command);
@@ -157,7 +157,7 @@ mod app {
         let kicker_command = KickerCommand {
             kick_type: KickType::Kick,
             kick_trigger: KickTrigger::Immediate,
-            kick_strength: 100.0,
+            kick_strength: 15,
             charge_allowed: true,
         };
         let kicker_status = ctx
@@ -171,7 +171,7 @@ mod app {
         let kicker_command = KickerCommand {
             kick_type: KickType::Chip,
             kick_trigger: KickTrigger::Disabled,
-            kick_strength: 20.0,
+            kick_strength: 5,
             charge_allowed: true,
         };
         for _ in 0..20 {
@@ -188,7 +188,7 @@ mod app {
         let kicker_command = KickerCommand {
             kick_type: KickType::Chip,
             kick_trigger: KickTrigger::Immediate,
-            kick_strength: 100.0,
+            kick_strength: 15,
             charge_allowed: true,
         };
         let kicker_status = ctx
@@ -204,7 +204,7 @@ mod app {
         let kicker_command = KickerCommand {
             kick_type: KickType::Kick,
             kick_trigger: KickTrigger::Disabled,
-            kick_strength: 20.0,
+            kick_strength: 10,
             charge_allowed: true,
         };
         for _ in 0..20 {
@@ -222,7 +222,7 @@ mod app {
             let kicker_command = KickerCommand {
                 kick_type: KickType::Kick,
                 kick_trigger: KickTrigger::Breakbeam,
-                kick_strength: 20.0,
+                kick_strength: 10,
                 charge_allowed: true,
             };
             let kicker_status = ctx
