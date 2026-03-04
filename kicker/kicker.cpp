@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include "pico/stdlib.h"
+#include "pico/time.h"
 #include "hardware/spi.h"
 #include "hardware/adc.h"
 #include "pins.hpp"
@@ -12,13 +13,16 @@ void spi_irq_handler();
 
 void read_command();
 void read_voltage();
-void update_output();
+void update_spi_output();
 void hv_led_out(uint8_t);
+void gen_led_out(uint8_t);
+
+void kicker_error(KickerError);
 
 // SPI Data
 volatile uint8_t rx_data = 0;
 volatile bool data_ready = false;
-uint8_t output = 0;
+uint8_t spi_out = 0x00;
 bool new_command = false;
 
 // Pub Vars
@@ -26,6 +30,7 @@ KickerState state = KickerState::Init;
 uint64_t count = 0;
 float voltage = 0;
 bool charging = false;
+long charge_start = to_ms_since_boot(get_absolute_time());
 
 int main()
 {
@@ -42,9 +47,14 @@ int main()
         read_voltage();
 
         /// ERROR CHECKING
+        // Charge Timeout
+        if (charging && to_ms_since_boot(get_absolute_time()) - charge_start > CHARGE_TIME_MAX) {
+            kicker_error(KickerError::ChargeTimeout);
+        }
+
 
         /// DRIVE OUTPUTS
-        update_output();
+        update_spi_output();
         // Drive LEDs Basic
         uint8_t pattern = 0b00000;
         pattern |= voltage > VOLT_MIN;
@@ -56,14 +66,14 @@ int main()
 
         count++;
 
-        sleep_ms(10);
+        sleep_ms(1);
     }
 }
 
-void update_output() {
-    output = ((uint8_t) voltage) >> 1;
-    output |= 1 << 7;
-    spi_get_hw(SPI_PORT)->dr = output;
+void update_spi_output() {
+    spi_out = ((uint8_t) voltage) >> 1;
+    spi_out |= 1 << 7; // TEMP
+    spi_get_hw(SPI_PORT)->dr = spi_out;
 }
 
 void read_command() {
@@ -71,7 +81,7 @@ void read_command() {
         data_ready = false;
         KickerCommand command = KickerCommand(rx_data);
         #if DEBUG
-            printf("Count: %d | Raw: %0x\n", output, rx_data);
+            printf("Spi Out: %0x | Raw: %0x\n", spi_out, rx_data);
             command.print();
         #endif
     }
@@ -83,7 +93,7 @@ void read_voltage() {
     uint16_t raw = adc_read();
     voltage = VOLT_CONVERSION * raw;
     #if DEBUG 
-        printf("Volt Raw: %d | Volt: %.2f\n", raw, voltage);
+        printf("Volt Raw: %d | Volt Actual: %.2f\n", raw, voltage);
     #endif
 }
 
@@ -134,6 +144,28 @@ void hv_led_out(uint8_t pattern) {
     }
 }
 
+/* 
+    Bit pattern: 00000 | LED_2 | LED_1 | LED_0
+    1 = ON
+*/
+void gen_led_out(uint8_t pattern) {
+    if (pattern & 0b1) {
+        gpio_put(LED_0, 0);
+    } else {
+        gpio_put(LED_0, 1);
+    }
+    if (pattern >> 1 & 0b1) {
+        gpio_put(LED_1, 0);
+    } else {
+        gpio_put(LED_1, 1);
+    }
+    if (pattern >> 2 & 0b1) {
+        gpio_put(LED_2, 0);
+    } else {
+        gpio_put(LED_2, 1);
+    }
+}
+
 void init() {
     stdio_init_all();
 
@@ -158,7 +190,7 @@ void init() {
     irq_set_enabled(irq, true);
 
     // Preload output data
-    spi_get_hw(SPI_PORT)->dr = output;
+    spi_get_hw(SPI_PORT)->dr = spi_out;
 
     // Clear SPI buffers
     spi_get_hw(SPI_PORT)->cr1 &= ~SPI_SSPCR1_SSE_BITS;
@@ -209,7 +241,7 @@ void spi_irq_handler() {
         spi_get_hw(SPI_PORT)->cr1 |= SPI_SSPCR1_SSE_BITS;
 
         // Re-load TX FIFO with response for next transfer
-        spi_get_hw(SPI_PORT)->dr = output;
+        spi_get_hw(SPI_PORT)->dr = spi_out;
     }
 }
 
@@ -222,13 +254,16 @@ void shutdown() {
     sleep_ms(1);
 }
 
-void error_unknown() {
+void kicker_error(KickerError e) {
     shutdown();
+    spi_out = 0; // Send "Unhealthy" Command
+    spi_get_hw(SPI_PORT)->dr = spi_out;
+    gen_led_out(0b111);
     while (true) {
-        printf("UNKNOWN ERROR DURING: %s", state);
-        hv_led_out(0b11111);
+        printf("ERROR %s DURING %s", kicker_error_to_str(e), kicker_state_to_str(state));
+        hv_led_out(e);
         sleep_ms(100);
-        hv_led_out(0b00000);
+        hv_led_out(e);
         sleep_ms(100);
     }
 }

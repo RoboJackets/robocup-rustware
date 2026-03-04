@@ -18,10 +18,26 @@ enum KickTrigger {
     Breakbeam,
     Immediate,
 };
+const char* kick_trigger_to_str(KickTrigger t) {
+    switch(t) {
+        case Breakbeam: return "Breakbeam";
+        case Immediate: return "Immediate";
+        default: return "Disabled";
+    }
+};
 
 enum KickerError {
     None = 0b00000,
+    ChargeTimeout = 0b10011,
     Unknown = 0b11111,
+};
+
+const char* kicker_error_to_str(KickerError e) {
+    switch(e) {
+        case None: return "None";
+        case ChargeTimeout: return "ChargeTimeout";
+        default: return "Unknown";
+    }
 };
 
 enum KickerState {
@@ -31,6 +47,18 @@ enum KickerState {
     CommandIO,
     Init,
     Startup,
+};
+
+const char* kicker_state_to_str(KickerState s) {
+    switch(s) {
+        case Charging: return "Charging";
+        case Kicking: return "Kicking";
+        case Chipping: return "Chipping";
+        case CommandIO: return "CommandIO";
+        case Init: return "Init";
+        case Startup: return "Startup";
+        default: return "Unknown";
+    }
 };
 
 struct KickerCommand {
@@ -61,7 +89,7 @@ struct KickerCommand {
     void print() {
         printf("Kick Type: %s | Kick Trigger: %s | Kick Strength: %d | Charge Allowed: %s\n",
                 (kick_type == KickType::Chip ? "Chip" : "Kick"),
-                (kick_trigger == KickTrigger::Breakbeam ? "Breakbeam" : (kick_trigger == KickTrigger::Immediate ? "Immediate" : "Disabled")),
+                kick_trigger_to_str(kick_trigger),
                 kick_strength,
                 (charge_allowed ? "YES" : "NO"));
     }
