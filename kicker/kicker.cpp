@@ -22,18 +22,22 @@ uint8_t output = 0;
 bool new_command = false;
 
 // Pub Vars
+KickerState state = KickerState::Init;
 uint64_t count = 0;
 float voltage = 0;
+bool charging = false;
 
 int main()
 {
     init();
+    state = KickerState::Startup;
     startup();
 
     // Main control loop
     while (true) {
         
         /// READ DATA
+        state = KickerState::CommandIO;
         read_command();
         read_voltage();
 
@@ -59,6 +63,7 @@ int main()
 void update_output() {
     output = ((uint8_t) voltage) >> 1;
     output |= 1 << 7;
+    spi_get_hw(SPI_PORT)->dr = output;
 }
 
 void read_command() {
@@ -205,5 +210,25 @@ void spi_irq_handler() {
 
         // Re-load TX FIFO with response for next transfer
         spi_get_hw(SPI_PORT)->dr = output;
+    }
+}
+
+// Disable charging and discharge caps
+// Probably just using for errors
+void shutdown() {
+    gpio_put(CHARGE_EN, 0);
+    sleep_ms(1);
+    gpio_put(KICK_TRIG, 1);
+    sleep_ms(1);
+}
+
+void error_unknown() {
+    shutdown();
+    while (true) {
+        printf("UNKNOWN ERROR DURING: %s", state);
+        hv_led_out(0b11111);
+        sleep_ms(100);
+        hv_led_out(0b00000);
+        sleep_ms(100);
     }
 }

@@ -20,8 +20,17 @@ enum KickTrigger {
 };
 
 enum KickerError {
-    None,
+    None = 0b00000,
+    Unknown = 0b11111,
+};
 
+enum KickerState {
+    Charging,
+    Kicking,
+    Chipping,
+    CommandIO,
+    Init,
+    Startup,
 };
 
 struct KickerCommand {
