@@ -99,7 +99,7 @@ mod app {
 
         let (mut ch1, mut ch1n, mut ch2, mut ch2n, mut ch3, mut ch3n) = pwm;
 
-        ch1.set_dead_time(pwm::DTInterval::DT_5);
+        ch1.set_dead_time(pwm::DTInterval::DT_7);
         ch1.set_duty(0);
         ch2.set_duty(0);
         ch3.set_duty(0);
@@ -205,7 +205,7 @@ mod app {
     )]
     /// Update the speed of the motors.  The timer calls an interrupt every 1ms
     fn motion_control_update(mut ctx: motion_control_update::Context) {
-        if *ctx.local.iteration % 500 == 0 {
+        if *ctx.local.iteration % 100 == 0 {
             if *ctx.local.last_led {
                 ctx.local.led.set_low().unwrap();
                 *ctx.local.last_led = false;
@@ -220,9 +220,9 @@ mod app {
         let (pwm, clockwise) = if setpoint == 0.0 {
             (0, true)
         } else if setpoint < 125.0 {
-            (ctx.local.ch1.get_max_duty() / 4, true)
+            (ctx.local.ch1.get_max_duty() / 8, true)
         } else {
-            (ctx.local.ch1.get_max_duty() / 4, false)
+            (ctx.local.ch1.get_max_duty() / 8, false)
         };
 
         let phases = hall_to_phases(
