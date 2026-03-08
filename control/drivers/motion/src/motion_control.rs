@@ -96,8 +96,8 @@ impl MotionControl {
     }
 
     /// Convert a body velocity into duty cycles for the robot
-    pub fn body_to_wheels(&self, body_velocity: Vector3<f32>) -> Vector4<f32> {
-        self.bot_to_wheel * body_velocity
+    pub fn body_to_wheels(&self, body_velocity: Vector3<f32>) -> Vector4<i32> {
+        (self.bot_to_wheel * body_velocity).map(|v| MotionControl::meters_to_ticks(v))
     }
 
     /// Converts a wheel's duty cycles into velocity for the robot
