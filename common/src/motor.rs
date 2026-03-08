@@ -4,7 +4,7 @@
 
 use core::fmt::Debug;
 use defmt::Format;
-use ncomm_utils::packing::{Packable, PackingError};
+use crate::packing::{Packable, PackingError};
 
 /// The size (in bytes) of a motor command.
 pub const MOTOR_COMMAND_SIZE: usize = 13;

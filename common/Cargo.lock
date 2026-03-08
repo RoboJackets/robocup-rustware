@@ -13,7 +13,6 @@ name = "common"
 version = "0.1.0"
 dependencies = [
  "defmt 0.3.100",
- "ncomm-utils",
 ]
 
 [[package]]
@@ -56,12 +55,6 @@ checksum = "10d60334b3b2e7c9d91ef8150abfb6fa4c1c39ebbcf4a81c2e346aad939fee3e"
 dependencies = [
  "thiserror",
 ]
-
-[[package]]
-name = "ncomm-utils"
-version = "1.1.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7b29ad5223b5925db3273ddf9a373b7890dee69c176e311da044315c6345270a"
 
 [[package]]
 name = "proc-macro-error-attr2"

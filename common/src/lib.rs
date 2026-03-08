@@ -6,3 +6,5 @@
 
 pub mod motor;
 pub mod dribbler;
+pub mod pid;
+pub mod packing;
