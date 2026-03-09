@@ -2,14 +2,12 @@
 //! Controller for the robot
 //! 
 
-use common::{motor::{MotorCommand, MotorMoveResponse}, pid::Pid};
+use common::motor::MotorCommand;
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, pubsub::{Publisher, Subscriber, WaitResult}};
-use nalgebra::{Matrix4x3, Vector3, Vector4};
+use nalgebra::{Matrix4x3, Vector3};
 use libm::{sinf, cosf};
 
-pub mod kf;
-
-use crate::{imu::ImuData, radio::control_command::ControlMessage};
+use crate::radio::control_command::ControlMessage;
 
 /// The proportional, integral, and derivative gains for the PID controller
 pub const LINEAR_KP: f32 = 1.0;
@@ -42,9 +40,6 @@ const WHEEL_ANGLES: [f32; 4] = [
     (180.0 + BACK_ANGLE).to_radians(),
 ];
 
-/// The frequency to run the control update (in Hz)
-pub const CONTROL_FREQUENCY_HZ: u64 = 100;
-
 /// Our robot's idea of it's current state
 pub struct State {
     /// The x-direction velocity of the robot (m/s)
@@ -68,9 +63,7 @@ pub fn meters_to_ticks(meters: f32) -> i32 {
 #[embassy_executor::task]
 pub async fn control_task(
     mut command_subscriber: Subscriber<'static, NoopRawMutex, ControlMessage, 4, 2, 1>,
-    mut imu_data_subscriber: Subscriber<'static, NoopRawMutex, ImuData, 4, 1, 1>,
     motor_command_publishers: [Publisher<'static, NoopRawMutex, MotorCommand, 4, 1, 1>; 4],
-    mut motor_status_subscribers: [Subscriber<'static, NoopRawMutex, MotorMoveResponse, 4, 1, 1>; 4],
     mut power_off_subscriber: Subscriber<'static, NoopRawMutex, (), 4, 2, 2>,
 ) {
     // The conversion matrix from body velocities to wheel velocities
@@ -81,69 +74,30 @@ pub async fn control_task(
         sinf(WHEEL_ANGLES[3]), -cosf(WHEEL_ANGLES[3]), -WHEEL_DIST,
     );
 
-    // The conversion matrix from wheel velocities to body velocities
-    let wheel_to_body = (body_to_wheel.transpose() * body_to_wheel).try_inverse().unwrap() * body_to_wheel.transpose();
-
-    let mut x_pid = Pid::new(LINEAR_KP, LINEAR_KI, LINEAR_KD, None);
-    let mut y_pid = Pid::new(LINEAR_KP, LINEAR_KI, LINEAR_KD, None);
-    let mut w_pid = Pid::new(ANGULAR_KP, ANGULAR_KI, ANGULAR_KD, None);
-    let mut state = State { vx: 0.0, vy: 0.0, omega: 0.0 };
     let mut desired_state = State { vx: 0.0, vy: 0.0, omega: 0.0 };
-    let mut motor_velocities = Vector4::zeros();
     let mut turn_off = false;
 
     loop {
-        let start = embassy_time::Instant::now();
+        // Wait for an updated control message and update our desired state accordingly
+        if let WaitResult::Message(command) = command_subscriber.next_message().await {
+            if !turn_off {
+                desired_state.vx = (command.body_x as f32) * 1000.0;
+                desired_state.vy = (command.body_y as f32) * 1000.0;
+                desired_state.omega = (command.body_w as f32) * 1000.0;
+            }
+        }
 
         // Check if we have low battery and should stop the robot
         if let Some(WaitResult::Message(())) = power_off_subscriber.try_next_message() {
             turn_off = true;
+            desired_state.vx = 0.0;
+            desired_state.vy = 0.0;
+            desired_state.omega = 0.0;
         }
 
-        if !turn_off {
-            // Check for a new control command
-            if let Some(command) = command_subscriber.try_next_message() {
-                if let WaitResult::Message(command) = command {
-                    desired_state.vx = (command.body_x as f32) * 1000.0;
-                    desired_state.vy = (command.body_y as f32) * 1000.0;
-                    desired_state.omega = (command.body_w as f32) * 1000.0;
-                }
-            }
-
-            // Run the IMU Kalman prediction step
-            if let Some(WaitResult::Message(imu_data)) = imu_data_subscriber.try_next_message() {
-                let ImuData { gyro_z, accel_x, accel_y } = imu_data;
-                // TODO: Update our state measurement with our new IMU data
-            }
-
-            // Run the Motor Velocity Kalman Measurement Step
-            for i in 0..4 {
-                if let Some(WaitResult::Message(message)) = motor_status_subscribers[i].try_next_message() {
-                    motor_velocities[i] = ticks_to_meters(message.ticks_per_second);
-                    let body_velocity_estimate = wheel_to_body * motor_velocities;
-                    // TODO: Use the measurement to update the state estimate with our kalman filter
-                }
-            }
-
-            // Run the PID controller to get the desired command velocity
-            let command = Vector3::new(
-                x_pid.update(state.vx, desired_state.vx),
-                y_pid.update(state.vy, desired_state.vy),
-                w_pid.update(state.omega, desired_state.omega),
-            );
-
-            // Translate the desired command velocity into motor commands and send them to the motors
-            let wheel_velocities = body_to_wheel * command;
-            for i in 0..4 {
-                motor_command_publishers[i].publish_immediate(MotorCommand::Move { ticks_per_second: meters_to_ticks(wheel_velocities[i]) });
-            }
-        } else {
-            // When turning off the robot, make sure the motors stop moving
-            for i in 0..4 {
-                motor_command_publishers[i].publish_immediate(MotorCommand::Move { ticks_per_second: 0 });
-            }
+        let wheel_velocities = body_to_wheel * Vector3::new(desired_state.vx, desired_state.vy, desired_state.omega);
+        for i in 0..4 {
+            motor_command_publishers[i].publish_immediate(MotorCommand::Move { ticks_per_second: meters_to_ticks(wheel_velocities[i]) });
         }
-        let next = embassy_time::Instant::now() + embassy_time::Duration::from_hz(CONTROL_FREQUENCY_HZ) - start;
-        embassy_time::Timer::after(next).await;
     }
 }

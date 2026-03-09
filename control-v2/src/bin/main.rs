@@ -7,7 +7,6 @@ use defmt::*;
 use {defmt_rtt as _, panic_probe as _};
 
 use core::{cell::RefCell, default::Default, mem::MaybeUninit};
-use alloc::format;
 use embassy_executor::Spawner;
 use embassy_stm32::{adc::Adc, bind_interrupts, gpio::{Input, Level, Output, Speed}, usart::{self, Uart}};
 use embassy_time::{Duration, Timer, Delay};
@@ -17,10 +16,9 @@ use embassy_embedded_hal::shared_bus::blocking::spi::SpiDevice;
 use ssd1306::{prelude::*, I2CDisplayInterface, Ssd1306};
 use static_cell::StaticCell;
 
-use icm42605::Imu;
 use rf24::radio::RF24;
 use kicker_controller::Kicker;
-use control_v2::{gpio::{decode_robot_id, decode_team, self}, graphics, imu, kicker, motor, radio::{self, control_command::ControlMessage}, control, battery};
+use control_v2::{gpio::{decode_robot_id, decode_team, self}, graphics, kicker, motor, radio::{self, control_command::ControlMessage}, control, battery};
 use common::{motor::{MotorCommand, MotorMoveResponse}, dribbler::DribblerCommand};
 
 // Allocator
@@ -75,8 +73,11 @@ async fn main(spawner: Spawner) {
 
     let p = embassy_stm32::init(Default::default());
 
-    // The pin to kill power to the robot
-    let kill_n = Output::new(p.PB2, Level::High, Speed::Low);
+    // Enable the motor board
+    let mut kill_n = Output::new(p.PB2, Level::High, Speed::Low);
+    kill_n.set_high();
+    let mut motor_en = Output::new(p.PC1, Level::High, Speed::Low);
+    motor_en.set_high();
     let power_off_irq = embassy_stm32::exti::ExtiInput::new(p.PB1, p.EXTI1, embassy_stm32::gpio::Pull::None, GpioIrqs);
 
     // Initialize the dip switches
@@ -106,25 +107,12 @@ async fn main(spawner: Spawner) {
         }
     }
 
-    // Initialize the IMU
-    let imu_i2c = i2c::I2c::new(p.I2C1, p.PB8, p.PB9, imu::ImuIrqs, p.DMA1_CH0, p.DMA1_CH1, i2c::Config::default());
-    let mut imu = Imu::new(imu_i2c);
-    if let Err(err) = imu.init(&mut Delay) {
-        // Display Error
-        let _ = graphics::draw_error_screen(&mut display, &format!("IMU: {:?}", err));
-
-        error!("Error Initializing IMU");
-    }
-    let imu = imu::IMU.init(NoopMutex::new(RefCell::new(imu)));
-
     // Initialize the motor uarts
     let motor1_uart = Uart::new(p.UART7, p.PB3, p.PB4, motor::Motor1Irqs, p.DMA2_CH0, p.DMA2_CH1, usart::Config::default()).unwrap();
     let motor2_uart = Uart::new(p.USART1, p.PB7, p.PB6, motor::Motor2Irqs, p.DMA2_CH2, p.DMA2_CH3, usart::Config::default()).unwrap();
     let motor3_uart = Uart::new(p.USART3, p.PD9, p.PD8, motor::Motor3Irqs, p.DMA2_CH4, p.DMA2_CH5, usart::Config::default()).unwrap();
     let motor4_uart = Uart::new(p.USART6, p.PC7, p.PC6, motor::Motor4Irqs, p.DMA2_CH6, p.DMA2_CH7, usart::Config::default()).unwrap();
     let dribbler_uart = Uart::new(p.UART4, p.PA1, p.PA0, motor::DribblerIrqs, p.DMA1_CH6, p.DMA1_CH7, usart::Config::default()).unwrap();
-
-    // TODO: Enable the motor board
 
     // Initialize the kicker controller
     let kicker_spi = spi::Spi::new_blocking(p.SPI1, p.PA5, p.PA7, p.PA6, spi::Config::default());
@@ -147,7 +135,6 @@ async fn main(spawner: Spawner) {
     // Create communication channels
     let command_channel = COMMAND_CHANNEL.init(PubSubChannel::<NoopRawMutex, ControlMessage, 4, 2, 1>::new());
     let kicker_channel = KICKER_STATE_CHANNEL.init(PubSubChannel::<NoopRawMutex, kicker_controller::KickerState, 4, 2, 1>::new());
-    let imu_data_channel = IMU_DATA_CHANNEL.init(PubSubChannel::<NoopRawMutex, control_v2::imu::ImuData, 4, 1, 1>::new());
     let power_off_channel = POWER_OFF_CHANNEL.init(PubSubChannel::<NoopRawMutex, (), 4, 2, 2>::new());
     let battery_voltage_channel = BATTERY_VOLTAGE_CHANNEL.init(PubSubChannel::<NoopRawMutex, f32, 4, 2, 1>::new());
 
@@ -180,14 +167,6 @@ async fn main(spawner: Spawner) {
             command_channel.publisher().unwrap(),
             kicker_channel.subscriber().unwrap(),
             battery_voltage_channel.subscriber().unwrap()
-        )
-    ).unwrap();
-
-    // Spawn the IMU Update Task
-    spawner.spawn(
-        imu::read_imu_data(
-            imu,
-            imu_data_channel.publisher().unwrap()
         )
     ).unwrap();
 
@@ -241,9 +220,7 @@ async fn main(spawner: Spawner) {
     spawner.spawn(
         control::control_task(
             command_channel.subscriber().unwrap(),
-            imu_data_channel.subscriber().unwrap(),
             [motor_one_command_channel.publisher().unwrap(), motor_two_command_channel.publisher().unwrap(), motor_three_command_channel.publisher().unwrap(), motor_four_command_channel.publisher().unwrap()],
-            [motor_one_status_channel.subscriber().unwrap(), motor_two_status_channel.subscriber().unwrap(), motor_three_status_channel.subscriber().unwrap(), motor_four_status_channel.subscriber().unwrap()],
             power_off_channel.subscriber().unwrap()
         )
     ).unwrap();
