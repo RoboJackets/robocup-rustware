@@ -21,6 +21,7 @@ void gen_led_out(uint8_t);
 uint16_t read_breakbeam();
 void breakbeam_calibration();
 void set_breakbeam(bool);
+void light_show();
 
 void kicker_error(KickerError);
 
@@ -47,7 +48,7 @@ long last_charge = to_ms_since_boot(get_absolute_time());
 
 // Pub Vars
 KickerState state = KickerState::Init;
-KickerCommand command = KickerCommand(0b11110000);
+KickerCommand command = KickerCommand(0b11100000);
 uint64_t count = 0;
 float voltage = 0;
 float prev_voltage = 0;
@@ -92,18 +93,25 @@ int main()
             kicker_error(KickerError::ChargeTimeout);
         }
 
+        // REALLY FUCKING BAD
         if (voltage > VERY_OVER_VOLTAGE) {
             kicker_error(KickerError::MajorOverVoltage);
         }
 
+        // Small over-voltage
         if (voltage > OVER_VOLTAGE) {
             kicker_error(KickerError::OverVoltage);
         }
 
+        // No charging
         if (charging && !(voltage > prev_voltage)) {
             kicker_error(KickerError::NoCharge);
         }
 
+        // Stuck charging
+        if (!charging && (voltage > prev_voltage + 2)) {
+            kicker_error(KickerError::ContinuousCharging);
+        }
 
 
 
@@ -271,6 +279,30 @@ void set_breakbeam(bool state) {
 // Check all compenents health
 void startup() {
     breakbeam_calibration();
+    light_show();
+
+    // Run test cycle
+    while (voltage < VOLT_MIN) {
+        gpio_put(CHARGE_EN, 1);
+        prev_voltage = voltage;
+        voltage = read_voltage();
+        if (!(voltage > prev_voltage)) {
+            kicker_error(NoCharge);
+        }
+    }
+    gpio_put(CHARGE_EN, 0);
+    sleep_ms(CHARGE_COOLDOWN);
+    prev_voltage = voltage;
+    sleep_ms(100);
+    voltage = read_voltage();
+    if (voltage > prev_voltage + 2) {
+        kicker_error(ContinuousCharging);
+    }
+    kick(15, Chip);
+
+    // Reset values for run
+    prev_voltage = 0;
+    voltage = 0;
 }
 
 /* 
@@ -466,3 +498,21 @@ void kicker_error(KickerError e) {
     }
 }
 
+// Test all LEDs
+void light_show() {
+    uint8_t pattern = 0b00001111;
+    for (size_t i = 0; i < 17; i++) {
+        hv_led_out(pattern);
+        gen_led_out(pattern >> 5);
+        uint8_t t = pattern & 0b1;
+        pattern = pattern >> 1;
+        pattern |= t << 7;
+        sleep_ms(200);
+    }
+    hv_led_out(0b11111);
+    gen_led_out(0b111);
+    sleep_ms(500);
+    hv_led_out(0);
+    gen_led_out(0);
+    sleep_ms(500);
+}

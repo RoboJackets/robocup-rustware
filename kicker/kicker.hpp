@@ -35,6 +35,7 @@ enum KickerError {
     BreakbeamBlockage = 0b00011,
     NoCharge = 0b11100,
     NoDischarge = 0b01011,
+    ContinuousCharging = 0b10111,
     Unknown = 0b10101,
 };
 
@@ -48,6 +49,7 @@ const char* kicker_error_to_str(KickerError e) {
         case BreakbeamBlockage: return "BreakbeamBlockage";
         case NoCharge: return "NoCharge";
         case NoDischarge: return "NoDischarge";
+        case ContinuousCharging: return "ContinuousCharging";
         default: return "Unknown";
     }
 };
