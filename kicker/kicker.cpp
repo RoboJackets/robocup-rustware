@@ -22,6 +22,7 @@ uint16_t read_breakbeam();
 void breakbeam_calibration();
 void set_breakbeam(bool);
 void light_show();
+void manual_mode();
 
 void kicker_error(KickerError);
 
@@ -57,6 +58,19 @@ float prev_voltage = 0;
 int main()
 {
     init();
+
+    #if DEBUG
+        if (gpio_get(CHIP_BTN) && gpio_get(KICK_BTN)) {
+            printf("ENTERING MANUAL MODE");
+            while (gpio_get(CHIP_BTN) || gpio_get(KICK_BTN) || gpio_get(CHARGE_BTN)) {
+                gen_led_out(0b111);
+                sleep_ms(100);
+                gen_led_out(0);
+            }
+            manual_mode();
+        }
+    #endif
+
     state = KickerState::Startup;
     startup();
 
@@ -515,4 +529,32 @@ void light_show() {
     hv_led_out(0);
     gen_led_out(0);
     sleep_ms(500);
+}
+
+void manual_mode() {
+    while (true) {
+        // Read buttons
+        if (gpio_get(CHARGE_BTN)) {
+            gpio_put(LED_2, 1);
+            sleep_ms(BTN_DELAY);
+        } else {
+            gpio_put(LED_2, 0);
+        }
+
+        if (gpio_get(KICK_BTN)) {
+            gpio_put(LED_0, 1);
+            sleep_ms(BTN_DELAY);
+        } else {
+            gpio_put(LED_0, 0);
+        }
+
+        if (gpio_get(CHIP_BTN)) {
+            gpio_put(LED_1, 1);
+            sleep_ms(BTN_DELAY);
+        } else {
+            gpio_put(LED_1, 0);
+        }
+
+        sleep_ms(1);
+    }
 }
