@@ -57,20 +57,20 @@ const char* kicker_error_to_str(KickerError e) {
 enum KickerState {
     Charging,
     Kicking,
-    Chipping,
     CommandIO,
     Init,
     Startup,
+    Manual,
 };
 
 const char* kicker_state_to_str(KickerState s) {
     switch(s) {
         case Charging: return "Charging";
         case Kicking: return "Kicking";
-        case Chipping: return "Chipping";
         case CommandIO: return "CommandIO";
         case Init: return "Init";
         case Startup: return "Startup";
+        case Manual: return "Manual";
         default: return "Unknown";
     }
 };
