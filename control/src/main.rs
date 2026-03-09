@@ -1043,9 +1043,9 @@ mod app {
         });
 
         // // Battery is under voltaged so we should die
-        // if battery_voltage < MIN_BATTERY_VOLTAGE {
-        //     kill_self::spawn().ok();
-        // }
+        if battery_voltage < MIN_BATTERY_VOLTAGE {
+            kill_self::spawn().ok();
+        }
 
         // TODO: Display robot status on display
     }
