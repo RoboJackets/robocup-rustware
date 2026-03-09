@@ -3,6 +3,7 @@
 #define DEBUG 1
 #define SPI_CLK_FREQUENCY 2000000
 #define BREAK_CAL_CYCLES 3
+#define BTN_DELAY 500
 
 #define CHARGE_SYNC_EN 0
 #define CHARGE_SYNC_FREQ 50000 // Hz
