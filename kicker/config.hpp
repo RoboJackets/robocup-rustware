@@ -5,7 +5,7 @@
 #define BREAK_CAL_CYCLES 3
 
 #define CHARGE_SYNC_EN 0
-#define CHARGE_SYNC_FREQ 100 // KHz
+#define CHARGE_SYNC_FREQ 50000 // Hz
 
 #define VOLT_RANGE 3.3 / 4096.0 // ADC vs Pico Vref
 #define VOLT_CONVERSION 250 / 2.025 * VOLT_RANGE

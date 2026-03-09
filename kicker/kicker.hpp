@@ -32,6 +32,9 @@ enum KickerError {
     OverVoltage = 0b01101,
     MajorOverVoltage = 0b11111,
     ChargeKickOverlap = 0b01010,
+    BreakbeamBlockage = 0b00011,
+    NoCharge = 0b11100,
+    NoDischarge = 0b01011,
     Unknown = 0b10101,
 };
 
@@ -42,6 +45,9 @@ const char* kicker_error_to_str(KickerError e) {
         case OverVoltage: return "OverVoltage";
         case MajorOverVoltage: return "MAJOR OVER VOLTAGE";
         case ChargeKickOverlap: return "ChargeKickOverlap";
+        case BreakbeamBlockage: return "BreakbeamBlockage";
+        case NoCharge: return "NoCharge";
+        case NoDischarge: return "NoDischarge";
         default: return "Unknown";
     }
 };
