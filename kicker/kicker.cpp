@@ -3,6 +3,7 @@
 #include "pico/time.h"
 #include "hardware/spi.h"
 #include "hardware/adc.h"
+#include "hardware/pwm.h"
 #include "pins.hpp"
 #include "config.hpp"
 #include "kicker.hpp"
@@ -11,6 +12,7 @@ void init();
 void startup();
 void spi_irq_handler();
 
+void kick(uint8_t, KickType);
 KickerCommand read_command();
 float read_voltage();
 void update_spi_output();
@@ -34,14 +36,21 @@ uint32_t break_val = 0;
 bool checking_break = true;
 bool break_triggered = false;
 
+// Kicking
+long last_kick = to_ms_since_boot(get_absolute_time());
+
+// Charging
+bool charging = false;
+long charge_start = to_ms_since_boot(get_absolute_time());
+long last_charge = to_ms_since_boot(get_absolute_time());
+
 
 // Pub Vars
 KickerState state = KickerState::Init;
 KickerCommand command = KickerCommand(0b11110000);
 uint64_t count = 0;
 float voltage = 0;
-bool charging = false;
-long charge_start = to_ms_since_boot(get_absolute_time());
+
 
 int main()
 {
@@ -89,22 +98,40 @@ int main()
         /// DRIVE OUTPUTS
         update_spi_output();
 
+        // Breakbeam
+        set_breakbeam(command.kick_trigger == Breakbeam);
+
         // Charging
-        if (!command.charge_allowed || charging && voltage >= VOLT_MAX) {
+        // Check charge allowace, time since kick, and if charging is needed
+        if (!command.charge_allowed || to_ms_since_boot(get_absolute_time()) - KICK_COOLDOWN < last_kick || charging && voltage >= VOLT_MAX) {
+            if (charging) {
+                last_charge = to_ms_since_boot(get_absolute_time());
+            }
             charging = false;
             gpio_put(CHARGE_EN, 0);
-        } else if (command.charge_allowed && !charging && voltage < VOLT_MAX) {
+        } else if (command.charge_allowed && to_ms_since_boot(get_absolute_time()) - KICK_COOLDOWN > last_kick && !charging && voltage < VOLT_MAX) {
             charging = true;
             gpio_put(CHARGE_EN, 1);
             #if DEBUG
                 printf("Charging...\n");
             #endif
         }
+        if (charging) {
+            state = Charging;
+        }
 
-        // Breakbeam
-        set_breakbeam(command.kick_trigger == Breakbeam);
+        // Kicking
+        // Absolutely ensure charging is not active
+        if (!charging && to_ms_since_boot(get_absolute_time()) - CHARGE_COOLDOWN > last_charge) {
+            if (command.kick_trigger == Immediate) {
+                kick(command.kick_strength, command.kick_type);
+            } else if (command.kick_trigger == Breakbeam && break_triggered) {
+                kick(command.kick_strength, command.kick_type);
+                break_triggered = false;
+            }
+        }
 
-        // Drive LEDs Basic
+        // Drive HV LEDs
         uint8_t pattern = 0b00000;
         pattern |= voltage > VOLT_MIN;
         pattern |= (voltage > VOLT_MAX / 4) << 1;
@@ -113,10 +140,52 @@ int main()
         pattern |= (voltage > VOLT_MAX - VOLT_MIN) << 4;
         hv_led_out(pattern);
 
+        // Drive GP LEDs
+        pattern = 0b000;
+        if (command.kick_trigger != Disabled) {
+            if (command.kick_type == Chip) {
+                pattern |= 0b010;
+            } else {
+                pattern |= 0b001;
+            }
+        }
+        if (charging) {
+            pattern |= 0b100;
+        }
+        gen_led_out(pattern);
+
         count++;
+
+        #if DEBUG
+            printf("Charge Cooldown: %s | Kick Cooldown: %s", (last_charge - CHARGE_COOLDOWN < to_ms_since_boot(get_absolute_time()), "True", "False"), (last_kick - KICK_COOLDOWN < to_ms_since_boot(get_absolute_time()), "True", "False"));
+        #endif
 
         sleep_ms(1);
     }
+}
+
+void kick(uint8_t strength, KickType kick_type) {
+    if (charging) {
+        kicker_error(KickerError::ChargeKickOverlap);
+    }
+    // Disable interrupts during kicking
+    irq_set_enabled(SPI1_IRQ, false);
+
+    state = KickerState::Kicking;
+    uint32_t kick_time = MAX_KICK_TIME * 15 / strength;
+    
+    if (kick_type == Chip) {
+        gpio_put(CHIP_TRIG, 1);
+    } else {
+        gpio_put(KICK_TRIG, 1);
+    }
+    sleep_us(kick_time);
+    gpio_put(KICK_TRIG, 0);
+    gpio_put(CHIP_TRIG, 0);
+
+    last_kick = to_ms_since_boot(get_absolute_time());
+    command.kick_trigger = Disabled;
+    irq_set_enabled(SPI1_IRQ, true);
 }
 
 void update_spi_output() {
@@ -127,11 +196,12 @@ void update_spi_output() {
 
 KickerCommand read_command() {
     data_ready = false;
-    KickerCommand command = KickerCommand(rx_data);
+    KickerCommand new_command = KickerCommand(rx_data);
     #if DEBUG
         printf("Spi Out: %0x | Raw: %0x\n", spi_out, rx_data);
-        command.print();
+        new_command.print();
     #endif
+    return new_command;
 }
 
 float read_voltage() {
@@ -146,12 +216,20 @@ float read_voltage() {
 }
 
 void breakbeam_calibration() {
-    break_low = read_breakbeam();
-    set_breakbeam(true);
-    sleep_ms(2000);
-    break_high = read_breakbeam();
-    sleep_ms(500);
+    uint32_t h = 0;
+    uint32_t l = 0;
     set_breakbeam(false);
+    for (size_t i = 0; i < BREAK_CAL_CYCLES; i++) {
+        l += read_breakbeam();
+        set_breakbeam(true);
+        sleep_ms(500);
+        h += read_breakbeam();
+        sleep_ms(500);
+        set_breakbeam(false);
+    }
+    
+    break_high = h / BREAK_CAL_CYCLES;
+    break_low = l / BREAK_CAL_CYCLES;
 
     #if DEBUG
         printf("Break Low: %d | Break High: %d\n", break_low, break_high);
@@ -246,9 +324,8 @@ void init() {
     spi_get_hw(SPI_PORT)->imsc = SPI_SSPIMSC_RXIM_BITS;
 
     // Set up the IRQ
-    int irq = SPI_PORT == spi0 ? SPI0_IRQ : SPI1_IRQ;
-    irq_set_exclusive_handler(irq, spi_irq_handler);
-    irq_set_enabled(irq, true);
+    irq_set_exclusive_handler(SPI1_IRQ, spi_irq_handler);
+    irq_set_enabled(SPI1_IRQ, true);
 
     // Preload output data
     spi_get_hw(SPI_PORT)->dr = spi_out;
@@ -259,9 +336,11 @@ void init() {
 
 
     /// Charge Sync
-    GPIO_OUTPUT_INIT(CHARGE_SYNC);
     if (!CHARGE_SYNC_EN) {
+        GPIO_OUTPUT_INIT(CHARGE_SYNC);
         gpio_put(CHARGE_SYNC, 0);
+    } else {
+        ;
     }
 
     /// Output pins
@@ -307,24 +386,46 @@ void spi_irq_handler() {
 }
 
 // Disable charging and discharge caps
-// Probably just using for errors
-void shutdown() {
+void hard_shutdown() {
     gpio_put(CHARGE_EN, 0);
-    sleep_ms(1);
+    sleep_ms(CHARGE_COOLDOWN);
     gpio_put(KICK_TRIG, 1);
-    sleep_ms(1);
+    sleep_ms(KICK_COOLDOWN);
+}
+
+// Only for major over voltage event, WILL POTENTIALLY DESTROY MOTOR BOARD
+void suicide_protocal() {
+    gpio_put(CHARGE_EN, 0);
+    gpio_put(KICK_TRIG, 1);
+    gpio_put(CHIP_TRIG, 1);
 }
 
 void kicker_error(KickerError e) {
-    shutdown();
+    uint8_t flash_delay = 200;
+    if (e == MajorOverVoltage) {
+        suicide_protocal();
+        flash_delay = 100;
+    } else {
+        hard_shutdown();
+    }
+    
     spi_out = 0; // Send "Unhealthy" Command
     spi_get_hw(SPI_PORT)->dr = spi_out;
-    gen_led_out(0b111);
     while (true) {
+        if (e != MajorOverVoltage) { // Always check for extreme voltage case
+            voltage = read_voltage();
+            if (voltage >= VERY_OVER_VOLTAGE) {
+                kicker_error(MajorOverVoltage);
+            }
+        }
         printf("ERROR %s DURING %s\n", kicker_error_to_str(e), kicker_state_to_str(state));
         hv_led_out(e);
+        gen_led_out(0b111);
         sleep_ms(100);
         hv_led_out(0);
         sleep_ms(100);
+        gen_led_out(0);
+        
     }
 }
+

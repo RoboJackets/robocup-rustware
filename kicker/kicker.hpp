@@ -29,8 +29,10 @@ const char* kick_trigger_to_str(KickTrigger t) {
 enum KickerError {
     None = 0b00000,
     ChargeTimeout = 0b10011,
-    OverVoltage = 0b10001,
-    Unknown = 0b11111,
+    OverVoltage = 0b01101,
+    MajorOverVoltage = 0b11111,
+    ChargeKickOverlap = 0b01010,
+    Unknown = 0b10101,
 };
 
 const char* kicker_error_to_str(KickerError e) {
@@ -38,6 +40,8 @@ const char* kicker_error_to_str(KickerError e) {
         case None: return "None";
         case ChargeTimeout: return "ChargeTimeout";
         case OverVoltage: return "OverVoltage";
+        case MajorOverVoltage: return "MAJOR OVER VOLTAGE";
+        case ChargeKickOverlap: return "ChargeKickOverlap";
         default: return "Unknown";
     }
 };

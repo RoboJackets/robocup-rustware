@@ -57,6 +57,7 @@ target_include_directories(kicker PRIVATE
 target_link_libraries(kicker 
         hardware_spi
         hardware_adc
+        hardware_pwm
         )
 
 pico_add_extra_outputs(kicker)
