@@ -23,7 +23,7 @@
 #define DC_DISABLE 18
 #define KICK_TRIG 19
 #define CHIP_TRIG 20
-#define CHARGE_EN 23
+#define CHARGE_EN 22 // TEMP RESET TO 23
 #define CHARGE_SYNC 24
 #define VOLT_SENSE 27 // TEMP RESET TO 29
 
