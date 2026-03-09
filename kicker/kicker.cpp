@@ -50,6 +50,7 @@ KickerState state = KickerState::Init;
 KickerCommand command = KickerCommand(0b11110000);
 uint64_t count = 0;
 float voltage = 0;
+float prev_voltage = 0;
 
 
 int main()
@@ -67,6 +68,7 @@ int main()
             command = read_command();
         }
         
+        prev_voltage = voltage;
         voltage = read_voltage();
 
         // Breakbeam trigger on falling edge
@@ -90,9 +92,19 @@ int main()
             kicker_error(KickerError::ChargeTimeout);
         }
 
+        if (voltage > VERY_OVER_VOLTAGE) {
+            kicker_error(KickerError::MajorOverVoltage);
+        }
+
         if (voltage > OVER_VOLTAGE) {
             kicker_error(KickerError::OverVoltage);
         }
+
+        if (charging && !(voltage > prev_voltage)) {
+            kicker_error(KickerError::NoCharge);
+        }
+
+
 
 
         /// DRIVE OUTPUTS
@@ -186,6 +198,11 @@ void kick(uint8_t strength, KickType kick_type) {
     last_kick = to_ms_since_boot(get_absolute_time());
     command.kick_trigger = Disabled;
     irq_set_enabled(SPI1_IRQ, true);
+
+    // If no voltage drop detected error
+    if (!(read_voltage() < voltage - VOLT_MIN)) {
+        kicker_error(NoDischarge);
+    }
 }
 
 void update_spi_output() {
@@ -219,6 +236,7 @@ void breakbeam_calibration() {
     uint32_t h = 0;
     uint32_t l = 0;
     set_breakbeam(false);
+    sleep_ms(100);
     for (size_t i = 0; i < BREAK_CAL_CYCLES; i++) {
         l += read_breakbeam();
         set_breakbeam(true);
@@ -234,6 +252,10 @@ void breakbeam_calibration() {
     #if DEBUG
         printf("Break Low: %d | Break High: %d\n", break_low, break_high);
     #endif
+
+    if (break_high < break_low + 100) {
+        kicker_error(BreakbeamBlockage);
+    }
 }
 
 uint16_t read_breakbeam() {
@@ -340,7 +362,19 @@ void init() {
         GPIO_OUTPUT_INIT(CHARGE_SYNC);
         gpio_put(CHARGE_SYNC, 0);
     } else {
-        ;
+        gpio_set_function(CHARGE_SYNC, GPIO_FUNC_PWM);
+        uint slice = pwm_gpio_to_slice_num(CHARGE_SYNC);
+        uint channel = pwm_gpio_to_channel(CHARGE_SYNC);
+
+        // Calculate wrap and divider for desired frequency
+        uint32_t divider16 = SYS_CLK_HZ / CHARGE_SYNC_FREQ / 4096 + (SYS_CLK_HZ % (CHARGE_SYNC_FREQ * 4096) != 0);
+        if (divider16 / 16 == 0) divider16 = 16;
+        uint32_t wrap = SYS_CLK_HZ * 16 / divider16 / CHARGE_SYNC_FREQ- 1;
+
+        pwm_set_clkdiv_int_frac(slice, divider16 / 16, divider16 & 0xF);
+        pwm_set_wrap(slice, wrap);
+        pwm_set_chan_level(slice, channel, wrap * 0.5f);
+        pwm_set_enabled(slice, true);
     }
 
     /// Output pins
@@ -390,7 +424,8 @@ void hard_shutdown() {
     gpio_put(CHARGE_EN, 0);
     sleep_ms(CHARGE_COOLDOWN);
     gpio_put(KICK_TRIG, 1);
-    sleep_ms(KICK_COOLDOWN);
+    sleep_us(MAX_KICK_TIME);
+    gpio_put(KICK_TRIG, 0);
 }
 
 // Only for major over voltage event, WILL POTENTIALLY DESTROY MOTOR BOARD
@@ -417,6 +452,8 @@ void kicker_error(KickerError e) {
             if (voltage >= VERY_OVER_VOLTAGE) {
                 kicker_error(MajorOverVoltage);
             }
+        } else {
+            printf("I DONT WANT TO DIE\n");
         }
         printf("ERROR %s DURING %s\n", kicker_error_to_str(e), kicker_state_to_str(state));
         hv_led_out(e);
