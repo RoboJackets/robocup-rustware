@@ -38,10 +38,14 @@ mod app {
 
     use hal::adc::AnalogInput;
     use hal::gpio::Trigger;
-    use hal::lpspi::Pins;
+    use hal::lpspi::{Lpspi, Pins};
     use hal::lpuart;
     use hal::timer::Blocking;
     use teensy4_bsp::hal;
+
+    use hal::iomuxc;
+    use bsp::ral::lpspi::LPSPI3;
+    use embedded_hal::spi::MODE_3;
 
     use rtic_nrf24l01::Radio;
 
@@ -78,7 +82,7 @@ mod app {
 
     use robojackets_robocup_control::{
         motors::{motor_interrupt, send_command},
-        spi::FakeSpi,
+        KickerSpi,
         Delay2, Display, DribblerUart, Imu, ImuInitError, KickerCSn, KickerProg,
         KickerProgramError, KickerReset, KickerServicingError, MotorFourUart, MotorOneUart,
         MotorThreeUart, MotorTwoUart, PitDelay, RFRadio, RadioInitError, RadioInterrupt, State,
@@ -185,7 +189,7 @@ mod app {
         gpio1: Gpio1,
         gpio2: Gpio2,
         pit_delay: PitDelay,
-        fake_spi: FakeSpi,
+        kicker_spi: KickerSpi,
         kicker_programmer: Option<KickerProg>,
         kicker_controller: Option<Kicker<KickerCSn, KickerReset>>,
 
@@ -257,7 +261,7 @@ mod app {
             lpspi4,
             mut gpt1,
             mut gpt2,
-            pit: (pit0, pit1, pit2, pit3),
+            pit: (pit0, pit1, pit2, _pit3),
             lpuart1,
             lpuart4,
             lpuart6,
@@ -288,7 +292,6 @@ mod app {
         let mut delay2 = Blocking::<_, GPT_FREQUENCY>::from_gpt(gpt2);
 
         let pit_delay = Blocking::<_, PERCLK_FREQUENCY>::from_pit(pit2);
-        let fake_spi_delay = Blocking::<_, PERCLK_FREQUENCY>::from_pit(pit3);
 
         // End Initialize Timers //
 
@@ -391,20 +394,42 @@ mod app {
 
         // Initialize Kicker //
 
-        let fake_spi = FakeSpi::new(
-            gpio1.output(pins.p27),
-            gpio1.output(pins.p26),
-            gpio1.input(pins.p39),
-            fake_spi_delay,
-        );
+        // Define SPI pins
+        let kicker_spi_pins = Pins {
+            pcs0: pins.p38,
+            sck: pins.p27,
+            sdo: pins.p26,
+            sdi: pins.p39,
+        };
 
-        let kicker_controller = Kicker::new(gpio1.output(pins.p38), gpio2.output(pins.p37));
+        // Generate instance of LPSPI3 to manually populate
+        let kicker_spi_block = unsafe { LPSPI3::instance() };
+        let kicker_spi_temp = Lpspi::new(kicker_spi_block, kicker_spi_pins);
+
+        // Release pins to split into kicker
+        let (kicker_spi_block, mut kicker_spi_pins) = kicker_spi_temp.release();
+
+        // Manually configure the data pins for LPSPI3 function
+        iomuxc::lpspi::prepare(&mut kicker_spi_pins.sdo);  // SDO/MOSI
+        iomuxc::lpspi::prepare(&mut kicker_spi_pins.sdi);  // SDI/MISO
+        iomuxc::lpspi::prepare(&mut kicker_spi_pins.sck);  // SCK
+
+        // Initialize SPI and Kicker controll
+        let mut kicker_spi = Lpspi::without_pins(kicker_spi_block);
+
+        // Config SPI
+        kicker_spi.disabled(|kicker_spi| {
+            kicker_spi.set_mode(MODE_3);                  // CPOL=1, CPHA=1 to match Pico
+            kicker_spi.set_clock_hz(board::LPSPI_FREQUENCY, 2_000_000);
+        });
+
+        let kicker_controller = Kicker::new(gpio1.output(kicker_spi_pins.pcs0), gpio2.output(pins.p37));
+
+        // End Initialize Kicker //
 
         adc1.calibrate();
         let mut batt_sense = AnalogInput::new(pins.p15);
         adc1.read_blocking(&mut batt_sense);
-
-        // End Initialize Kicker //
 
         rx_int.clear_triggered();
 
@@ -429,7 +454,7 @@ mod app {
                 pit_delay,
                 kicker_programmer: None,
                 kicker_controller: Some(kicker_controller),
-                fake_spi,
+                kicker_spi,
                 display,
                 state: State::default(),
                 adc1,
@@ -709,7 +734,7 @@ mod app {
         kill_self::spawn().ok();
     }
 
-    #[task(shared=[power_switch, kill_n,gpio2,rx_int,control_message,kicker_controller,fake_spi],priority=2)]
+    #[task(shared=[power_switch, kill_n,gpio2,rx_int,control_message,kicker_controller,kicker_spi],priority=2)]
     async fn kill_self(mut ctx: kill_self::Context) {
         // Disable new radio events from coming in by disabling the interrupt
         (ctx.shared.gpio2, ctx.shared.rx_int).lock(|gpio2, rx_int| {
@@ -724,17 +749,17 @@ mod app {
         log::info!("Freezed Motors!");
 
         //trigger kicker repeatedly to force discharge
-        (ctx.shared.kicker_controller, ctx.shared.fake_spi).lock(|controller, fake_spi| {
+        (ctx.shared.kicker_controller, ctx.shared.kicker_spi).lock(|controller, kicker_spi| {
             match controller.take() {
                 Some(mut kicker) => {
                     for _ in 0..5 {
                         let command = KickerCommand {
                             kick_type: KickType::Kick,
                             kick_trigger: KickTrigger::Immediate,
-                            kick_strength: 1.0,
+                            kick_strength: 1,
                             charge_allowed: false,
                         };
-                        kicker.service(command, fake_spi).unwrap();
+                        kicker.service(command, kicker_spi).unwrap();
 
                         cortex_m::asm::delay(200_000_000); // 333ms
                     }
@@ -895,7 +920,7 @@ mod app {
             kicker_controller,
             kicker_programmer,
             robot_status,
-            fake_spi,
+            kicker_spi,
             motor_one_uart,
             motor_one_velocity,
             motor_two_uart,
@@ -1006,13 +1031,13 @@ mod app {
                 ctx.shared.kicker_controller,
                 ctx.shared.kicker_programmer,
                 ctx.shared.robot_status,
-                ctx.shared.fake_spi,
+                ctx.shared.kicker_spi,
             )
                 .lock(
-                    |controller, programmer, robot_status, fake_spi| match controller.take() {
+                    |controller, programmer, robot_status, kicker_spi| match controller.take() {
                         Some(mut kicker_controller) => {
                             let state =
-                                kicker_controller.service(kicker_command, fake_spi).unwrap();
+                                kicker_controller.service(kicker_command, kicker_spi).unwrap();
                             robot_status.kick_status =
                                 kicker_command.kick_trigger != KickTrigger::Disabled;
                             robot_status.ball_sense_status = state.ball_sensed;
@@ -1023,7 +1048,7 @@ mod app {
                             let (cs, reset) = programmer.take().unwrap().destroy();
                             let mut kicker_controller = Kicker::new(cs, reset);
                             let state =
-                                kicker_controller.service(kicker_command, fake_spi).unwrap();
+                                kicker_controller.service(kicker_command, kicker_spi).unwrap();
                             robot_status.kick_status =
                                 kicker_command.kick_trigger != KickTrigger::Disabled;
                             robot_status.ball_sense_status = state.ball_sensed;
@@ -1312,7 +1337,7 @@ mod app {
     /// Program the kicker with kick-on-breakbeam
     #[task(
         shared = [
-            fake_spi,
+            kicker_spi,
             kicker_programmer,
             kicker_controller,
             pit_delay,
@@ -1327,7 +1352,7 @@ mod app {
     )]
     async fn program_kick_on_breakbeam(ctx: program_kick_on_breakbeam::Context) {
         (
-            ctx.shared.fake_spi,
+            ctx.shared.kicker_spi,
             ctx.shared.kicker_programmer,
             ctx.shared.kicker_controller,
             ctx.shared.pit_delay,
@@ -1401,7 +1426,7 @@ mod app {
     /// Program the kicker with normal operations
     #[task(
         shared = [
-            fake_spi,
+            kicker_spi,
             kicker_programmer,
             kicker_controller,
             pit_delay,
@@ -1416,7 +1441,7 @@ mod app {
     )]
     async fn program_kicker_normal(ctx: program_kicker_normal::Context) {
         (
-            ctx.shared.fake_spi,
+            ctx.shared.kicker_spi,
             ctx.shared.kicker_programmer,
             ctx.shared.kicker_controller,
             ctx.shared.pit_delay,
@@ -1496,7 +1521,7 @@ mod app {
     /// Test the kicker is working properly
     #[task(
         shared = [
-            fake_spi,
+            kicker_spi,
             kicker_programmer,
             kicker_controller,
             pit_delay,
@@ -1513,7 +1538,7 @@ mod app {
         program_kicker_normal::spawn().ok();
 
         (
-            ctx.shared.fake_spi,
+            ctx.shared.kicker_spi,
             ctx.shared.kicker_programmer,
             ctx.shared.kicker_controller,
             ctx.shared.pit_delay,
@@ -1556,7 +1581,7 @@ mod app {
                     let kicker_command = KickerCommand {
                         kick_type: KickType::Kick,
                         kick_trigger: KickTrigger::Disabled,
-                        kick_strength: 20.0,
+                        kick_strength: 10,
                         charge_allowed: true,
                     };
                     let mut buffer = [0u8; KICKER_TESTING_SIZE];
@@ -1590,7 +1615,7 @@ mod app {
                     let kicker_command = KickerCommand {
                         kick_type: KickType::Kick,
                         kick_trigger: KickTrigger::Immediate,
-                        kick_strength: 100.0,
+                        kick_strength: 15,
                         charge_allowed: true,
                     };
                     let kicker_state = match kicker.service(kicker_command, spi) {
@@ -1621,7 +1646,7 @@ mod app {
                     let kicker_command = KickerCommand {
                         kick_type: KickType::Kick,
                         kick_trigger: KickTrigger::Disabled,
-                        kick_strength: 0.0,
+                        kick_strength: 0,
                         charge_allowed: false,
                     };
                     for _ in 0..20 {

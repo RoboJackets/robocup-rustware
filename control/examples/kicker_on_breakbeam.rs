@@ -19,7 +19,7 @@ mod app {
 
     use core::mem::MaybeUninit;
 
-    use bsp::board::{self, PERCLK_FREQUENCY};
+    use bsp::board::{self};
     use teensy4_bsp as bsp;
 
     use hal::timer::Blocking;
@@ -29,8 +29,15 @@ mod app {
 
     use kicker_programmer::KickerProgrammer;
 
+    use bsp::hal::iomuxc;
+    use bsp::ral;
+    use bsp::hal::lpspi::{Lpspi, Pins};
+    use embedded_hal::spi::MODE_3;
+    use ral::lpspi::LPSPI3;
+
+
     use robojackets_robocup_control::{
-        spi::FakeSpi, Delay2, KickerProg, GPT_CLOCK_SOURCE, GPT_DIVIDER, GPT_FREQUENCY,
+        KickerSpi, Delay2, KickerProg, GPT_CLOCK_SOURCE, GPT_DIVIDER, GPT_FREQUENCY,
     };
 
     const HEAP_SIZE: usize = 1024;
@@ -44,7 +51,7 @@ mod app {
     #[shared]
     struct Shared {
         delay2: Delay2,
-        fake_spi: FakeSpi,
+        spi: KickerSpi,
         kicker_programmer: KickerProg,
     }
 
@@ -61,7 +68,7 @@ mod app {
             mut gpio2,
             usb,
             mut gpt2,
-            pit: (_pit0, _pit1, _pit2, pit3),
+            pit: (_pit0, _pit1, _pit2, _pit3),
             ..
         } = board::t41(ctx.device);
 
@@ -73,27 +80,44 @@ mod app {
         gpt2.disable();
         gpt2.set_divider(GPT_DIVIDER);
         gpt2.set_clock_source(GPT_CLOCK_SOURCE);
-        let delay2 = Blocking::<_, GPT_FREQUENCY>::from_gpt(gpt2);
+        let delay2 = Blocking::<_, GPT_FREQUENCY>::from_gpt(gpt2); 
+        
+        // Define SPI pins
+        let spi_pins = Pins {
+            pcs0: pins.p38,
+            sck: pins.p27,
+            sdo: pins.p26,
+            sdi: pins.p39,
+        };
 
-        let pit_delay = Blocking::<_, PERCLK_FREQUENCY>::from_pit(pit3);
-        let kicker_reset = gpio2.output(pins.p37);
-        kicker_reset.set();
-        let kicker_csn = gpio1.output(pins.p38);
-        kicker_csn.set();
-        let fake_spi = FakeSpi::new(
-            gpio1.output(pins.p27),
-            gpio1.output(pins.p26),
-            gpio1.input(pins.p39),
-            pit_delay,
-        );
+        // Generate instance of LPSPI3 to manually populate
+        let spi_block = unsafe { LPSPI3::instance() };
+        let spi_temp = Lpspi::new(spi_block, spi_pins);
 
-        let kicker_programmer = KickerProgrammer::new(kicker_csn, kicker_reset);
+        // Release pins to split into kicker
+        let (spi_block, mut spi_pins) = spi_temp.release();
+
+        // Manually configure the data pins for LPSPI3 function
+        iomuxc::lpspi::prepare(&mut spi_pins.sdo);  // SDO/MOSI
+        iomuxc::lpspi::prepare(&mut spi_pins.sdi);  // SDI/MISO
+        iomuxc::lpspi::prepare(&mut spi_pins.sck);  // SCK
+
+        // Initialize SPI and Kicker controll
+        let mut spi = Lpspi::without_pins(spi_block);
+
+        // Config SPI
+        spi.disabled(|spi| {
+            spi.set_mode(MODE_3);                  // CPOL=1, CPHA=1 to match Pico
+            spi.set_clock_hz(board::LPSPI_FREQUENCY, 2_000_000);
+        });
+
+        let kicker_programmer = KickerProgrammer::new(gpio1.output(spi_pins.pcs0), gpio2.output(pins.p37));
 
         program_kicker::spawn().ok();
 
         (
             Shared {
-                fake_spi,
+                spi,
                 delay2,
                 kicker_programmer,
             },
@@ -102,12 +126,12 @@ mod app {
     }
 
     #[task(
-        shared = [fake_spi, delay2, kicker_programmer],
+        shared = [spi, delay2, kicker_programmer],
         priority = 1
     )]
     async fn program_kicker(ctx: program_kicker::Context) {
         let result = (
-            ctx.shared.fake_spi,
+            ctx.shared.spi,
             ctx.shared.delay2,
             ctx.shared.kicker_programmer,
         )
