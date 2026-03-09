@@ -11,11 +11,14 @@ void init();
 void startup();
 void spi_irq_handler();
 
-void read_command();
-void read_voltage();
+KickerCommand read_command();
+float read_voltage();
 void update_spi_output();
 void hv_led_out(uint8_t);
 void gen_led_out(uint8_t);
+uint16_t read_breakbeam();
+void breakbeam_calibration();
+void set_breakbeam(bool);
 
 void kicker_error(KickerError);
 
@@ -23,10 +26,18 @@ void kicker_error(KickerError);
 volatile uint8_t rx_data = 0;
 volatile bool data_ready = false;
 uint8_t spi_out = 0x00;
-bool new_command = false;
+
+// Breakbream
+uint16_t break_low = 0;
+uint16_t break_high = 4095;
+uint32_t break_val = 0;
+bool checking_break = true;
+bool break_triggered = false;
+
 
 // Pub Vars
 KickerState state = KickerState::Init;
+KickerCommand command = KickerCommand(0b11110000);
 uint64_t count = 0;
 float voltage = 0;
 bool charging = false;
@@ -43,8 +54,26 @@ int main()
         
         /// READ DATA
         state = KickerState::CommandIO;
-        read_command();
-        read_voltage();
+        if (data_ready) {
+            command = read_command();
+        }
+        
+        voltage = read_voltage();
+
+        // Breakbeam trigger on falling edge
+        if (command.kick_trigger == Breakbeam) {
+            break_val = ((255 - KALPHA) * break_val + KALPHA * read_breakbeam()) / 255;
+            #if DEBUG
+                printf("Break Val: %d | Break Low: %d | Break High: %d\n", break_val, break_low, break_high);
+            #endif
+            if (break_val < break_low + break_high >> 3) {
+                break_triggered = true;
+                set_breakbeam(false);
+                #if DEBUG
+                    printf("BREAK_TRIGGERED");
+                #endif
+            }
+        }
 
         /// ERROR CHECKING
         // Charge Timeout
@@ -52,9 +81,29 @@ int main()
             kicker_error(KickerError::ChargeTimeout);
         }
 
+        if (voltage > OVER_VOLTAGE) {
+            kicker_error(KickerError::OverVoltage);
+        }
+
 
         /// DRIVE OUTPUTS
         update_spi_output();
+
+        // Charging
+        if (!command.charge_allowed || charging && voltage >= VOLT_MAX) {
+            charging = false;
+            gpio_put(CHARGE_EN, 0);
+        } else if (command.charge_allowed && !charging && voltage < VOLT_MAX) {
+            charging = true;
+            gpio_put(CHARGE_EN, 1);
+            #if DEBUG
+                printf("Charging...\n");
+            #endif
+        }
+
+        // Breakbeam
+        set_breakbeam(command.kick_trigger == Breakbeam);
+
         // Drive LEDs Basic
         uint8_t pattern = 0b00000;
         pattern |= voltage > VOLT_MIN;
@@ -76,42 +125,52 @@ void update_spi_output() {
     spi_get_hw(SPI_PORT)->dr = spi_out;
 }
 
-void read_command() {
-    if (data_ready) {
-        data_ready = false;
-        KickerCommand command = KickerCommand(rx_data);
-        #if DEBUG
-            printf("Spi Out: %0x | Raw: %0x\n", spi_out, rx_data);
-            command.print();
-        #endif
-    }
-    new_command = true;
+KickerCommand read_command() {
+    data_ready = false;
+    KickerCommand command = KickerCommand(rx_data);
+    #if DEBUG
+        printf("Spi Out: %0x | Raw: %0x\n", spi_out, rx_data);
+        command.print();
+    #endif
 }
 
-void read_voltage() {
+float read_voltage() {
     adc_select_input(VOLT_CHANNEL);
     uint16_t raw = adc_read();
     float voltage_new = VOLT_CONVERSION * raw;
-    voltage = ((255 - KALPHA) * voltage + KALPHA * voltage_new) / 255;
+    return ((255 - KALPHA) * voltage + KALPHA * voltage_new) / 255;
 
     #if DEBUG 
         printf("Volt Raw: %d | Volt Actual: %.2f | Volt Normalized: %.2f\n", raw, voltage_new, voltage);
     #endif
 }
 
+void breakbeam_calibration() {
+    break_low = read_breakbeam();
+    set_breakbeam(true);
+    sleep_ms(2000);
+    break_high = read_breakbeam();
+    sleep_ms(500);
+    set_breakbeam(false);
+
+    #if DEBUG
+        printf("Break Low: %d | Break High: %d\n", break_low, break_high);
+    #endif
+}
+
+uint16_t read_breakbeam() {
+    adc_select_input(BREAK_CHANNEL);
+    return adc_read();
+}
+
+void set_breakbeam(bool state) {
+    gpio_put(BREAK_TRIG, state);
+    gpio_put(BREAK_LED, !state);
+}
+
 // Check all compenents health
 void startup() {
-    hv_led_out(0b10001);
-    sleep_ms(1000);
-    hv_led_out(0b11011);
-    sleep_ms(1000);
-    hv_led_out(0b11111);
-    sleep_ms(1000);
-    hv_led_out(0b00000);
-    sleep_ms(1000);
-    hv_led_out(0b11111);
-    sleep_ms(1000);
-    hv_led_out(0b00000);
+    breakbeam_calibration();
 }
 
 /* 
@@ -262,10 +321,10 @@ void kicker_error(KickerError e) {
     spi_get_hw(SPI_PORT)->dr = spi_out;
     gen_led_out(0b111);
     while (true) {
-        printf("ERROR %s DURING %s", kicker_error_to_str(e), kicker_state_to_str(state));
+        printf("ERROR %s DURING %s\n", kicker_error_to_str(e), kicker_state_to_str(state));
         hv_led_out(e);
         sleep_ms(100);
-        hv_led_out(e);
+        hv_led_out(0);
         sleep_ms(100);
     }
 }
