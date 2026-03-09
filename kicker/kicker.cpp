@@ -11,7 +11,6 @@
 void init();
 void startup();
 void spi_irq_handler();
-
 void kick(uint8_t, KickType);
 KickerCommand read_command();
 float read_voltage();
@@ -198,6 +197,8 @@ int main()
     }
 }
 
+// Strength 0-15, Chip or Kick
+// Has one final check to ensure charging is not active and will also detect when there is no voltage drop on activation
 void kick(uint8_t strength, KickType kick_type) {
     if (charging) {
         kicker_error(KickerError::ChargeKickOverlap);
@@ -227,12 +228,14 @@ void kick(uint8_t strength, KickType kick_type) {
     }
 }
 
+// Sets the data on the spi to be read by the teensy
 void update_spi_output() {
     spi_out = ((uint8_t) voltage) >> 1;
     spi_out |= 1 << 7; // TEMP
     spi_get_hw(SPI_PORT)->dr = spi_out;
 }
 
+// Reads the current data on the SPI, only call when data ready
 KickerCommand read_command() {
     data_ready = false;
     KickerCommand new_command = KickerCommand(rx_data);
@@ -243,6 +246,7 @@ KickerCommand read_command() {
     return new_command;
 }
 
+// Reads voltage pin and converts to voltage along with basic rolling average to smooth input
 float read_voltage() {
     adc_select_input(VOLT_CHANNEL);
     uint16_t raw = adc_read();
@@ -254,6 +258,7 @@ float read_voltage() {
     #endif
 }
 
+// Activates breakbeam N times and averages high and low
 void breakbeam_calibration() {
     uint32_t h = 0;
     uint32_t l = 0;
@@ -280,11 +285,13 @@ void breakbeam_calibration() {
     }
 }
 
+// Returns breakbeam value: 0-4095
 uint16_t read_breakbeam() {
     adc_select_input(BREAK_CHANNEL);
     return adc_read();
 }
 
+// Ties together break trig and break led
 void set_breakbeam(bool state) {
     gpio_put(BREAK_TRIG, state);
     gpio_put(BREAK_LED, !state);
@@ -307,11 +314,13 @@ void startup() {
     gpio_put(CHARGE_EN, 0);
     sleep_ms(CHARGE_COOLDOWN);
     prev_voltage = voltage;
-    sleep_ms(100);
+    sleep_ms(100); // Artificial delay to measure hold across time
     voltage = read_voltage();
+
     if (voltage > prev_voltage + 2) {
         kicker_error(ContinuousCharging);
     }
+
     kick(15, Chip);
 
     // Reset values for run
@@ -319,10 +328,7 @@ void startup() {
     voltage = 0;
 }
 
-/* 
-    Bit pattern: 000 | MAX | HIGH | MID | LOW | MIN
-    1 = ON
-*/
+// Bit pattern: 000 | MAX | HIGH | MID | LOW | MIN, 1 = ON
 void hv_led_out(uint8_t pattern) {
     if (pattern & 0b1) {
         gpio_put(HV_LED_MIN, 0);
@@ -351,10 +357,7 @@ void hv_led_out(uint8_t pattern) {
     }
 }
 
-/* 
-    Bit pattern: 00000 | LED_2 | LED_1 | LED_0
-    1 = ON
-*/
+// Bit pattern: 00000 | LED_2 | LED_1 | LED_0, 1 = ON
 void gen_led_out(uint8_t pattern) {
     if (pattern & 0b1) {
         gpio_put(LED_0, 0);
@@ -451,6 +454,7 @@ void init() {
 
 }
 
+// SPI interrupt, sets data ready on new command
 void spi_irq_handler() {
     if (spi_is_readable(SPI_PORT)) {
         rx_data = spi_get_hw(SPI_PORT)->dr;  // read clears the interrupt
@@ -466,6 +470,7 @@ void spi_irq_handler() {
 }
 
 // Disable charging and discharge caps
+// Primarily used for error handling, consider unsafe
 void hard_shutdown() {
     gpio_put(CHARGE_EN, 0);
     sleep_ms(CHARGE_COOLDOWN);
@@ -474,13 +479,17 @@ void hard_shutdown() {
     gpio_put(KICK_TRIG, 0);
 }
 
-// Only for major over voltage event, WILL POTENTIALLY DESTROY MOTOR BOARD
+// Only for major over voltage event
+// WILL POTENTIALLY DESTROY MOTOR BOARD
 void suicide_protocal() {
     gpio_put(CHARGE_EN, 0);
     gpio_put(KICK_TRIG, 1);
     gpio_put(CHIP_TRIG, 1);
 }
 
+// Universal error handler
+// Always does everything it can to discharge safely
+// Assume unrecoverable
 void kicker_error(KickerError e) {
     uint8_t flash_delay = 200;
     if (e == MajorOverVoltage) {
@@ -531,18 +540,40 @@ void light_show() {
     sleep_ms(500);
 }
 
+// Ignores all data except extreme voltage and charge/discharge exceptions
+// BY NATURE THIS IS UNSAFE WHEN USED IMPROPERLY
 void manual_mode() {
+    irq_set_enabled(SPI1_IRQ, false);
+    state = Manual;
+    bool kick_queued = false;
+    KickType kt = Kick;
     while (true) {
         // Read buttons
+
+        if (gpio_get(CHARGE_BTN) && gpio_get(KICK_BTN) && gpio_get(CHIP_BTN)) {
+            // reset vars
+            charging = false;
+            voltage = 0;
+            hv_led_out(0);
+            gen_led_out(0);
+            gpio_put(CHARGE_EN, 0);
+            irq_set_enabled(SPI1_IRQ, true);
+            sleep_ms(10);
+            return;
+        }
+
         if (gpio_get(CHARGE_BTN)) {
             gpio_put(LED_2, 1);
-            sleep_ms(BTN_DELAY);
+            charging = true;
         } else {
             gpio_put(LED_2, 0);
+            charging = false;
         }
 
         if (gpio_get(KICK_BTN)) {
             gpio_put(LED_0, 1);
+            kick_queued = true;
+            kt = Kick;
             sleep_ms(BTN_DELAY);
         } else {
             gpio_put(LED_0, 0);
@@ -550,11 +581,41 @@ void manual_mode() {
 
         if (gpio_get(CHIP_BTN)) {
             gpio_put(LED_1, 1);
+            kick_queued = true;
+            kt = Chip;
             sleep_ms(BTN_DELAY);
         } else {
             gpio_put(LED_1, 0);
         }
 
+        voltage = read_voltage();
+
+        // Drive HV LEDs
+        uint8_t pattern = 0b00000;
+        pattern |= voltage > VOLT_MIN;
+        pattern |= (voltage > VOLT_MAX / 4) << 1;
+        pattern |= (voltage > VOLT_MAX / 2) << 2;
+        pattern |= (voltage > 3 * VOLT_MAX / 4) << 3;
+        pattern |= (voltage > VOLT_MAX - VOLT_MIN) << 4;
+        hv_led_out(pattern);
+
+        if (voltage == VERY_OVER_VOLTAGE) {
+            kicker_error(MajorOverVoltage);
+        }
+
+        if (charging) {
+            gpio_put(CHARGE_EN, 1);
+        } else {
+            gpio_put(CHARGE_EN, 0);
+            if (kick_queued) {
+                sleep_ms(CHARGE_COOLDOWN);
+                gpio_put((kt == Kick ? KICK_TRIG : CHIP_TRIG), 1);
+                sleep_us(MAX_KICK_TIME);
+                gpio_put((kt == Kick ? KICK_TRIG : CHIP_TRIG), 0);
+                sleep_ms(KICK_COOLDOWN);
+                kick_queued = false;
+            }
+        }
         sleep_ms(1);
     }
 }
