@@ -77,6 +77,8 @@ pub type KickerReset = Output<P37>; //Changed from P6
 pub type KickerCSn = Output<P38>; //Changed from P5
 /// The Kicker Programmer
 pub type KickerProg = KickerProgrammer<KickerCSn, KickerReset>;
+/// The Kicker SPI
+pub type KickerSpi = Lpspi<(), 3>;
 /// The enable 3v3 pin for the motor_board
 pub type MotorEn = Output<P23>;
 /// The Motor killn pin

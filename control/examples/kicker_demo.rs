@@ -24,26 +24,25 @@ use teensy4_panic as _;
 mod app {
     use bsp::board::{self};
     use teensy4_bsp as bsp;
-    use embedded_hal::spi::MODE_3;
-    use bsp::hal::lpspi::{Lpspi, Pins};
-    use bsp::hal::iomuxc;
-    use bsp::ral;
-    use ral::lpspi::LPSPI3;
 
     use rtic_monotonics::systick::*;
 
     use kicker_controller::{KickTrigger, KickType, Kicker, KickerCommand};
 
     use robojackets_robocup_control::{
-        KickerCSn, KickerReset, Killn, MotorEn,
+        KickerSpi, KickerCSn, KickerReset, Killn, MotorEn,
     };
-
-    type Spi = bsp::hal::lpspi::Lpspi<(), 3>;
+    
+    use bsp::hal::iomuxc;
+    use bsp::ral;
+    use bsp::hal::lpspi::{Lpspi, Pins};
+    use embedded_hal::spi::MODE_3;
+    use ral::lpspi::LPSPI3;
 
     #[local]
     struct Local {
         kicker_controller: Kicker<KickerCSn, KickerReset>,
-        spi: Spi,
+        spi: KickerSpi,
         poller: imxrt_log::Poller,
     }
 
@@ -85,7 +84,6 @@ mod app {
 
         // Release pins to split into kicker
         let (spi_block, mut spi_pins) = spi_temp.release();
-        
 
         // Manually configure the data pins for LPSPI3 function
         iomuxc::lpspi::prepare(&mut spi_pins.sdo);  // SDO/MOSI
