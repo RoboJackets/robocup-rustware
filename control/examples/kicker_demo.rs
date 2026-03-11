@@ -132,8 +132,8 @@ mod app {
 
         log::info!("Charging the Kicker");
         let kicker_command = KickerCommand {
-            kick_type: KickType::Kick,
-            kick_trigger: KickTrigger::Disabled,
+            kick_type: KickType::Chip,
+            kick_trigger: KickTrigger::Breakbeam,
             kick_strength: 10,
             charge_allowed: false,
         };
