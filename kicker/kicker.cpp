@@ -275,14 +275,14 @@ void breakbeam_calibration() {
     uint32_t h = 0;
     uint32_t l = 0;
     set_breakbeam(false);
-    sleep_ms(100);
+    sleep_ms(500);
     for (size_t i = 0; i < BREAK_CAL_CYCLES; i++) {
         l += read_breakbeam();
         set_breakbeam(true);
         sleep_ms(500);
         h += read_breakbeam();
-        sleep_ms(500);
         set_breakbeam(false);
+        sleep_ms(500);
     }
     
     break_high = h / BREAK_CAL_CYCLES;
