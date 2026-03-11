@@ -132,14 +132,14 @@ mod app {
 
         log::info!("Charging the Kicker");
         let kicker_command = KickerCommand {
-            kick_type: KickType::Chip,
+            kick_type: KickType::Kick,
             kick_trigger: KickTrigger::Disabled,
-            kick_strength: 15,
-            charge_allowed: true,
+            kick_strength: 10,
+            charge_allowed: false,
         };
         log::info!("Raw Out: {:?}", kicker_command);
         
-        for _ in 0..1000 {
+        loop {
             let kicker_status = ctx
                 .local
                 .kicker_controller

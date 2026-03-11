@@ -82,6 +82,7 @@ int main()
             command = read_command();
         }
         
+        
         prev_voltage = voltage;
         voltage = read_voltage();
 
@@ -122,7 +123,10 @@ int main()
         }
 
         // Stuck charging
-        if (!charging && (voltage > prev_voltage + 2)) {
+        if (!charging && (voltage > prev_voltage + 10)) {
+            while(true) {
+                printf("Prev: %.2f | Curr: %.2f\n", prev_voltage, voltage);
+            }
             kicker_error(KickerError::ContinuousCharging);
         }
 
@@ -190,7 +194,7 @@ int main()
         count++;
 
         #if DEBUG
-            printf("Charge Cooldown: %s | Kick Cooldown: %s", (last_charge - CHARGE_COOLDOWN < to_ms_since_boot(get_absolute_time()), "True", "False"), (last_kick - KICK_COOLDOWN < to_ms_since_boot(get_absolute_time()), "True", "False"));
+            printf("Charge Cooldown: %s | Kick Cooldown: %s\n", (last_charge - CHARGE_COOLDOWN < to_ms_since_boot(get_absolute_time()), "True", "False"), (last_kick - KICK_COOLDOWN < to_ms_since_boot(get_absolute_time()), "True", "False"));
         #endif
 
         sleep_ms(1);
@@ -251,11 +255,12 @@ float read_voltage() {
     adc_select_input(VOLT_CHANNEL);
     uint16_t raw = adc_read();
     float voltage_new = VOLT_CONVERSION * raw;
-    return ((255 - KALPHA) * voltage + KALPHA * voltage_new) / 255;
 
     #if DEBUG 
         printf("Volt Raw: %d | Volt Actual: %.2f | Volt Normalized: %.2f\n", raw, voltage_new, voltage);
     #endif
+
+    return ((255 - KALPHA) * voltage + KALPHA * voltage_new) / 255;
 }
 
 // Activates breakbeam N times and averages high and low
@@ -293,7 +298,7 @@ uint16_t read_breakbeam() {
 
 // Ties together break trig and break led
 void set_breakbeam(bool state) {
-    gpio_put(BREAK_TRIG, state);
+    gpio_put(BREAK_TRIG, !state);
     gpio_put(BREAK_LED, !state);
 }
 
@@ -301,7 +306,8 @@ void set_breakbeam(bool state) {
 void startup() {
     breakbeam_calibration();
     light_show();
-
+    /*
+    
     // Run test cycle
     while (voltage < VOLT_MIN) {
         gpio_put(CHARGE_EN, 1);
@@ -317,7 +323,7 @@ void startup() {
     sleep_ms(100); // Artificial delay to measure hold across time
     voltage = read_voltage();
 
-    if (voltage > prev_voltage + 2) {
+    if (voltage > prev_voltage + 5) {
         kicker_error(ContinuousCharging);
     }
 
@@ -326,6 +332,18 @@ void startup() {
     // Reset values for run
     prev_voltage = 0;
     voltage = 0;
+    */
+
+    prev_voltage = voltage;
+    voltage = read_voltage();
+    prev_voltage = voltage;
+    voltage = read_voltage();
+    prev_voltage = voltage;
+    voltage = read_voltage();
+    prev_voltage = voltage;
+    voltage = read_voltage();
+    prev_voltage = voltage;
+    voltage = read_voltage();
 }
 
 // Bit pattern: 000 | MAX | HIGH | MID | LOW | MIN, 1 = ON
@@ -494,7 +512,7 @@ void kicker_error(KickerError e) {
     uint8_t flash_delay = 200;
     if (e == MajorOverVoltage) {
         suicide_protocal();
-        flash_delay = 100;
+        flash_delay = 75;
     } else {
         hard_shutdown();
     }
@@ -513,9 +531,9 @@ void kicker_error(KickerError e) {
         printf("ERROR %s DURING %s\n", kicker_error_to_str(e), kicker_state_to_str(state));
         hv_led_out(e);
         gen_led_out(0b111);
-        sleep_ms(100);
+        sleep_ms(flash_delay);
         hv_led_out(0);
-        sleep_ms(100);
+        sleep_ms(flash_delay);
         gen_led_out(0);
         
     }
