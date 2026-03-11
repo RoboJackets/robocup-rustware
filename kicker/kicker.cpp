@@ -52,6 +52,7 @@ KickerCommand command = KickerCommand(0b11100000);
 uint64_t count = 0;
 float voltage = 0;
 float prev_voltage = 0;
+float old_voltage = 0;
 
 
 int main()
@@ -82,9 +83,14 @@ int main()
             command = read_command();
         }
         
+        if (count % 10 == 0) {
+            if (count % 100 == 0) {
+                old_voltage = voltage;
+            }
+            prev_voltage = voltage;
+            voltage = read_voltage();
+        }
         
-        prev_voltage = voltage;
-        voltage = read_voltage();
 
         // Breakbeam trigger on falling edge
         if (command.kick_trigger == Breakbeam) {
@@ -123,10 +129,11 @@ int main()
         }
 
         // Stuck charging
-        if (!charging && (voltage > prev_voltage + 10)) {
-            while(true) {
-                printf("Prev: %.2f | Curr: %.2f\n", prev_voltage, voltage);
-            }
+        if (!charging && (voltage > prev_voltage + 3)) {
+            kicker_error(KickerError::ContinuousCharging);
+        }
+
+        if (!charging && (voltage > old_voltage + 5)) {
             kicker_error(KickerError::ContinuousCharging);
         }
 
@@ -255,12 +262,12 @@ float read_voltage() {
     adc_select_input(VOLT_CHANNEL);
     uint16_t raw = adc_read();
     float voltage_new = VOLT_CONVERSION * raw;
-
+    float voltage_norm = ((255 - KALPHA) * voltage + KALPHA * voltage_new) / 255;
     #if DEBUG 
-        printf("Volt Raw: %d | Volt Actual: %.2f | Volt Normalized: %.2f\n", raw, voltage_new, voltage);
+        printf("Volt Raw: %d | Volt Actual: %.2f | Volt Normalized: %.2f\n", raw, voltage_new, voltage_norm);
     #endif
 
-    return ((255 - KALPHA) * voltage + KALPHA * voltage_new) / 255;
+    return voltage_norm;
 }
 
 // Activates breakbeam N times and averages high and low
@@ -304,8 +311,10 @@ void set_breakbeam(bool state) {
 
 // Check all compenents health
 void startup() {
-    breakbeam_calibration();
+    irq_set_enabled(SPI1_IRQ, false);
     light_show();
+    breakbeam_calibration();
+    
     /*
     
     // Run test cycle
@@ -334,16 +343,15 @@ void startup() {
     voltage = 0;
     */
 
-    prev_voltage = voltage;
-    voltage = read_voltage();
-    prev_voltage = voltage;
-    voltage = read_voltage();
-    prev_voltage = voltage;
-    voltage = read_voltage();
-    prev_voltage = voltage;
-    voltage = read_voltage();
-    prev_voltage = voltage;
-    voltage = read_voltage();
+    for (size_t i = 0; i < 15; i++) {
+        old_voltage = voltage;
+        prev_voltage = voltage;
+        voltage = read_voltage();
+        printf("Prev: %.2f | Curr: %.2f\n", prev_voltage, voltage);
+        sleep_ms(1);
+    }
+    
+    irq_set_enabled(SPI1_IRQ, true);
 }
 
 // Bit pattern: 000 | MAX | HIGH | MID | LOW | MIN, 1 = ON
