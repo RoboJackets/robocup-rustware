@@ -48,7 +48,7 @@ long last_charge = to_ms_since_boot(get_absolute_time());
 
 // Pub Vars
 KickerState state = KickerState::Init;
-KickerCommand command = KickerCommand(0b11100000);
+KickerCommand command = KickerCommand(0b01100000);
 uint64_t count = 0;
 float voltage = 0;
 float prev_voltage = 0;
@@ -57,6 +57,7 @@ float old_voltage = 0;
 
 int main()
 {
+    irq_set_enabled(SPI1_IRQ, false);
     init();
 
     #if DEBUG
@@ -73,6 +74,7 @@ int main()
 
     state = KickerState::Startup;
     startup();
+    irq_set_enabled(SPI1_IRQ, true);
 
     // Main control loop
     while (true) {
@@ -102,7 +104,7 @@ int main()
                 break_triggered = true;
                 set_breakbeam(false);
                 #if DEBUG
-                    printf("BREAK_TRIGGERED");
+                    printf("BREAK_TRIGGERED\n");
                 #endif
             }
         }
@@ -201,7 +203,7 @@ int main()
         count++;
 
         #if DEBUG
-            printf("Charge Cooldown: %s | Kick Cooldown: %s\n", (last_charge - CHARGE_COOLDOWN < to_ms_since_boot(get_absolute_time()), "True", "False"), (last_kick - KICK_COOLDOWN < to_ms_since_boot(get_absolute_time()), "True", "False"));
+            printf("Charge Cooldown: %d | Kick Cooldown: %d | Sys time: %d\n", last_charge - CHARGE_COOLDOWN, last_kick - KICK_COOLDOWN, to_ms_since_boot(get_absolute_time()));
         #endif
 
         sleep_ms(1);
@@ -219,7 +221,9 @@ void kick(uint8_t strength, KickType kick_type) {
 
     state = KickerState::Kicking;
     uint32_t kick_time = MAX_KICK_TIME * 15 / strength;
-    
+    #if DEBUG
+        printf("KICKING!!!!!!!!!!!!!!!!!!!!!!!!!\n");
+    #endif
     if (kick_type == Chip) {
         gpio_put(CHIP_TRIG, 1);
     } else {
@@ -234,7 +238,8 @@ void kick(uint8_t strength, KickType kick_type) {
     irq_set_enabled(SPI1_IRQ, true);
 
     // If no voltage drop detected error
-    if (!(read_voltage() < voltage - VOLT_MIN)) {
+    float temp_volt = read_voltage();
+    if (!(temp_volt < voltage - VOLT_MIN) && !(temp_volt - voltage < 5 && temp_volt - voltage > -5)) {
         kicker_error(NoDischarge);
     }
 }
@@ -311,12 +316,11 @@ void set_breakbeam(bool state) {
 
 // Check all compenents health
 void startup() {
-    irq_set_enabled(SPI1_IRQ, false);
+    
     light_show();
     breakbeam_calibration();
     
     /*
-    
     // Run test cycle
     while (voltage < VOLT_MIN) {
         gpio_put(CHARGE_EN, 1);
@@ -343,15 +347,18 @@ void startup() {
     voltage = 0;
     */
 
+    // Init averaged values
+    set_breakbeam(true);
+    sleep_ms(100);
     for (size_t i = 0; i < 15; i++) {
         old_voltage = voltage;
         prev_voltage = voltage;
         voltage = read_voltage();
-        printf("Prev: %.2f | Curr: %.2f\n", prev_voltage, voltage);
+        break_val = ((255 - KALPHA) * break_val + KALPHA * read_breakbeam()) / 255;
+        printf("Prev: %.2f | Curr: %.2f | Break: %d\n", prev_voltage, voltage, break_val);
         sleep_ms(1);
     }
-    
-    irq_set_enabled(SPI1_IRQ, true);
+    set_breakbeam(false);
 }
 
 // Bit pattern: 000 | MAX | HIGH | MID | LOW | MIN, 1 = ON
