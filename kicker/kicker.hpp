@@ -6,7 +6,7 @@
 #define GPIO_INPUT_INIT(pin) do { gpio_init(pin); gpio_set_dir(pin, GPIO_IN); } while(0)
 
 #define BREAK_CHANNEL 2
-#define VOLT_CHANNEL 1 // TEMP RESET TO 3
+#define VOLT_CHANNEL 1 // TEMP RESET TO 3 WHEN FIX PINS
 
 enum KickType {
     Kick,
@@ -36,6 +36,7 @@ enum KickerError {
     NoCharge = 0b11100,
     NoDischarge = 0b01011,
     ContinuousCharging = 0b10111,
+    ContinuousDischarge = 0b00100,
     Unknown = 0b10101,
 };
 
@@ -50,6 +51,7 @@ const char* kicker_error_to_str(KickerError e) {
         case NoCharge: return "NoCharge";
         case NoDischarge: return "NoDischarge";
         case ContinuousCharging: return "ContinuousCharging";
+        case ContinuousDischarge: return "ContinuousDischarge";
         default: return "Unknown";
     }
 };
