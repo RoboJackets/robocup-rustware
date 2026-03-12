@@ -22,7 +22,6 @@ void breakbeam_calibration();
 void set_breakbeam(bool);
 void light_show();
 void manual_mode();
-
 void kicker_error(KickerError);
 
 // SPI Data
@@ -45,8 +44,7 @@ bool charging = false;
 long charge_start = to_ms_since_boot(get_absolute_time());
 long last_charge = to_ms_since_boot(get_absolute_time());
 
-
-// Pub Vars
+// Shared Vars
 KickerState state = KickerState::Init;
 KickerCommand command = KickerCommand(0b01100000);
 uint64_t count = 0;
@@ -567,14 +565,14 @@ void light_show() {
         uint8_t t = pattern & 0b1;
         pattern = pattern >> 1;
         pattern |= t << 7;
-        sleep_ms(200);
+        sleep_ms(150);
     }
     hv_led_out(0b11111);
     gen_led_out(0b111);
-    sleep_ms(500);
+    sleep_ms(300);
     hv_led_out(0);
     gen_led_out(0);
-    sleep_ms(500);
+    sleep_ms(300);
 }
 
 // Ignores all data except extreme voltage and charge/discharge exceptions
