@@ -51,22 +51,23 @@ KickerState state = KickerState::Init;
 KickerCommand command = KickerCommand(0b01100000);
 uint64_t count = 0;
 float voltage = 0;
-float prev_voltage = 0;
 float old_voltage = 0;
 
 
 int main()
 {
+    // Disable interrupts during setup
     irq_set_enabled(SPI1_IRQ, false);
     init();
 
     #if DEBUG
         if (gpio_get(CHIP_BTN) && gpio_get(KICK_BTN)) {
-            printf("ENTERING MANUAL MODE");
+            printf("ENTERING MANUAL MODE\n");
             while (gpio_get(CHIP_BTN) || gpio_get(KICK_BTN) || gpio_get(CHARGE_BTN)) {
                 gen_led_out(0b111);
                 sleep_ms(100);
                 gen_led_out(0);
+                sleep_ms(100);
             }
             manual_mode();
         }
@@ -85,14 +86,10 @@ int main()
             command = read_command();
         }
         
-        if (count % 10 == 0) {
-            if (count % 100 == 0) {
+        voltage = read_voltage();
+        if (count % 100 == 0) {
                 old_voltage = voltage;
-            }
-            prev_voltage = voltage;
-            voltage = read_voltage();
         }
-        
 
         // Breakbeam trigger on falling edge
         if (command.kick_trigger == Breakbeam) {
@@ -103,9 +100,7 @@ int main()
             if (break_val < break_low + break_high >> 3) {
                 break_triggered = true;
                 set_breakbeam(false);
-                #if DEBUG
-                    printf("BREAK_TRIGGERED\n");
-                #endif
+                printf("BREAK_TRIGGERED\n");
             }
         }
 
@@ -126,17 +121,18 @@ int main()
         }
 
         // No charging
-        if (charging && !(voltage > prev_voltage)) {
+        if (charging && !(voltage > old_voltage)) {
             kicker_error(KickerError::NoCharge);
         }
 
         // Stuck charging
-        if (!charging && (voltage > prev_voltage + 3)) {
+        if (!charging && (voltage > old_voltage + VOLT_TOLERANCE)) {
             kicker_error(KickerError::ContinuousCharging);
         }
 
-        if (!charging && (voltage > old_voltage + 5)) {
-            kicker_error(KickerError::ContinuousCharging);
+        // Discharging 
+        if (!charging && (voltage < old_voltage - VOLT_TOLERANCE)) {
+            kicker_error(KickerError::ContinuousDischarge);
         }
 
 
@@ -158,9 +154,7 @@ int main()
         } else if (command.charge_allowed && to_ms_since_boot(get_absolute_time()) - KICK_COOLDOWN > last_kick && !charging && voltage < VOLT_MAX) {
             charging = true;
             gpio_put(CHARGE_EN, 1);
-            #if DEBUG
-                printf("Charging...\n");
-            #endif
+            printf("Beginning charging...\n");
         }
         if (charging) {
             state = Charging;
@@ -200,12 +194,17 @@ int main()
         }
         gen_led_out(pattern);
 
-        count++;
-
         #if DEBUG
-            printf("Charge Cooldown: %d | Kick Cooldown: %d | Sys time: %d\n", last_charge - CHARGE_COOLDOWN, last_kick - KICK_COOLDOWN, to_ms_since_boot(get_absolute_time()));
+            long sys_time = to_ms_since_boot(get_absolute_time());
+            if (last_charge + CHARGE_COOLDOWN > sys_time) {
+                printf("Charge Cooldown: %d | Sys time: %d", last_charge + CHARGE_COOLDOWN, sys_time);
+            }
+            if (last_kick + CHARGE_COOLDOWN > sys_time) {
+                printf("Kick Cooldown: %d | Sys time: %d", last_kick + CHARGE_COOLDOWN, sys_time);
+            }
         #endif
 
+        count++;
         sleep_ms(1);
     }
 }
@@ -221,9 +220,7 @@ void kick(uint8_t strength, KickType kick_type) {
 
     state = KickerState::Kicking;
     uint32_t kick_time = MAX_KICK_TIME * 15 / strength;
-    #if DEBUG
-        printf("KICKING!!!!!!!!!!!!!!!!!!!!!!!!!\n");
-    #endif
+    printf("KICKING!!!!!!!!!!!!!!!!!!!!!!!!!\n");
     if (kick_type == Chip) {
         gpio_put(CHIP_TRIG, 1);
     } else {
@@ -242,6 +239,10 @@ void kick(uint8_t strength, KickType kick_type) {
     if (!(temp_volt < voltage - VOLT_MIN) && !(temp_volt - voltage < 5 && temp_volt - voltage > -5)) {
         kicker_error(NoDischarge);
     }
+    
+    // Reset values to prevent wrong errors
+    voltage = read_voltage();
+    old_voltage = voltage;
 }
 
 // Sets the data on the spi to be read by the teensy
@@ -257,8 +258,8 @@ KickerCommand read_command() {
     KickerCommand new_command = KickerCommand(rx_data);
     #if DEBUG
         printf("Spi Out: %0x | Raw: %0x\n", spi_out, rx_data);
-        new_command.print();
     #endif
+    new_command.print();
     return new_command;
 }
 
@@ -324,40 +325,42 @@ void startup() {
     // Run test cycle
     while (voltage < VOLT_MIN) {
         gpio_put(CHARGE_EN, 1);
-        prev_voltage = voltage;
         voltage = read_voltage();
-        if (!(voltage > prev_voltage)) {
+        if (!(voltage > 0)) {
             kicker_error(NoCharge);
         }
     }
     gpio_put(CHARGE_EN, 0);
     sleep_ms(CHARGE_COOLDOWN);
-    prev_voltage = voltage;
+    old_voltage = voltage
     sleep_ms(100); // Artificial delay to measure hold across time
     voltage = read_voltage();
 
-    if (voltage > prev_voltage + 5) {
+    if (voltage > old_voltage + 5) {
         kicker_error(ContinuousCharging);
     }
 
     kick(15, Chip);
 
     // Reset values for run
-    prev_voltage = 0;
     voltage = 0;
     */
 
     // Init averaged values
     set_breakbeam(true);
+    #if DEBUG
+    printf("Initing Value Averages...");
+    #endif
     sleep_ms(100);
     for (size_t i = 0; i < 15; i++) {
-        old_voltage = voltage;
-        prev_voltage = voltage;
         voltage = read_voltage();
         break_val = ((255 - KALPHA) * break_val + KALPHA * read_breakbeam()) / 255;
-        printf("Prev: %.2f | Curr: %.2f | Break: %d\n", prev_voltage, voltage, break_val);
+        #if DEBUG
+            printf("Voltage: %.2f | Break: %d\n", voltage, break_val);
+        #endif
         sleep_ms(1);
     }
+    old_voltage = voltage;
     set_breakbeam(false);
 }
 
@@ -524,6 +527,8 @@ void suicide_protocal() {
 // Always does everything it can to discharge safely
 // Assume unrecoverable
 void kicker_error(KickerError e) {
+    if (DISABLE_ERRORS) { return; }
+
     uint8_t flash_delay = 200;
     if (e == MajorOverVoltage) {
         suicide_protocal();
@@ -548,9 +553,8 @@ void kicker_error(KickerError e) {
         gen_led_out(0b111);
         sleep_ms(flash_delay);
         hv_led_out(0);
-        sleep_ms(flash_delay);
         gen_led_out(0);
-        
+        sleep_ms(flash_delay);
     }
 }
 
