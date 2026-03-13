@@ -6,7 +6,7 @@
 #define GPIO_INPUT_INIT(pin) do { gpio_init(pin); gpio_set_dir(pin, GPIO_IN); } while(0)
 
 #define BREAK_CHANNEL 2
-#define VOLT_CHANNEL 1 // TEMP RESET TO 3 WHEN FIX PINS
+#define VOLT_CHANNEL 3 // TEMP RESET TO 3 WHEN FIX PINS
 
 enum KickType {
     Kick,

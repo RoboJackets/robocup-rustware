@@ -29,6 +29,11 @@ volatile uint8_t rx_data = 0;
 volatile bool data_ready = false;
 uint8_t spi_out = 0x00;
 
+// Buttons
+long kick_btn_cooldown = 0;
+long chip_btn_cooldown = 0;
+long charge_btn_cooldown = 0;
+
 // Breakbream
 uint16_t break_low = 0;
 uint16_t break_high = 4095;
@@ -77,11 +82,28 @@ int main()
 
     // Main control loop
     while (true) {
-        
+
         /// READ DATA
         state = KickerState::CommandIO;
+
         if (data_ready) {
             command = read_command();
+        }
+
+        // Read  buttons
+        if (kick_btn_cooldown + BTN_COOLDOWN < to_ms_since_boot(get_absolute_time()) && gpio_get(KICK_BTN)) {
+            command.kick_type = Kick;
+            command.kick_trigger = Immediate;
+            kick_btn_cooldown = to_ms_since_boot(get_absolute_time());
+        }
+        if (chip_btn_cooldown + BTN_COOLDOWN < to_ms_since_boot(get_absolute_time()) && gpio_get(CHIP_BTN)) {
+            command.kick_type = Chip;
+            command.kick_trigger = Immediate;
+            chip_btn_cooldown = to_ms_since_boot(get_absolute_time());
+        }
+        if (charge_btn_cooldown + BTN_COOLDOWN < to_ms_since_boot(get_absolute_time()) && gpio_get(CHARGE_BTN)) {
+            command.charge_allowed = true;
+            charge_btn_cooldown = to_ms_since_boot(get_absolute_time());
         }
         
         voltage = read_voltage();
@@ -97,7 +119,8 @@ int main()
             #endif
             if (break_val < break_low + break_high >> 3) {
                 break_triggered = true;
-                set_breakbeam(false);
+                gpio_put(BREAK_TRIG, 0);
+                gpio_put(BREAK_LED, 10);
                 printf("BREAK_TRIGGERED\n");
             }
         }
@@ -139,7 +162,7 @@ int main()
         update_spi_output();
 
         // Breakbeam
-        set_breakbeam(command.kick_trigger == Breakbeam);
+        gpio_put(BREAK_TRIG, command.kick_trigger == Breakbeam);
 
         // Charging
         // Check charge allowace, time since kick, and if charging is needed
@@ -227,6 +250,7 @@ void kick(uint8_t strength, KickType kick_type) {
     sleep_us(kick_time);
     gpio_put(KICK_TRIG, 0);
     gpio_put(CHIP_TRIG, 0);
+    if (break_triggered) { gpio_put(BREAK_LED, 0); }
 
     last_kick = to_ms_since_boot(get_absolute_time());
     command.kick_trigger = Disabled;
@@ -278,14 +302,14 @@ float read_voltage() {
 void breakbeam_calibration() {
     uint32_t h = 0;
     uint32_t l = 0;
-    set_breakbeam(false);
+    gpio_put(BREAK_TRIG, 0);
     sleep_ms(500);
     for (size_t i = 0; i < BREAK_CAL_CYCLES; i++) {
         l += read_breakbeam();
-        set_breakbeam(true);
+        gpio_put(BREAK_TRIG, 1);
         sleep_ms(500);
         h += read_breakbeam();
-        set_breakbeam(false);
+        gpio_put(BREAK_TRIG, 0);
         sleep_ms(500);
     }
     
@@ -305,12 +329,6 @@ void breakbeam_calibration() {
 uint16_t read_breakbeam() {
     adc_select_input(BREAK_CHANNEL);
     return adc_read();
-}
-
-// Ties together break trig and break led
-void set_breakbeam(bool state) {
-    gpio_put(BREAK_TRIG, !state);
-    gpio_put(BREAK_LED, !state);
 }
 
 // Check all compenents health
@@ -345,7 +363,7 @@ void startup() {
     */
 
     // Init averaged values
-    set_breakbeam(true);
+    gpio_put(BREAK_TRIG, 1);
     #if DEBUG
     printf("Initing Value Averages...");
     #endif
@@ -359,7 +377,7 @@ void startup() {
         sleep_ms(1);
     }
     old_voltage = voltage;
-    set_breakbeam(false);
+    gpio_put(BREAK_TRIG, 0);
 }
 
 // Bit pattern: 000 | MAX | HIGH | MID | LOW | MIN, 1 = ON
@@ -486,6 +504,9 @@ void init() {
     adc_gpio_init(BREAK_SENSE);
     adc_gpio_init(VOLT_SENSE);
 
+    // Start LEDs off
+    hv_led_out(0);
+    gen_led_out(0);
 }
 
 // SPI interrupt, sets data ready on new command
@@ -597,30 +618,31 @@ void manual_mode() {
             return;
         }
 
-        if (gpio_get(CHARGE_BTN)) {
-            gpio_put(LED_2, 1);
-            charging = true;
-        } else {
+        if (charge_btn_cooldown + BTN_COOLDOWN < to_ms_since_boot(get_absolute_time()) && gpio_get(CHARGE_BTN)) {
             gpio_put(LED_2, 0);
+            charging = true;
+            charge_btn_cooldown = to_ms_since_boot(get_absolute_time());
+        } else {
+            gpio_put(LED_2, 1);
             charging = false;
         }
 
-        if (gpio_get(KICK_BTN)) {
-            gpio_put(LED_0, 1);
+        if (kick_btn_cooldown + BTN_COOLDOWN < to_ms_since_boot(get_absolute_time()) && gpio_get(KICK_BTN)) {
+            gpio_put(LED_0, 0);
             kick_queued = true;
             kt = Kick;
-            sleep_ms(BTN_DELAY);
+            kick_btn_cooldown = to_ms_since_boot(get_absolute_time());
         } else {
-            gpio_put(LED_0, 0);
+            gpio_put(LED_0, 1);
         }
 
-        if (gpio_get(CHIP_BTN)) {
-            gpio_put(LED_1, 1);
+        if (chip_btn_cooldown + BTN_COOLDOWN < to_ms_since_boot(get_absolute_time()) && gpio_get(CHIP_BTN)) {
+            gpio_put(LED_1, 0);
             kick_queued = true;
             kt = Chip;
-            sleep_ms(BTN_DELAY);
+            chip_btn_cooldown = to_ms_since_boot(get_absolute_time());
         } else {
-            gpio_put(LED_1, 0);
+            gpio_put(LED_1, 1);
         }
 
         voltage = read_voltage();
