@@ -4,7 +4,7 @@
 #define DISABLE_ERRORS 0 // Purely for sofware debugging, do not use
 #define SPI_CLK_FREQUENCY 2000000 // Hz
 #define BREAK_CAL_CYCLES 3 // Number of times to measure breakbeam to set high/low
-#define BTN_DELAY 500 // ms
+#define BTN_COOLDOWN 500 // ms
 
 #define CHARGE_SYNC_EN 0
 #define CHARGE_SYNC_FREQ 50000 // Hz
