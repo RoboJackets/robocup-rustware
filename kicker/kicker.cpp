@@ -179,7 +179,7 @@ int main()
         }
         if (charging) {
             state = Charging;
-            gpio_put(DC_DISABLE, 1);
+            gpio_put(DISCHARGE_DISABLE, 1);
         }
 
         // Kicking
@@ -240,7 +240,7 @@ void kick(uint8_t strength, KickType kick_type) {
     // Disable interrupts during kicking
     irq_set_enabled(SPI1_IRQ, false);
     // Allow discharge
-    gpio_put(DC_DISABLE, 0);
+    gpio_put(DISCHARGE_DISABLE, 0);
 
     state = KickerState::Kicking;
     uint32_t kick_time = MAX_KICK_TIME * 15 / strength;
@@ -257,7 +257,7 @@ void kick(uint8_t strength, KickType kick_type) {
 
     last_kick = to_ms_since_boot(get_absolute_time());
     command.kick_trigger = Disabled;
-    gpio_put(DC_DISABLE, 1);
+    gpio_put(DISCHARGE_DISABLE, 1);
     irq_set_enabled(SPI1_IRQ, true);
 
     // If no voltage drop detected error
@@ -490,7 +490,7 @@ void init() {
     GPIO_OUTPUT_INIT(HV_LED_MAX);
     GPIO_OUTPUT_INIT(BREAK_LED);
     GPIO_OUTPUT_INIT(BREAK_TRIG);
-    GPIO_OUTPUT_INIT(DC_DISABLE);
+    GPIO_OUTPUT_INIT(DISCHARGE_DISABLE);
     GPIO_OUTPUT_INIT(KICK_TRIG);
     GPIO_OUTPUT_INIT(CHIP_TRIG);
     GPIO_OUTPUT_INIT(CHARGE_EN);
@@ -513,7 +513,7 @@ void init() {
     gen_led_out(0);
     gpio_put(BREAK_LED, 1);
     
-    gpio_put(DC_DISABLE, 1);
+    gpio_put(DISCHARGE_DISABLE, 1);
 }
 
 // SPI interrupt, sets data ready on new command
@@ -537,13 +537,13 @@ void hard_shutdown() {
     gpio_put(BREAK_TRIG, 0);
     gpio_put(BREAK_LED, 1);
     gpio_put(CHARGE_EN, 0);
-    gpio_put(DC_DISABLE, 0);
+    gpio_put(DISCHARGE_DISABLE, 0);
     sleep_ms(CHARGE_COOLDOWN);
     gpio_put(KICK_TRIG, 1);
     sleep_us(MAX_KICK_TIME);
     gpio_put(KICK_TRIG, 0);
     sleep_ms(KICK_COOLDOWN);
-    gpio_put(DC_DISABLE, 1);
+    gpio_put(DISCHARGE_DISABLE, 1);
 }
 
 // Only for major over voltage event
@@ -552,7 +552,7 @@ void suicide_protocal() {
     gpio_put(BREAK_TRIG, 0);
     gpio_put(BREAK_LED, 1);
     gpio_put(CHARGE_EN, 0);
-    gpio_put(DC_DISABLE, 0);
+    gpio_put(DISCHARGE_DISABLE, 0);
     gpio_put(KICK_TRIG, 1);
     gpio_put(CHIP_TRIG, 1);
 }
@@ -615,7 +615,7 @@ void light_show() {
 // BY NATURE THIS IS UNSAFE WHEN USED IMPROPERLY
 void manual_mode() {
     irq_set_enabled(SPI1_IRQ, false);
-    gpio_put(DC_DISABLE, 0); // Always allow discharge just for fun
+    gpio_put(DISCHARGE_DISABLE, 0); // Always allow discharge just for fun
     state = Manual;
     bool kick_queued = false;
     KickType kt = Kick;

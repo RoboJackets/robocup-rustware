@@ -20,7 +20,7 @@
 #define HV_LED_MAX 7
 
 /* HV CONTROL */
-#define DC_DISABLE 18
+#define DISCHARGE_DISABLE 18
 #define KICK_TRIG 19
 #define CHIP_TRIG 20
 #define CHARGE_EN 23 // TEMP RESET TO 23
