@@ -9,8 +9,8 @@
 
 /* DEBUG BUTTONS */
 #define CHARGE_BTN 0
-#define CHIP_BTN 1
 #define KICK_BTN 2
+#define CHIP_BTN 1
 
 /* HV INDICATOR LEDS */
 #define HV_LED_MIN 3
@@ -21,8 +21,8 @@
 
 /* HV CONTROL */
 #define DISCHARGE_DISABLE 18
-#define KICK_TRIG 19
-#define CHIP_TRIG 20
+#define KICK_TRIG 20
+#define CHIP_TRIG 19
 #define CHARGE_EN 23 // TEMP RESET TO 23
 #define CHARGE_SYNC 24
 #define VOLT_SENSE 29 // TEMP RESET TO 29

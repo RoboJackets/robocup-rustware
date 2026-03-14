@@ -51,9 +51,10 @@ long last_charge = to_ms_since_boot(get_absolute_time());
 
 // Shared Vars
 KickerState state = KickerState::Init;
-KickerCommand command = KickerCommand(0b01100000); // Start with no charge and disabled
+KickerCommand command = KickerCommand(0b00101111); // Start with no charge and disabled
 uint64_t count = 0;
 float voltage = 0;
+float prev_voltage = 0;
 float old_voltage = 0;
 
 
@@ -78,11 +79,13 @@ int main()
 
     state = KickerState::Startup;
     startup();
+    gpio_put(BREAK_TRIG, 1);
     irq_set_enabled(SPI1_IRQ, true);
 
     // Main control loop
     while (true) {
 
+        command.kick_trigger = KickTrigger::Breakbeam;
         /// READ DATA
         state = KickerState::CommandIO;
 
@@ -102,28 +105,40 @@ int main()
             chip_btn_cooldown = to_ms_since_boot(get_absolute_time());
         }
         if (charge_btn_cooldown + BTN_COOLDOWN < to_ms_since_boot(get_absolute_time()) && gpio_get(CHARGE_BTN)) {
-            command.charge_allowed = true;
+            command.charge_allowed = !command.charge_allowed;
             charge_btn_cooldown = to_ms_since_boot(get_absolute_time());
         }
         
         voltage = read_voltage();
-        if (count % 100 == 0) {
-                old_voltage = voltage;
+        if (count % 111 == 0) {
+                prev_voltage = voltage;
+        }
+        if (count % 200 == 0) {
+                old_voltage = prev_voltage;
         }
 
-        // Breakbeam trigger on falling edge
-        if (command.kick_trigger == Breakbeam) {
-            break_val = ((255 - KALPHA) * break_val + KALPHA * read_breakbeam()) / 255;
-            #if DEBUG
-                printf("Break Val: %d | Break Low: %d | Break High: %d\n", break_val, break_low, break_high);
-            #endif
-            if (break_val < break_low + break_high >> 3) {
+        
+        break_val = read_breakbeam(); //((255 - KALPHA) * break_val + KALPHA * read_breakbeam()) / 255;
+        #if DEBUG
+            printf("Break Val: %d | Break Low: %d | Break High: %d\n", break_val, break_low, break_high);
+        #endif
+            
+
+        if (break_val > break_low + (break_high >> 8)) {
+            // Breakbeam trigger on falling edge
+            if (command.kick_trigger == Breakbeam) { 
                 break_triggered = true;
-                gpio_put(BREAK_TRIG, 0);
-                gpio_put(BREAK_LED, 10);
-                printf("BREAK_TRIGGERED\n");
             }
+            
+            gpio_put(BREAK_LED, 0);
+            printf("BREAK_TRIGGERED\n");
+        } else {
+            gpio_put(BREAK_LED, 1);
         }
+
+        #if DEBUG
+            command.print();
+        #endif
 
         /// ERROR CHECKING
         // Charge Timeout
@@ -142,7 +157,7 @@ int main()
         }
 
         // No charging
-        if (charging && !(voltage > old_voltage)) {
+        if (charging && !(voltage > old_voltage - VOLT_TOLERANCE) && to_ms_since_boot(get_absolute_time()) - charge_start > NO_CHARGE_COOLDOWN) {
             kicker_error(KickerError::NoCharge);
         }
 
@@ -152,7 +167,7 @@ int main()
         }
 
         // Discharging 
-        if (!charging && (voltage < old_voltage - VOLT_TOLERANCE)) {
+        if (!charging && (voltage < old_voltage - VOLT_TOLERANCE) && !(last_kick + KICK_COOLDOWN > to_ms_since_boot(get_absolute_time()))) {
             kicker_error(KickerError::ContinuousDischarge);
         }
 
@@ -160,9 +175,6 @@ int main()
 
         /// DRIVE OUTPUTS
         update_spi_output();
-
-        // Breakbeam
-        gpio_put(BREAK_TRIG, command.kick_trigger == Breakbeam);
 
         // Charging
         // Check charge allowace, time since kick, and if charging is needed
@@ -172,8 +184,9 @@ int main()
             }
             charging = false;
             gpio_put(CHARGE_EN, 0);
-        } else if (command.charge_allowed && to_ms_since_boot(get_absolute_time()) - KICK_COOLDOWN > last_kick && !charging && voltage < VOLT_MAX) {
+        } else if (command.charge_allowed && to_ms_since_boot(get_absolute_time()) - KICK_COOLDOWN > last_kick && !charging && voltage < VOLT_MAX - VOLT_TOLERANCE_CHARGE && to_ms_since_boot(get_absolute_time()) - CHARGE_COOLDOWN > last_charge) {
             charging = true;
+            charge_start = to_ms_since_boot(get_absolute_time());
             gpio_put(CHARGE_EN, 1);
             printf("Beginning charging...\n");
         }
@@ -208,21 +221,21 @@ int main()
             if (command.kick_type == Chip) {
                 pattern |= 0b010;
             } else {
-                pattern |= 0b001;
+                pattern |= 0b100;
             }
         }
         if (charging) {
-            pattern |= 0b100;
+            pattern |= 0b001;
         }
         gen_led_out(pattern);
 
         #if DEBUG
             long sys_time = to_ms_since_boot(get_absolute_time());
             if (last_charge + CHARGE_COOLDOWN > sys_time) {
-                printf("Charge Cooldown: %d | Sys time: %d", last_charge + CHARGE_COOLDOWN, sys_time);
+                printf("Charge Cooldown: %d | Sys time: %d\n", last_charge + CHARGE_COOLDOWN, sys_time);
             }
             if (last_kick + CHARGE_COOLDOWN > sys_time) {
-                printf("Kick Cooldown: %d | Sys time: %d", last_kick + CHARGE_COOLDOWN, sys_time);
+                printf("Kick Cooldown: %d | Sys time: %d\n", last_kick + CHARGE_COOLDOWN, sys_time);
             }
         #endif
 
@@ -253,7 +266,6 @@ void kick(uint8_t strength, KickType kick_type) {
     sleep_us(kick_time);
     gpio_put(KICK_TRIG, 0);
     gpio_put(CHIP_TRIG, 0);
-    if (break_triggered) { gpio_put(BREAK_LED, 0); }
 
     last_kick = to_ms_since_boot(get_absolute_time());
     command.kick_trigger = Disabled;
@@ -307,14 +319,14 @@ void breakbeam_calibration() {
     uint32_t h = 0;
     uint32_t l = 0;
     gpio_put(BREAK_TRIG, 0);
-    sleep_ms(500);
+    sleep_ms(200);
     for (size_t i = 0; i < BREAK_CAL_CYCLES; i++) {
         l += read_breakbeam();
         gpio_put(BREAK_TRIG, 1);
-        sleep_ms(500);
+        sleep_ms(200);
         h += read_breakbeam();
         gpio_put(BREAK_TRIG, 0);
-        sleep_ms(500);
+        sleep_ms(200);
     }
     
     break_high = h / BREAK_CAL_CYCLES;
@@ -337,51 +349,48 @@ uint16_t read_breakbeam() {
 
 // Check all compenents health
 void startup() {
-    
+
     light_show();
     breakbeam_calibration();
-    
-    /*
-    // Run test cycle
-    while (voltage < VOLT_MIN) {
-        gpio_put(CHARGE_EN, 1);
-        voltage = read_voltage();
-        if (!(voltage > 0)) {
-            kicker_error(NoCharge);
-        }
-    }
-    gpio_put(CHARGE_EN, 0);
-    sleep_ms(CHARGE_COOLDOWN);
-    old_voltage = voltage
-    sleep_ms(100); // Artificial delay to measure hold across time
-    voltage = read_voltage();
-
-    if (voltage > old_voltage + 5) {
-        kicker_error(ContinuousCharging);
-    }
-
-    kick(15, Chip);
-
-    // Reset values for run
-    voltage = 0;
-    */
 
     // Init averaged values
-    gpio_put(BREAK_TRIG, 1);
+    
     #if DEBUG
     printf("Initing Value Averages...");
     #endif
     sleep_ms(100);
-    for (size_t i = 0; i < 15; i++) {
+    for (size_t i = 0; i < 20; i++) {
         voltage = read_voltage();
-        break_val = ((255 - KALPHA) * break_val + KALPHA * read_breakbeam()) / 255;
         #if DEBUG
             printf("Voltage: %.2f | Break: %d\n", voltage, break_val);
         #endif
         sleep_ms(1);
     }
+
+
+    // Run test cycle
+    long debug_time = to_ms_since_boot(get_absolute_time());
+    while (voltage < VOLT_MIN * 3) {
+        gpio_put(CHARGE_EN, 1);
+        voltage = read_voltage();
+        if (to_ms_since_boot(get_absolute_time()) - debug_time > 5000) {
+            kicker_error(NoCharge);
+        }
+    }
+    gpio_put(CHARGE_EN, 0);
+    sleep_ms(CHARGE_COOLDOWN);
     old_voltage = voltage;
-    gpio_put(BREAK_TRIG, 0);
+    sleep_ms(100); // Artificial delay to measure hold across time
+    voltage = read_voltage();
+
+    if (voltage > old_voltage + VOLT_TOLERANCE) {
+        kicker_error(ContinuousCharging);
+    }
+
+    kick(15, Kick);
+
+    old_voltage = voltage;
+    prev_voltage = voltage;
 }
 
 // Bit pattern: 000 | MAX | HIGH | MID | LOW | MIN, 1 = ON
@@ -416,19 +425,19 @@ void hv_led_out(uint8_t pattern) {
 // Bit pattern: 00000 | LED_2 | LED_1 | LED_0, 1 = ON
 void gen_led_out(uint8_t pattern) {
     if (pattern & 0b1) {
-        gpio_put(LED_0, 0);
-    } else {
         gpio_put(LED_0, 1);
+    } else {
+        gpio_put(LED_0, 0);
     }
     if (pattern >> 1 & 0b1) {
-        gpio_put(LED_1, 0);
-    } else {
         gpio_put(LED_1, 1);
+    } else {
+        gpio_put(LED_1, 0);
     }
     if (pattern >> 2 & 0b1) {
-        gpio_put(LED_2, 0);
-    } else {
         gpio_put(LED_2, 1);
+    } else {
+        gpio_put(LED_2, 0);
     }
 }
 
@@ -561,7 +570,7 @@ void suicide_protocal() {
 // Always does everything it can to discharge safely
 // Assume unrecoverable
 void kicker_error(KickerError e) {
-    if (DISABLE_ERRORS) { return; }
+    if (DISABLE_ERRORS && (e != ChargeTimeout && e != OverVoltage && e != MajorOverVoltage && e != NoCharge)) { return; }
 
     uint8_t flash_delay = 200;
     if (e == MajorOverVoltage) {
