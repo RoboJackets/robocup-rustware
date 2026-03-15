@@ -1,0 +1,597 @@
+Break Off: 1066, Break On: 136, Difference: 930
+Volt Raw: 20 | Volt Actual: 1.99 | Volt Normalized: 1.98
+ERROR ChargeTimeout DURING CommandIO
+Break Off: 1067, Break On: 137, Difference: 930
+Break Off: 1068, Break On: 137, Difference: 931
+Break Off: 1068, Break On: 136, Difference: 932
+Break Off: 1067, Break On: 136, Difference: 931
+Break Off: 1068, Break On: 136, Difference: 932
+Break Off: 1067, Break On: 137, Difference: 930
+Break Off: 1068, Break On: 137, Difference: 931
+Break Off: 1068, Break On: 137, Difference: 931
+Break Off: 1068, Break On: 136, Difference: 932
+Break Off: 1069, Break On: 136, Difference: 933
+Break Off: 1070, Break On: 136, Difference: 934
+Break Off: 1069, Break On: 136, Difference: 933
+Break Off: 1069, Break On: 136, Difference: 933
+Break Off: 1070, Break On: 136, Difference: 934
+Break Off: 1069, Break On: 137, Difference: 932
+Volt Raw: 19 | Volt Actual: 1.89 | Volt Normalized: 1.96
+ERROR ChargeTimeout DURING CommandIO
+Break Off: 1069, Break On: 137, Difference: 932
+Break Off: 1069, Break On: 136, Difference: 933
+Break Off: 1069, Break On: 135, Difference: 934
+Break Off: 1070, Break On: 136, Difference: 934
+Break Off: 1069, Break On: 137, Difference: 932
+Break Off: 1070, Break On: 136, Difference: 934
+Break Off: 1070, Break On: 137, Difference: 933
+Break Off: 1070, Break On: 136, Difference: 934
+Break Off: 1070, Break On: 137, Difference: 933
+Break Off: 1071, Break On: 137, Difference: 934
+Break Off: 1072, Break On: 136, Difference: 936
+Break Off: 1071, Break On: 136, Difference: 935
+Break Off: 1070, Break On: 136, Difference: 934
+Break Off: 1071, Break On: 136, Difference: 935
+Break Off: 1071, Break On: 136, Difference: 935
+Break Off: 1070, Break On: 137, Difference: 933
+Volt Raw: 20 | Volt Actual: 1.99 | Volt Normalized: 1.96
+ERROR ChargeTimeout DURING CommandIO
+Break Off: 1069, Break On: 137, Difference: 932
+Break Off: 1070, Break On: 136, Difference: 934
+Break Off: 1070, Break On: 137, Difference: 933
+Break Off: 1070, Break On: 136, Difference: 934
+Break Off: 1070, Break On: 137, Difference: 933
+Break Off: 1070, Break On: 136, Difference: 934
+Break Off: 1070, Break On: 137, Difference: 933
+Break Off: 1070, Break On: 136, Difference: 934
+Break Off: 1071, Break On: 137, Difference: 934
+Break Off: 1070, Break On: 136, Difference: 934
+Break Off: 1070, Break On: 137, Difference: 933
+Break Off: 1071, Break On: 137, Difference: 934
+Break Off: 1072, Break On: 137, Difference: 935
+Break Off: 1070, Break On: 136, Difference: 934
+Break Off: 1070, Break On: 136, Difference: 934
+Break Off: 1069, Break On: 136, Difference: 933
+Volt Raw: 20 | Volt Actual: 1.99 | Volt Normalized: 1.97
+ERROR ChargeTimeout DURING CommandIO
+Break Off: 1069, Break On: 136, Difference: 933
+Break Off: 1069, Break On: 136, Difference: 933
+Break Off: 1069, Break On: 137, Difference: 932
+Break Off: 1070, Break On: 137, Difference: 933
+Break Off: 1069, Break On: 137, Difference: 932
+Break Off: 1069, Break On: 137, Difference: 932
+Break Off: 1069, Break On: 137, Difference: 932
+Break Off: 1069, Break On: 136, Difference: 933
+Break Off: 1069, Break On: 136, Difference: 933
+Break Off: 1069, Break On: 136, Difference: 933
+Break Off: 1069, Break On: 136, Difference: 933
+Break Off: 1068, Break On: 136, Difference: 932
+Break Off: 1069, Break On: 136, Difference: 933
+Break Off: 1069, Break On: 136, Difference: 933
+Break Off: 1068, Break On: 136, Difference: 932
+Break Off: 1069, Break On: 137, Difference: 932
+Volt Raw: 20 | Volt Actual: 1.99 | Volt Normalized: 1.98
+ERROR ChargeTimeout DURING CommandIO
+Break Off: 1069, Break On: 136, Difference: 933
+Break Off: 1068, Break On: 137, Difference: 931
+Break Off: 1069, Break On: 137, Difference: 932
+Break Off: 1068, Break On: 136, Difference: 932
+Break Off: 1069, Break On: 137, Difference: 932
+Break Off: 1070, Break On: 137, Difference: 933
+Break Off: 1070, Break On: 137, Difference: 933
+Break Off: 1070, Break On: 136, Difference: 934
+Break Off: 1071, Break On: 137, Difference: 934
+Break Off: 1071, Break On: 137, Difference: 934
+Break Off: 1072, Break On: 136, Difference: 936
+Break Off: 1072, Break On: 136, Difference: 936
+Break Off: 1072, Break On: 137, Difference: 935
+Break Off: 1073, Break On: 136, Difference: 937
+Break Off: 1073, Break On: 137, Difference: 936
+Break Off: 1074, Break On: 136, Difference: 938
+Volt Raw: 20 | Volt Actual: 1.99 | Volt Normalized: 1.98
+ERROR ChargeTimeout DURING CommandIO
+Break Off: 1073, Break On: 136, Difference: 937
+Break Off: 1074, Break On: 136, Difference: 938
+Break Off: 1074, Break On: 136, Difference: 938
+Break Off: 1074, Break On: 136, Difference: 938
+Break Off: 1075, Break On: 137, Difference: 938
+Break Off: 1076, Break On: 137, Difference: 939
+Break Off: 1076, Break On: 136, Difference: 940
+Break Off: 1076, Break On: 137, Difference: 939
+Break Off: 1077, Break On: 137, Difference: 940
+Break Off: 1078, Break On: 137, Difference: 941
+Break Off: 1080, Break On: 136, Difference: 944
+Break Off: 1082, Break On: 136, Difference: 946
+Break Off: 1084, Break On: 137, Difference: 947
+Break Off: 1088, Break On: 137, Difference: 951
+Break Off: 1090, Break On: 137, Difference: 953
+Break Off: 1093, Break On: 137, Difference: 956
+Volt Raw: 20 | Volt Actual: 1.99 | Volt Normalized: 1.98
+ERROR ChargeTimeout DURING CommandIO
+Break Off: 1097, Break On: 136, Difference: 961
+Break Off: 1100, Break On: 137, Difference: 963
+Break Off: 1102, Break On: 137, Difference: 965
+Break Off: 1105, Break On: 137, Difference: 968
+Break Off: 1106, Break On: 137, Difference: 969
+Break Off: 1109, Break On: 137, Difference: 972
+Break Off: 1112, Break On: 136, Difference: 976
+Break Off: 1113, Break On: 137, Difference: 976
+Break Off: 1117, Break On: 137, Difference: 980
+Break Off: 1118, Break On: 137, Difference: 981
+Break Off: 1120, Break On: 137, Difference: 983
+Break Off: 1123, Break On: 136, Difference: 987
+Break Off: 1125, Break On: 137, Difference: 988
+Break Off: 1129, Break On: 137, Difference: 992
+Break Off: 1132, Break On: 137, Difference: 995
+Break Off: 1135, Break On: 137, Difference: 998
+Volt Raw: 20 | Volt Actual: 1.99 | Volt Normalized: 1.98
+ERROR ChargeTimeout DURING CommandIO
+Break Off: 1138, Break On: 137, Difference: 1001
+Break Off: 1142, Break On: 137, Difference: 1005
+Break Off: 1147, Break On: 137, Difference: 1010
+Break Off: 1155, Break On: 137, Difference: 1018
+Break Off: 1167, Break On: 137, Difference: 1030
+Break Off: 1183, Break On: 137, Difference: 1046
+Break Off: 1210, Break On: 137, Difference: 1073
+Break Off: 1246, Break On: 161, Difference: 1085
+Break Off: 1323, Break On: 279, Difference: 1044
+Break Off: 1478, Break On: 570, Difference: 908
+Break Off: 1673, Break On: 1214, Difference: 459
+Break Off: 1869, Break On: 1578, Difference: 291
+Break Off: 1989, Break On: 1732, Difference: 257
+Break Off: 2056, Break On: 1842, Difference: 214
+Break Off: 2114, Break On: 1953, Difference: 161
+Break Off: 2163, Break On: 2028, Difference: 135
+Volt Raw: 20 | Volt Actual: 1.99 | Volt Normalized: 1.98
+ERROR ChargeTimeout DURING CommandIO
+Break Off: 2198, Break On: 2077, Difference: 121
+Break Off: 2218, Break On: 2095, Difference: 123
+Break Off: 2232, Break On: 2106, Difference: 126
+Break Off: 2237, Break On: 2113, Difference: 124
+Break Off: 2243, Break On: 2120, Difference: 123
+Break Off: 2249, Break On: 2124, Difference: 125
+Break Off: 2256, Break On: 2134, Difference: 122
+Break Off: 2265, Break On: 2144, Difference: 121
+Break Off: 2273, Break On: 2154, Difference: 119
+Break Off: 2282, Break On: 2166, Difference: 116
+Break Off: 2289, Break On: 2173, Difference: 116
+Break Off: 2292, Break On: 2176, Difference: 116
+Break Off: 2293, Break On: 2179, Difference: 114
+Break Off: 2293, Break On: 2184, Difference: 109
+Break Off: 2298, Break On: 2187, Difference: 111
+Break Off: 2300, Break On: 2192, Difference: 108
+Volt Raw: 20 | Volt Actual: 1.99 | Volt Normalized: 1.99
+ERROR ChargeTimeout DURING CommandIO
+Break Off: 2303, Break On: 2196, Difference: 107
+Break Off: 2306, Break On: 2203, Difference: 103
+Break Off: 2310, Break On: 2211, Difference: 99
+Break Off: 2316, Break On: 2217, Difference: 99
+Break Off: 2322, Break On: 2227, Difference: 95
+Break Off: 2329, Break On: 2235, Difference: 94
+Break Off: 2332, Break On: 2240, Difference: 92
+Break Off: 2334, Break On: 2243, Difference: 91
+Break Off: 2337, Break On: 2250, Difference: 87
+Break Off: 2344, Break On: 2259, Difference: 85
+Break Off: 2350, Break On: 2265, Difference: 85
+Break Off: 2353, Break On: 2268, Difference: 85
+Break Off: 2353, Break On: 2268, Difference: 85
+Break Off: 2352, Break On: 2268, Difference: 84
+Break Off: 2352, Break On: 2272, Difference: 80
+Break Off: 2356, Break On: 2274, Difference: 82
+Volt Raw: 20 | Volt Actual: 1.99 | Volt Normalized: 1.99
+ERROR ChargeTimeout DURING CommandIO
+Break Off: 2358, Break On: 2278, Difference: 80
+Break Off: 2362, Break On: 2285, Difference: 77
+Break Off: 2369, Break On: 2292, Difference: 77
+Break Off: 2372, Break On: 2298, Difference: 74
+Break Off: 2373, Break On: 2301, Difference: 72
+Break Off: 2374, Break On: 2300, Difference: 74
+Break Off: 2374, Break On: 2301, Difference: 73
+Break Off: 2374, Break On: 2304, Difference: 70
+Break Off: 2377, Break On: 2308, Difference: 69
+Break Off: 2380, Break On: 2313, Difference: 67
+Break Off: 2382, Break On: 2317, Difference: 65
+Break Off: 2386, Break On: 2321, Difference: 65
+Break Off: 2389, Break On: 2329, Difference: 60
+Break Off: 2393, Break On: 2332, Difference: 61
+Break Off: 2397, Break On: 2336, Difference: 61
+Break Off: 2397, Break On: 2340, Difference: 57
+Volt Raw: 19 | Volt Actual: 1.89 | Volt Normalized: 1.96
+ERROR ChargeTimeout DURING CommandIO
+Break Off: 2400, Break On: 2341, Difference: 59
+Break Off: 2400, Break On: 2342, Difference: 58
+Break Off: 2401, Break On: 2345, Difference: 56
+Break Off: 2402, Break On: 2347, Difference: 55
+Break Off: 2405, Break On: 2353, Difference: 52
+Break Off: 2409, Break On: 2357, Difference: 52
+Break Off: 2413, Break On: 2360, Difference: 53
+Break Off: 2416, Break On: 2366, Difference: 50
+Break Off: 2420, Break On: 2370, Difference: 50
+Break Off: 2427, Break On: 2376, Difference: 51
+Break Off: 2428, Break On: 2380, Difference: 48
+Break Off: 2432, Break On: 2384, Difference: 48
+Break Off: 2433, Break On: 2386, Difference: 47
+Break Off: 2434, Break On: 2386, Difference: 48
+Break Off: 2434, Break On: 2386, Difference: 48
+Break Off: 2434, Break On: 2386, Difference: 48
+Volt Raw: 20 | Volt Actual: 1.99 | Volt Normalized: 1.97
+ERROR ChargeTimeout DURING CommandIO
+Break Off: 2436, Break On: 2388, Difference: 48
+Break Off: 2436, Break On: 2388, Difference: 48
+Break Off: 2436, Break On: 2388, Difference: 48
+Break Off: 2435, Break On: 2387, Difference: 48
+Break Off: 2436, Break On: 2388, Difference: 48
+Break Off: 2433, Break On: 2389, Difference: 44
+Break Off: 2440, Break On: 2392, Difference: 48
+Break Off: 2441, Break On: 2394, Difference: 47
+Break Off: 2444, Break On: 2398, Difference: 46
+Break Off: 2448, Break On: 2402, Difference: 46
+Break Off: 2451, Break On: 2404, Difference: 47
+Break Off: 2451, Break On: 2404, Difference: 47
+Break Off: 2450, Break On: 2400, Difference: 50
+Break Off: 2443, Break On: 2390, Difference: 53
+Break Off: 2433, Break On: 2376, Difference: 57
+Break Off: 2402, Break On: 2338, Difference: 64
+Volt Raw: 20 | Volt Actual: 1.99 | Volt Normalized: 1.97
+ERROR ChargeTimeout DURING CommandIO
+Break Off: 2340, Break On: 2116, Difference: 224
+Break Off: 2192, Break On: 149, Difference: 2043
+Break Off: 1288, Break On: 139, Difference: 1149
+Break Off: 1179, Break On: 137, Difference: 1042
+Break Off: 1152, Break On: 138, Difference: 1014
+Break Off: 1138, Break On: 137, Difference: 1001
+Break Off: 1129, Break On: 136, Difference: 993
+Break Off: 1123, Break On: 137, Difference: 986
+Break Off: 1118, Break On: 137, Difference: 981
+Break Off: 1116, Break On: 137, Difference: 979
+Break Off: 1115, Break On: 136, Difference: 979
+Break Off: 1112, Break On: 137, Difference: 975
+Break Off: 1113, Break On: 137, Difference: 976
+Break Off: 1113, Break On: 137, Difference: 976
+Break Off: 1113, Break On: 137, Difference: 976
+Volt Raw: 20 | Volt Actual: 1.99 | Volt Normalized: 1.98
+ERROR ChargeTimeout DURING CommandIO
+Break Off: 1113, Break On: 137, Difference: 976
+Break Off: 1114, Break On: 136, Difference: 978
+Break Off: 1114, Break On: 137, Difference: 977
+Break Off: 1116, Break On: 137, Difference: 979
+Break Off: 1115, Break On: 137, Difference: 978
+Break Off: 1115, Break On: 137, Difference: 978
+Break Off: 1115, Break On: 138, Difference: 977
+Break Off: 1115, Break On: 137, Difference: 978
+Break Off: 1116, Break On: 137, Difference: 979
+Break Off: 1115, Break On: 137, Difference: 978
+Break Off: 1114, Break On: 137, Difference: 977
+Break Off: 1114, Break On: 136, Difference: 978
+Break Off: 1114, Break On: 137, Difference: 977
+Break Off: 1114, Break On: 136, Difference: 978
+Break Off: 1114, Break On: 137, Difference: 977
+Break Off: 1113, Break On: 137, Difference: 976
+Volt Raw: 20 | Volt Actual: 1.99 | Volt Normalized: 1.98
+ERROR ChargeTimeout DURING CommandIO
+Break Off: 1113, Break On: 137, Difference: 976
+Break Off: 1114, Break On: 137, Difference: 977
+Break Off: 1114, Break On: 137, Difference: 977
+Break Off: 1114, Break On: 137, Difference: 977
+Break Off: 1113, Break On: 137, Difference: 976
+Break Off: 1114, Break On: 137, Difference: 977
+Break Off: 1114, Break On: 137, Difference: 977
+Break Off: 1115, Break On: 137, Difference: 978
+Break Off: 1114, Break On: 137, Difference: 977
+Break Off: 1114, Break On: 137, Difference: 977
+Break Off: 1115, Break On: 136, Difference: 979
+Break Off: 1115, Break On: 137, Difference: 978
+Break Off: 1115, Break On: 137, Difference: 978
+Break Off: 1115, Break On: 137, Difference: 978
+Break Off: 1115, Break On: 137, Difference: 978
+Break Off: 1116, Break On: 137, Difference: 979
+Volt Raw: 20 | Volt Actual: 1.99 | Volt Normalized: 1.98
+ERROR ChargeTimeout DURING CommandIO
+Break Off: 1116, Break On: 137, Difference: 979
+Break Off: 1117, Break On: 137, Difference: 980
+Break Off: 1117, Break On: 137, Difference: 980
+Break Off: 1116, Break On: 137, Difference: 979
+Break Off: 1118, Break On: 137, Difference: 981
+Break Off: 1120, Break On: 137, Difference: 983
+Break Off: 1120, Break On: 137, Difference: 983
+Break Off: 1121, Break On: 138, Difference: 983
+Break Off: 1122, Break On: 137, Difference: 985
+Break Off: 1120, Break On: 136, Difference: 984
+Break Off: 1120, Break On: 137, Difference: 983
+Break Off: 1119, Break On: 137, Difference: 982
+Break Off: 1119, Break On: 137, Difference: 982
+Break Off: 1120, Break On: 137, Difference: 983
+Break Off: 1119, Break On: 137, Difference: 982
+Break Off: 1120, Break On: 137, Difference: 983
+Volt Raw: 20 | Volt Actual: 1.99 | Volt Normalized: 1.98
+ERROR ChargeTimeout DURING CommandIO
+Break Off: 1121, Break On: 137, Difference: 984
+Break Off: 1122, Break On: 138, Difference: 984
+Break Off: 1124, Break On: 137, Difference: 987
+Break Off: 1128, Break On: 137, Difference: 991
+Break Off: 1132, Break On: 137, Difference: 995
+Break Off: 1137, Break On: 137, Difference: 1000
+Break Off: 1142, Break On: 137, Difference: 1005
+Break Off: 1152, Break On: 137, Difference: 1015
+Break Off: 1169, Break On: 137, Difference: 1032
+Break Off: 1202, Break On: 137, Difference: 1065
+Break Off: 1253, Break On: 134, Difference: 1119
+Break Off: 1266, Break On: 118, Difference: 1148
+Break Off: 1221, Break On: 114, Difference: 1107
+Break Off: 1205, Break On: 116, Difference: 1089
+Break Off: 1205, Break On: 120, Difference: 1085
+Break Off: 1214, Break On: 124, Difference: 1090
+Volt Raw: 20 | Volt Actual: 1.99 | Volt Normalized: 1.99
+ERROR ChargeTimeout DURING CommandIO
+Break Off: 1228, Break On: 128, Difference: 1100
+Break Off: 1231, Break On: 129, Difference: 1102
+Break Off: 1222, Break On: 130, Difference: 1092
+Break Off: 1202, Break On: 130, Difference: 1072
+Break Off: 1188, Break On: 130, Difference: 1058
+Break Off: 1190, Break On: 131, Difference: 1059
+Break Off: 1213, Break On: 131, Difference: 1082
+Break Off: 1255, Break On: 131, Difference: 1124
+Break Off: 1294, Break On: 180, Difference: 1114
+Break Off: 1369, Break On: 1034, Difference: 335
+Break Off: 1758, Break On: 1789, Difference: 31
+Break Off: 1985, Break On: 1964, Difference: 21
+Break Off: 2071, Break On: 2035, Difference: 36
+Break Off: 2115, Break On: 2077, Difference: 38
+Break Off: 2145, Break On: 2102, Difference: 43
+Break Off: 2164, Break On: 2120, Difference: 44
+Volt Raw: 20 | Volt Actual: 1.99 | Volt Normalized: 1.99
+ERROR ChargeTimeout DURING CommandIO
+Break Off: 2177, Break On: 2129, Difference: 48
+Break Off: 2186, Break On: 2136, Difference: 50
+Break Off: 2193, Break On: 2144, Difference: 49
+Break Off: 2202, Break On: 2152, Difference: 50
+Break Off: 2208, Break On: 2158, Difference: 50
+Break Off: 2217, Break On: 2168, Difference: 49
+Break Off: 2226, Break On: 2179, Difference: 47
+Break Off: 2236, Break On: 2190, Difference: 46
+Break Off: 2244, Break On: 2201, Difference: 43
+Break Off: 2252, Break On: 2208, Difference: 44
+Break Off: 2257, Break On: 2212, Difference: 45
+Break Off: 2261, Break On: 2217, Difference: 44
+Break Off: 2265, Break On: 2222, Difference: 43
+Break Off: 2269, Break On: 2226, Difference: 43
+Break Off: 2267, Break On: 2227, Difference: 40
+Break Off: 2244, Break On: 2165, Difference: 79
+Volt Raw: 19 | Volt Actual: 1.89 | Volt Normalized: 1.96
+ERROR ChargeTimeout DURING CommandIO
+Break Off: 2157, Break On: 189, Difference: 1968
+Break Off: 1347, Break On: 136, Difference: 1211
+Break Off: 1150, Break On: 135, Difference: 1015
+Break Off: 1108, Break On: 134, Difference: 974
+Break Off: 1090, Break On: 134, Difference: 956
+Break Off: 1082, Break On: 134, Difference: 948
+Break Off: 1075, Break On: 134, Difference: 941
+Break Off: 1072, Break On: 134, Difference: 938
+Break Off: 1070, Break On: 134, Difference: 936
+Break Off: 1069, Break On: 134, Difference: 935
+Break Off: 1070, Break On: 134, Difference: 936
+Break Off: 1068, Break On: 134, Difference: 934
+Break Off: 1067, Break On: 134, Difference: 933
+Break Off: 1067, Break On: 134, Difference: 933
+Break Off: 1067, Break On: 134, Difference: 933
+Break Off: 1067, Break On: 134, Difference: 933
+Volt Raw: 20 | Volt Actual: 1.99 | Volt Normalized: 1.97
+ERROR ChargeTimeout DURING CommandIO
+Break Off: 1068, Break On: 134, Difference: 934
+Break Off: 1067, Break On: 134, Difference: 933
+Break Off: 1067, Break On: 134, Difference: 933
+Break Off: 1067, Break On: 134, Difference: 933
+Break Off: 1066, Break On: 134, Difference: 932
+Break Off: 1066, Break On: 134, Difference: 932
+Break Off: 1066, Break On: 134, Difference: 932
+Break Off: 1066, Break On: 134, Difference: 932
+Break Off: 1067, Break On: 134, Difference: 933
+Break Off: 1065, Break On: 134, Difference: 931
+Break Off: 1064, Break On: 134, Difference: 930
+Break Off: 1064, Break On: 134, Difference: 930
+Break Off: 1065, Break On: 133, Difference: 932
+Break Off: 1064, Break On: 134, Difference: 930
+Break Off: 1064, Break On: 134, Difference: 930
+Break Off: 1064, Break On: 134, Difference: 930
+Volt Raw: 20 | Volt Actual: 1.99 | Volt Normalized: 1.97
+ERROR ChargeTimeout DURING CommandIO
+Break Off: 1065, Break On: 135, Difference: 930
+Break Off: 1065, Break On: 134, Difference: 931
+Break Off: 1064, Break On: 134, Difference: 930
+Break Off: 1064, Break On: 135, Difference: 929
+Break Off: 1064, Break On: 134, Difference: 930
+Break Off: 1064, Break On: 135, Difference: 929
+Break Off: 1065, Break On: 134, Difference: 931
+Break Off: 1065, Break On: 134, Difference: 931
+Break Off: 1065, Break On: 134, Difference: 931
+Break Off: 1064, Break On: 136, Difference: 928
+Break Off: 1065, Break On: 135, Difference: 930
+Break Off: 1065, Break On: 135, Difference: 930
+Break Off: 1065, Break On: 134, Difference: 931
+Break Off: 1064, Break On: 134, Difference: 930
+Break Off: 1063, Break On: 136, Difference: 927
+Break Off: 1065, Break On: 134, Difference: 931
+Volt Raw: 20 | Volt Actual: 1.99 | Volt Normalized: 1.98
+ERROR ChargeTimeout DURING CommandIO
+Break Off: 1066, Break On: 136, Difference: 930
+Break Off: 1065, Break On: 135, Difference: 930
+Break Off: 1065, Break On: 134, Difference: 931
+Break Off: 1065, Break On: 135, Difference: 930
+Break Off: 1065, Break On: 134, Difference: 931
+Break Off: 1065, Break On: 136, Difference: 929
+Break Off: 1066, Break On: 136, Difference: 930
+Break Off: 1065, Break On: 134, Difference: 931
+Break Off: 1066, Break On: 135, Difference: 931
+Break Off: 1065, Break On: 134, Difference: 931
+Break Off: 1066, Break On: 136, Difference: 930
+Break Off: 1065, Break On: 136, Difference: 929
+Break Off: 1066, Break On: 135, Difference: 931
+Break Off: 1066, Break On: 134, Difference: 932
+Break Off: 1066, Break On: 135, Difference: 931
+Break Off: 1066, Break On: 135, Difference: 931
+Volt Raw: 20 | Volt Actual: 1.99 | Volt Normalized: 1.98
+ERROR ChargeTimeout DURING CommandIO
+Break Off: 1066, Break On: 135, Difference: 931
+Break Off: 1066, Break On: 136, Difference: 930
+Break Off: 1066, Break On: 134, Difference: 932
+Break Off: 1065, Break On: 135, Difference: 930
+Break Off: 1066, Break On: 136, Difference: 930
+Break Off: 1065, Break On: 136, Difference: 929
+Break Off: 1066, Break On: 135, Difference: 931
+Break Off: 1066, Break On: 135, Difference: 931
+Break Off: 1065, Break On: 134, Difference: 931
+Break Off: 1066, Break On: 134, Difference: 932
+Break Off: 1066, Break On: 134, Difference: 932
+Break Off: 1066, Break On: 136, Difference: 930
+Break Off: 1066, Break On: 136, Difference: 930
+Break Off: 1066, Break On: 136, Difference: 930
+Break Off: 1066, Break On: 135, Difference: 931
+Break Off: 1066, Break On: 136, Difference: 930
+Volt Raw: 20 | Volt Actual: 1.99 | Volt Normalized: 1.98
+ERROR ChargeTimeout DURING CommandIO
+Break Off: 1067, Break On: 136, Difference: 931
+Break Off: 1067, Break On: 136, Difference: 931
+Break Off: 1066, Break On: 136, Difference: 930
+Break Off: 1066, Break On: 137, Difference: 929
+Break Off: 1067, Break On: 135, Difference: 932
+Break Off: 1066, Break On: 136, Difference: 930
+Break Off: 1067, Break On: 136, Difference: 931
+Break Off: 1067, Break On: 136, Difference: 931
+Break Off: 1066, Break On: 136, Difference: 930
+Break Off: 1066, Break On: 136, Difference: 930
+Break Off: 1066, Break On: 136, Difference: 930
+Break Off: 1066, Break On: 136, Difference: 930
+Break Off: 1067, Break On: 136, Difference: 931
+Break Off: 1068, Break On: 135, Difference: 933
+Break Off: 1068, Break On: 136, Difference: 932
+Volt Raw: 20 | Volt Actual: 1.99 | Volt Normalized: 1.98
+ERROR ChargeTimeout DURING CommandIO
+Break Off: 1067, Break On: 136, Difference: 931
+Break Off: 1067, Break On: 136, Difference: 931
+Break Off: 1068, Break On: 136, Difference: 932
+Break Off: 1067, Break On: 136, Difference: 931
+Break Off: 1066, Break On: 136, Difference: 930
+Break Off: 1067, Break On: 136, Difference: 931
+Break Off: 1067, Break On: 136, Difference: 931
+Break Off: 1065, Break On: 136, Difference: 929
+Break Off: 1066, Break On: 136, Difference: 930
+Break Off: 1067, Break On: 136, Difference: 931
+Break Off: 1066, Break On: 136, Difference: 930
+Break Off: 1066, Break On: 134, Difference: 932
+Break Off: 1066, Break On: 136, Difference: 930
+Break Off: 1065, Break On: 136, Difference: 929
+Break Off: 1066, Break On: 136, Difference: 930
+Break Off: 1066, Break On: 136, Difference: 930
+Volt Raw: 20 | Volt Actual: 1.99 | Volt Normalized: 1.99
+ERROR ChargeTimeout DURING CommandIO
+Break Off: 1066, Break On: 136, Difference: 930
+Break Off: 1066, Break On: 136, Difference: 930
+Break Off: 1066, Break On: 136, Difference: 930
+Break Off: 1066, Break On: 137, Difference: 929
+Break Off: 1066, Break On: 136, Difference: 930
+Break Off: 1065, Break On: 136, Difference: 929
+Break Off: 1068, Break On: 136, Difference: 932
+Break Off: 1066, Break On: 136, Difference: 930
+Break Off: 1066, Break On: 137, Difference: 929
+Break Off: 1066, Break On: 136, Difference: 930
+Break Off: 1066, Break On: 136, Difference: 930
+Break Off: 1066, Break On: 137, Difference: 929
+Break Off: 1068, Break On: 136, Difference: 932
+Break Off: 1068, Break On: 136, Difference: 932
+Break Off: 1069, Break On: 136, Difference: 933
+Break Off: 1068, Break On: 136, Difference: 932
+Volt Raw: 20 | Volt Actual: 1.99 | Volt Normalized: 1.99
+ERROR ChargeTimeout DURING CommandIO
+Break Off: 1070, Break On: 137, Difference: 933
+Break Off: 1069, Break On: 136, Difference: 933
+Break Off: 1068, Break On: 136, Difference: 932
+Break Off: 1068, Break On: 136, Difference: 932
+Break Off: 1067, Break On: 136, Difference: 931
+Break Off: 1067, Break On: 136, Difference: 931
+Break Off: 1068, Break On: 136, Difference: 932
+Break Off: 1067, Break On: 136, Difference: 931
+Break Off: 1067, Break On: 136, Difference: 931
+Break Off: 1066, Break On: 136, Difference: 930
+Break Off: 1066, Break On: 136, Difference: 930
+Break Off: 1067, Break On: 136, Difference: 931
+Break Off: 1066, Break On: 136, Difference: 930
+Break Off: 1066, Break On: 136, Difference: 930
+Break Off: 1066, Break On: 136, Difference: 930
+Break Off: 1066, Break On: 135, Difference: 931
+Volt Raw: 20 | Volt Actual: 1.99 | Volt Normalized: 1.99
+ERROR ChargeTimeout DURING CommandIO
+Break Off: 1066, Break On: 136, Difference: 930
+Break Off: 1065, Break On: 136, Difference: 929
+Break Off: 1066, Break On: 137, Difference: 929
+Break Off: 1066, Break On: 137, Difference: 929
+Break Off: 1066, Break On: 136, Difference: 930
+Break Off: 1066, Break On: 136, Difference: 930
+Break Off: 1068, Break On: 136, Difference: 932
+Break Off: 1067, Break On: 135, Difference: 932
+Break Off: 1067, Break On: 137, Difference: 930
+Break Off: 1066, Break On: 136, Difference: 930
+Break Off: 1066, Break On: 136, Difference: 930
+Break Off: 1067, Break On: 136, Difference: 931
+Break Off: 1065, Break On: 136, Difference: 929
+Break Off: 1066, Break On: 136, Difference: 930
+Break Off: 1067, Break On: 136, Difference: 931
+Break Off: 1067, Break On: 136, Difference: 931
+Volt Raw: 20 | Volt Actual: 1.99 | Volt Normalized: 1.99
+ERROR ChargeTimeout DURING CommandIO
+Break Off: 1066, Break On: 136, Difference: 930
+Break Off: 1066, Break On: 137, Difference: 929
+Break Off: 1066, Break On: 136, Difference: 930
+Break Off: 1066, Break On: 136, Difference: 930
+Break Off: 1065, Break On: 136, Difference: 929
+Break Off: 1066, Break On: 136, Difference: 930
+Break Off: 1066, Break On: 137, Difference: 929
+Break Off: 1066, Break On: 136, Difference: 930
+Break Off: 1066, Break On: 136, Difference: 930
+Break Off: 1067, Break On: 136, Difference: 931
+Break Off: 1066, Break On: 136, Difference: 930
+Break Off: 1064, Break On: 137, Difference: 927
+Break Off: 1066, Break On: 136, Difference: 930
+Break Off: 1066, Break On: 136, Difference: 930
+Break Off: 1068, Break On: 136, Difference: 932
+Break Off: 1067, Break On: 136, Difference: 931
+Volt Raw: 20 | Volt Actual: 1.99 | Volt Normalized: 1.99
+ERROR ChargeTimeout DURING CommandIO
+Break Off: 1066, Break On: 137, Difference: 929
+Break Off: 1067, Break On: 136, Difference: 931
+Break Off: 1066, Break On: 136, Difference: 930
+Break Off: 1067, Break On: 136, Difference: 931
+Break Off: 1066, Break On: 136, Difference: 930
+Break Off: 1067, Break On: 136, Difference: 931
+Break Off: 1066, Break On: 136, Difference: 930
+Break Off: 1066, Break On: 136, Difference: 930
+Break Off: 1066, Break On: 136, Difference: 930
+Break Off: 1067, Break On: 136, Difference: 931
+Break Off: 1066, Break On: 136, Difference: 930
+Break Off: 1068, Break On: 136, Difference: 932
+Break Off: 1066, Break On: 136, Difference: 930
+Break Off: 1067, Break On: 136, Difference: 931
+Break Off: 1066, Break On: 136, Difference: 930
+Break Off: 1066, Break On: 136, Difference: 930
+Volt Raw: 20 | Volt Actual: 1.99 | Volt Normalized: 1.99
+ERROR ChargeTimeout DURING CommandIO
+Break Off: 1066, Break On: 136, Difference: 930
+Break Off: 1067, Break On: 137, Difference: 930
+Break Off: 1067, Break On: 137, Difference: 930
+Break Off: 1067, Break On: 136, Difference: 931
+Break Off: 1066, Break On: 137, Difference: 929
+Break Off: 1067, Break On: 137, Difference: 930
+Break Off: 1067, Break On: 136, Difference: 931
+Break Off: 1067, Break On: 136, Difference: 931
+Break Off: 1066, Break On: 137, Difference: 929
+Break Off: 1067, Break On: 136, Difference: 931
+Break Off: 1067, Break On: 137, Difference: 930
+Break Off: 1067, Break On: 136, Difference: 931
+Break Off: 1066, Break On: 137, Difference: 929
+Break Off: 1067, Break On: 136, Difference: 931
+Break Off: 1066, Break On: 136, Difference: 930
+Break Off: 1067, Break On: 136, Difference: 931
+Volt Raw: 20 | Volt Actual: 1.99 | Volt Normalized: 1.99
+ERROR ChargeTimeout DURING CommandIO
+Break Off: 1067, Break On: 136, Difference: 931
+Break Off: 1067, Break On: 137, Difference: 930
+Break Off: 1068, Break On: 137, Difference: 931

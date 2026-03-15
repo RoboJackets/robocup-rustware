@@ -23,9 +23,9 @@
 #define DISCHARGE_DISABLE 18
 #define KICK_TRIG 20
 #define CHIP_TRIG 19
-#define CHARGE_EN 23 // TEMP RESET TO 23
+#define CHARGE_EN 23
 #define CHARGE_SYNC 24
-#define VOLT_SENSE 29 // TEMP RESET TO 29
+#define VOLT_SENSE 29
 
 /* BREAKBEAM */
 #define BREAK_LED 16
@@ -35,4 +35,4 @@
 /* GENERAL LEDS */
 #define LED_0 25
 #define LED_1 26
-#define LED_2 27 // TEMP RESET TO 27
+#define LED_2 27

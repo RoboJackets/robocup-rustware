@@ -6,8 +6,8 @@
 #define BREAK_CAL_CYCLES 3 // Number of times to measure breakbeam to set high/low
 #define BTN_COOLDOWN 500 // ms
 
-#define CHARGE_SYNC_EN 0
-#define CHARGE_SYNC_FREQ 50000 // Hz (DONT GO OVER 200KHZ WILL DESTROY BOARD)
+#define CHARGE_SYNC_EN 1 // Do not set if board does not have charge sync resistor
+#define CHARGE_SYNC_FREQ 100000 // Hz (DONT GO OVER 200KHZ WILL DESTROY BOARD)
 
 #define VOLT_RANGE 3.3 / 4096.0 // Pico Vref vs ADC
 #define VOLT_CONVERSION 250 / 2.025 * VOLT_RANGE // Voltage scale with divider values
@@ -18,6 +18,8 @@
 #define MAX_KICK_TIME 28200 // us
 #define KICK_COOLDOWN 100 // ms
 #define CHARGE_COOLDOWN 100 // ms
+
+#define BREAK_THRESHOLD 100
 
 // Error checking
 #define CHARGE_TIME_MAX 20000 // ms
@@ -35,3 +37,4 @@
 #define E_NO_CHARGE 0
 #define E_CHARGE_TIMEOUT 1
 #define E_NO_DISCHARGE 1
+#define E_BREAK_BLOCKAGE 1
