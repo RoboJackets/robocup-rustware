@@ -122,7 +122,6 @@ int main() {
 
     // Main control loop
     while (true) {
-        command.kick_trigger = Breakbeam; // TEMP
         /// READ DATA
         state = KickerState::CommandIO;
 
