@@ -1,7 +1,7 @@
 #pragma once
 
 #define DEBUG 1
-#define DISABLE_ERRORS 1 // Purely for sofware debugging, do not use
+#define DISABLE_ERRORS 0 // Purely for sofware debugging, do not use
 #define SPI_CLK_FREQUENCY 2000000 // Hz
 #define BREAK_CAL_CYCLES 3 // Number of times to measure breakbeam to set high/low
 #define BTN_COOLDOWN 500 // ms
@@ -15,7 +15,7 @@
 #define VOLT_MIN 10
 #define KALPHA 64 // KALHPA / 255 of last value used for averaging
 
-#define MAX_KICK_TIME 100000 // us
+#define MAX_KICK_TIME 28200 // us
 #define KICK_COOLDOWN 100 // ms
 #define CHARGE_COOLDOWN 100 // ms
 
@@ -26,3 +26,12 @@
 #define VOLT_TOLERANCE 3 // Used for comparing to old_voltage
 #define VOLT_TOLERANCE_CHARGE 10
 #define NO_CHARGE_COOLDOWN 1000 // ms
+
+// Enables for specific errors
+#define E_OVER_VOLTAGE 1
+#define E_MAJOR_OVER_VOLTAGE 1
+#define E_CONTINUOUS_CHARGING 0
+#define E_CONTINUOUS_DISCHARGING 0
+#define E_NO_CHARGE 0
+#define E_CHARGE_TIMEOUT 1
+#define E_NO_DISCHARGE 1
