@@ -129,19 +129,17 @@ int main() {
             command = read_command();
         }
 
-        #if DEBUG
-            command.print();
-        #endif
-
         // Read buttons
         if (kick_btn_cooldown + BTN_COOLDOWN < to_ms_since_boot(get_absolute_time()) && gpio_get(KICK_BTN)) {
             command.kick_type = Kick;
             command.kick_trigger = Immediate;
+            command.kick_strength = 15;
             kick_btn_cooldown = to_ms_since_boot(get_absolute_time());
         }
         if (chip_btn_cooldown + BTN_COOLDOWN < to_ms_since_boot(get_absolute_time()) && gpio_get(CHIP_BTN)) {
             command.kick_type = Chip;
             command.kick_trigger = Immediate;
+            command.kick_strength = 15;
             chip_btn_cooldown = to_ms_since_boot(get_absolute_time());
         }
         if (charge_btn_cooldown + BTN_COOLDOWN < to_ms_since_boot(get_absolute_time()) && gpio_get(CHARGE_BTN)) {
@@ -207,7 +205,7 @@ int main() {
             charging = true;
             charge_start = to_ms_since_boot(get_absolute_time());
             gpio_put(CHARGE_EN, 1);
-            printf("Beginning charging...\n");
+            printf("BEGINNING CHARGE\n");
         }
         if (charging) {
             state = Charging;
@@ -248,13 +246,20 @@ int main() {
         }
         gen_led_out(pattern);
 
+
         #if DEBUG
-            long sys_time = to_ms_since_boot(get_absolute_time());
-            if (last_charge + CHARGE_COOLDOWN > sys_time) {
-                printf("Charge Cooldown: %d | Sys time: %d\n", last_charge + CHARGE_COOLDOWN, sys_time);
-            }
-            if (last_kick + CHARGE_COOLDOWN > sys_time) {
-                printf("Kick Cooldown: %d | Sys time: %d\n", last_kick + CHARGE_COOLDOWN, sys_time);
+            if (count % 1 == 0) {
+                uint64_t sys_time = to_ms_since_boot(get_absolute_time());
+                printf("======================Cycle:%llu======================\n", count);
+                printf("Sys Time: %llu\n", sys_time);
+                printf("Command: ");
+                command.print();
+                printf("Voltage: %.2f | Old Voltage: %.2f\n", voltage, old_voltage);
+                printf("Charge Cooldown: %d\n", (CHARGE_COOLDOWN + last_charge > sys_time ? CHARGE_COOLDOWN - (sys_time - last_charge) : 0));
+                printf("Kick Cooldown: %d\n", (KICK_COOLDOWN + last_kick > sys_time ? KICK_COOLDOWN - (sys_time - last_kick) : 0));
+                printf("Charging: %s\n", (charging ? "TRUE" : "FALSE"));
+                printf("Break Checking: %s | Break Triggered: %s\n", (checking_break ? "TRUE" : "FALSE"), (break_triggered ? "TRUE" : "FALSE"));
+                printf("=======================================================\n");
             }
         #endif
 
@@ -359,12 +364,12 @@ void startup() {
 
     // Init averaged values
     #if DEBUG
-    printf("Initing Value Averages...\n");
+    printf("INIT AVERAGED VOLTAGE\n");
     #endif
     sleep_ms(100);
     for (size_t i = 0; i < 20; i++) {
         voltage = read_voltage();
-        #if DEBUG
+        #if DEBUG && EXTRA_INFO
             printf("Voltage: %.2f\n", voltage);
         #endif
         sleep_ms(1);
@@ -478,7 +483,7 @@ float read_voltage() {
     uint16_t raw = read_voltage_raw();
     float voltage_new = VOLT_CONVERSION * raw;
     float voltage_norm = ((255 - KALPHA) * voltage + KALPHA * voltage_new) / 255;
-    #if DEBUG 
+    #if DEBUG && EXTRA_INFO
         printf("Volt Raw: %d | Volt Actual: %.2f | Volt Normalized: %.2f\n", raw, voltage_new, voltage_norm);
     #endif
 
