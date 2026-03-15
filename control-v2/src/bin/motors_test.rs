@@ -6,21 +6,16 @@ extern crate alloc;
 use defmt::*;
 use {defmt_rtt as _, panic_probe as _};
 
-use core::{cell::RefCell, default::Default, mem::MaybeUninit};
-use embassy_embedded_hal::shared_bus::blocking::spi::SpiDevice;
+use core::{default::Default, mem::MaybeUninit};
 use embassy_executor::Spawner;
+use embassy_stm32::i2c;
 use embassy_stm32::{
-    adc::Adc,
     bind_interrupts,
     gpio::{Input, Level, Output, Speed},
     usart::{self, Uart},
 };
-use embassy_stm32::{i2c, spi};
-use embassy_sync::{
-    blocking_mutex::{NoopMutex, raw::NoopRawMutex},
-    pubsub::PubSubChannel,
-};
-use embassy_time::{Delay, Duration, Timer};
+use embassy_sync::{blocking_mutex::raw::NoopRawMutex, pubsub::PubSubChannel};
+use embassy_time::{Duration, Timer};
 use ssd1306::{I2CDisplayInterface, Ssd1306, prelude::*};
 use static_cell::StaticCell;
 
@@ -29,13 +24,9 @@ use common::{
     motor::{MotorCommand, MotorMoveResponse},
 };
 use control_v2::{
-    battery, control,
-    gpio::{self, decode_robot_id, decode_team},
-    graphics, kicker, motor,
-    radio::{self, control_command::ControlMessage},
+    gpio::{decode_robot_id, decode_team},
+    graphics, motor, utils,
 };
-use kicker_controller::Kicker;
-use rf24::radio::RF24;
 
 // Allocator
 use embedded_alloc::LlffHeap;
@@ -44,17 +35,6 @@ static HEAP: LlffHeap = LlffHeap::empty();
 const HEAP_SIZE: usize = 1024 * 8;
 static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
 
-/// The channel for publishing ControlMessages received from the radio
-pub static COMMAND_CHANNEL: StaticCell<PubSubChannel<NoopRawMutex, ControlMessage, 4, 2, 1>> =
-    StaticCell::new();
-/// The channel for publishing kicker states
-pub static KICKER_STATE_CHANNEL: StaticCell<
-    PubSubChannel<NoopRawMutex, kicker_controller::KickerState, 4, 2, 1>,
-> = StaticCell::new();
-/// The channel for publishing imu data
-pub static IMU_DATA_CHANNEL: StaticCell<
-    PubSubChannel<NoopRawMutex, control_v2::imu::ImuData, 4, 1, 1>,
-> = StaticCell::new();
 /// The channel for publishing motor 1 commands
 pub static MOTOR1_COMMAND_CHANNEL: StaticCell<PubSubChannel<NoopRawMutex, MotorCommand, 4, 1, 1>> =
     StaticCell::new();
@@ -87,12 +67,6 @@ pub static MOTOR4_STATUS_CHANNEL: StaticCell<
 pub static DRIBBLER_COMMAND_CHANNEL: StaticCell<
     PubSubChannel<NoopRawMutex, DribblerCommand, 4, 1, 1>,
 > = StaticCell::new();
-/// The channel for turning off the robot
-pub static POWER_OFF_CHANNEL: StaticCell<PubSubChannel<NoopRawMutex, (), 4, 2, 2>> =
-    StaticCell::new();
-/// The channel for publishing the current battery voltage
-pub static BATTERY_VOLTAGE_CHANNEL: StaticCell<PubSubChannel<NoopRawMutex, f32, 4, 2, 1>> =
-    StaticCell::new();
 
 // Gpio Interrupts
 bind_interrupts!(pub struct GpioIrqs {
@@ -115,12 +89,6 @@ async fn main(spawner: Spawner) {
     kill_n.set_high();
     let mut motor_en = Output::new(p.PC1, Level::High, Speed::Low);
     motor_en.set_high();
-    let power_off_irq = embassy_stm32::exti::ExtiInput::new(
-        p.PB1,
-        p.EXTI1,
-        embassy_stm32::gpio::Pull::None,
-        GpioIrqs,
-    );
 
     // Initialize the dip switches
     let s1 = Input::new(p.PE5, embassy_stm32::gpio::Pull::None);
@@ -131,9 +99,7 @@ async fn main(spawner: Spawner) {
     let robot_id = decode_robot_id(s1.is_high(), s2.is_high(), s3.is_high());
     let team = decode_team(s4.is_high());
 
-    // Initialize the ADC
-    let adc = Adc::new(p.ADC1);
-    let battery_pin = p.PB0;
+    defmt::info!("Robot ID: {}, Team: {:?}", robot_id, team);
 
     // Initialize the display
     let display_i2c = i2c::I2c::new(
@@ -210,60 +176,6 @@ async fn main(spawner: Spawner) {
     )
     .unwrap();
 
-    // Initialize the kicker controller
-    let kicker_spi = spi::Spi::new_blocking(p.SPI1, p.PA5, p.PA7, p.PA6, spi::Config::default());
-    let kicker_spi = kicker::KICKER_SPI.init(NoopMutex::new(RefCell::new(kicker_spi)));
-    let kicker_csn = Output::new(p.PC4, Level::High, Speed::High);
-    let kicker_spi = SpiDevice::new(kicker_spi, kicker_csn);
-    let kicker_reset = Output::new(p.PC5, Level::High, Speed::Low);
-    let kicker: Kicker<
-        Output<'_>,
-        SpiDevice<
-            '_,
-            embassy_sync::blocking_mutex::raw::NoopRawMutex,
-            spi::Spi<'static, embassy_stm32::mode::Blocking, spi::mode::Master>,
-            Output<'_>,
-        >,
-    > = Kicker::new(kicker_spi, kicker_reset);
-
-    // Initialize the Radio
-    let radio_spi = spi::Spi::new(
-        p.SPI4,
-        p.PE12,
-        p.PE14,
-        p.PE13,
-        p.DMA1_CH4,
-        p.DMA1_CH5,
-        spi::Config::default(),
-    );
-    let radio_spi = radio::RADIO_SPI.init(NoopMutex::new(RefCell::new(radio_spi)));
-    let csn = Output::new(p.PE11, Level::High, Speed::High);
-    let ce = Output::new(p.PE9, Level::Low, Speed::Low);
-    let radio_spi = SpiDevice::new(radio_spi, csn);
-    let mut rf_radio = RF24::new(ce, radio_spi, Delay);
-    radio::init_radio(&mut rf_radio, &mut display, robot_id, team);
-    let radio_irq = embassy_stm32::exti::ExtiInput::new(
-        p.PE10,
-        p.EXTI10,
-        embassy_stm32::gpio::Pull::None,
-        GpioIrqs,
-    );
-
-    // Create communication channels
-    let command_channel =
-        COMMAND_CHANNEL.init(PubSubChannel::<NoopRawMutex, ControlMessage, 4, 2, 1>::new());
-    let kicker_channel = KICKER_STATE_CHANNEL.init(PubSubChannel::<
-        NoopRawMutex,
-        kicker_controller::KickerState,
-        4,
-        2,
-        1,
-    >::new());
-    let power_off_channel =
-        POWER_OFF_CHANNEL.init(PubSubChannel::<NoopRawMutex, (), 4, 2, 2>::new());
-    let battery_voltage_channel =
-        BATTERY_VOLTAGE_CHANNEL.init(PubSubChannel::<NoopRawMutex, f32, 4, 2, 1>::new());
-
     let motor_one_command_channel =
         MOTOR1_COMMAND_CHANNEL.init(PubSubChannel::<NoopRawMutex, MotorCommand, 4, 1, 1>::new());
     let motor_one_status_channel =
@@ -287,28 +199,6 @@ async fn main(spawner: Spawner) {
     let dribbler_command_channel =
         DRIBBLER_COMMAND_CHANNEL
             .init(PubSubChannel::<NoopRawMutex, DribblerCommand, 4, 1, 1>::new());
-
-    // Spawn the power switch task
-    spawner
-        .spawn(gpio::power_switch(
-            power_off_irq,
-            power_off_channel.publisher().unwrap(),
-            kill_n,
-        ))
-        .unwrap();
-
-    // Spawn the Radio Receive Task
-    spawner
-        .spawn(radio::receive_radio_data(
-            radio_irq,
-            rf_radio,
-            robot_id,
-            team,
-            command_channel.publisher().unwrap(),
-            kicker_channel.subscriber().unwrap(),
-            battery_voltage_channel.subscriber().unwrap(),
-        ))
-        .unwrap();
 
     // Spawn the Motor Controller Tasks
     spawner
@@ -346,46 +236,16 @@ async fn main(spawner: Spawner) {
         ))
         .unwrap();
 
-    // Spawn the Kicker Control Task
+    // Spawn the motor testing task
     spawner
-        .spawn(kicker::service_kicker(
-            kicker,
-            command_channel.subscriber().unwrap(),
-            kicker_channel.publisher().unwrap(),
-            power_off_channel.subscriber().unwrap(),
-        ))
-        .unwrap();
-
-    // Spawn the Control Task
-    spawner
-        .spawn(control::control_task(
-            command_channel.subscriber().unwrap(),
+        .spawn(utils::motor_testing_task(
             [
                 motor_one_command_channel.publisher().unwrap(),
                 motor_two_command_channel.publisher().unwrap(),
                 motor_three_command_channel.publisher().unwrap(),
                 motor_four_command_channel.publisher().unwrap(),
             ],
-            power_off_channel.subscriber().unwrap(),
-        ))
-        .unwrap();
-
-    // Spawn the battery monitoring task
-    spawner
-        .spawn(battery::monitor_battery_voltage(
-            adc,
-            battery_pin,
-            battery_voltage_channel.publisher().unwrap(),
-            power_off_channel.publisher().unwrap(),
-        ))
-        .unwrap();
-
-    // Spawn the display task
-    spawner
-        .spawn(graphics::display_robot_status(
-            display,
-            kicker_channel.subscriber().unwrap(),
-            battery_voltage_channel.subscriber().unwrap(),
+            dribbler_command_channel.publisher().unwrap(),
         ))
         .unwrap();
 }

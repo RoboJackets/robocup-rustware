@@ -1,27 +1,32 @@
 //!
 //! Radio Tasks
-//! 
+//!
 
 use alloc::format;
-use defmt::error;
-use kicker_controller::KickerState;
 use core::cell::RefCell;
-use embassy_stm32::{exti::ExtiInput, gpio::Output, mode::Async, spi};
-use embassy_sync::{blocking_mutex::{NoopMutex, raw::NoopRawMutex}, pubsub::{Publisher, Subscriber, WaitResult}};
-use embassy_time::{Timer, Duration, Delay};
+use defmt::error;
 use embassy_embedded_hal::shared_bus::blocking::spi::SpiDevice;
-use embassy_stm32::i2c::{I2c, self};
+use embassy_stm32::i2c::{self, I2c};
+use embassy_stm32::{exti::ExtiInput, gpio::Output, mode::Async, spi};
+use embassy_sync::{
+    blocking_mutex::{NoopMutex, raw::NoopRawMutex},
+    pubsub::{Publisher, Subscriber, WaitResult},
+};
+use embassy_time::{Delay, Duration, Timer};
+use kicker_controller::KickerState;
 use rf24::radio::{RF24, prelude::*};
-use ssd1306::{Ssd1306, mode::BufferedGraphicsMode, prelude::I2CInterface, size::DisplaySize128x64};
+use ssd1306::{
+    Ssd1306, mode::BufferedGraphicsMode, prelude::I2CInterface, size::DisplaySize128x64,
+};
 use static_cell::StaticCell;
 
 use control_command::{CONTROL_MESSAGE_SIZE, ControlMessage};
 use robot_status::{ROBOT_STATUS_SIZE, RobotStatusMessageBuilder};
 
+use crate::{Team, graphics};
 use common::packing::Packable;
-use crate::{graphics, Team};
 
-/// The addresses of different entities in the robocup network stack
+/// The addresses for the radio communication
 pub mod addresses;
 /// The control command message
 pub mod control_command;
@@ -33,7 +38,7 @@ pub const CHANNEL: u8 = 0x74;
 /// The PA Level of the radio
 pub const PA_LEVEL: rf24::PaLevel = rf24::PaLevel::Min;
 /// The amount of time to wait before sending a response to a control message (in ms)
-/// 
+///
 /// From my calculations, at 60Hz the time between the base station sending the last packet
 /// and receiving the last message from the robots is around 16.667 milliseconds.  From this,
 /// I figure we can give half of the time to the base station transmitting and the other
@@ -42,18 +47,32 @@ pub const PA_LEVEL: rf24::PaLevel = rf24::PaLevel::Min;
 pub const RESPONSE_DELAY_MS: u64 = 8;
 
 /// The SPI Bus
-pub static RADIO_SPI: StaticCell<NoopMutex<RefCell<spi::Spi<'static, Async, spi::mode::Master>>>> = StaticCell::new();
+pub static RADIO_SPI: StaticCell<NoopMutex<RefCell<spi::Spi<'static, Async, spi::mode::Master>>>> =
+    StaticCell::new();
 
 /// Helper method to initialize the radio and handle errors
 pub fn init_radio(
-    radio: &mut RF24<SpiDevice<'static, NoopRawMutex, spi::Spi<'static, Async, spi::mode::Master>, Output<'static>>, Output<'static>, Delay>,
-    display: &mut Ssd1306<I2CInterface<I2c<'static, Async, i2c::Master>>, DisplaySize128x64, BufferedGraphicsMode<DisplaySize128x64>>,
+    radio: &mut RF24<
+        SpiDevice<
+            'static,
+            NoopRawMutex,
+            spi::Spi<'static, Async, spi::mode::Master>,
+            Output<'static>,
+        >,
+        Output<'static>,
+        Delay,
+    >,
+    display: &mut Ssd1306<
+        I2CInterface<I2c<'static, Async, i2c::Master>>,
+        DisplaySize128x64,
+        BufferedGraphicsMode<DisplaySize128x64>,
+    >,
     robot_id: u8,
-    team: Team
+    team: Team,
 ) {
     let radio_id = addresses::ROBOT_ADDRESSES[team as usize][robot_id as usize];
     let base_station_id = addresses::BASE_STATION_ADDRESSES[team as usize][(robot_id > 2) as usize];
-    
+
     // Initialize the radio
     if let Err(err) = radio.init() {
         // Display Error
@@ -68,6 +87,35 @@ pub fn init_radio(
         let _ = graphics::draw_error_screen(display, &format!("Radio PA: {:?}", err));
 
         error!("Error Setting Radio PA Level");
+    }
+
+    if let Err(err) = radio.set_auto_retries(0, 0) {
+        // Display Error
+        let _ = graphics::draw_error_screen(display, &format!("Auto Retries: {:?}", err));
+
+        error!("Error setting auto retries");
+    }
+
+    if let Err(err) = radio.set_auto_ack(false) {
+        // Display Error
+        let _ = graphics::draw_error_screen(display, &format!("Auto Ack: {:?}", err));
+
+        error!("Error setting auto ack");
+    }
+
+    if let Err(err) = radio.set_crc_length(rf24::CrcLength::Bit8) {
+        // Display Error
+        let _ = graphics::draw_error_screen(display, &format!("CRC Length: {:?}", err));
+
+        error!("Error setting CRC length");
+    }
+
+    // Set the data rate
+    if let Err(err) = radio.set_data_rate(rf24::DataRate::Mbps1) {
+        // Display Error
+        let _ = graphics::draw_error_screen(display, &format!("Radio Data Rate: {:?}", err));
+
+        error!("Error Setting Radio Data Rate");
     }
 
     // Set the radio channel
@@ -95,7 +143,12 @@ pub fn init_radio(
     }
 
     // Enable Interrupts
-    if let Err(err) = radio.set_status_flags(rf24::StatusFlags::new().with_rx_dr(true).with_tx_ds(false).with_tx_df(false)) {
+    if let Err(err) = radio.set_status_flags(
+        rf24::StatusFlags::new()
+            .with_rx_dr(true)
+            .with_tx_ds(false)
+            .with_tx_df(false),
+    ) {
         // Display Error
         let _ = graphics::draw_error_screen(display, &format!("Radio Status Flags: {:?}", err));
 
@@ -106,7 +159,16 @@ pub fn init_radio(
 #[embassy_executor::task]
 pub async fn receive_radio_data(
     mut irq: ExtiInput<'static>,
-    mut radio: RF24<SpiDevice<'static, NoopRawMutex, spi::Spi<'static, Async, spi::mode::Master>, Output<'static>>, Output<'static>, Delay>,
+    mut radio: RF24<
+        SpiDevice<
+            'static,
+            NoopRawMutex,
+            spi::Spi<'static, Async, spi::mode::Master>,
+            Output<'static>,
+        >,
+        Output<'static>,
+        Delay,
+    >,
     robot_id: u8,
     team: Team,
     command_channel: Publisher<'static, NoopRawMutex, ControlMessage, 4, 2, 1>,
@@ -145,7 +207,9 @@ pub async fn receive_radio_data(
         }
 
         // Check for a new battery voltage message
-        if let Some(WaitResult::Message(battery_voltage)) = battery_voltage_subscriber.try_next_message() {
+        if let Some(WaitResult::Message(battery_voltage)) =
+            battery_voltage_subscriber.try_next_message()
+        {
             // Kind of an approximation as a percentage of 3.7V (the nominal voltage of a single cell)
             status.battery_voltage = ((battery_voltage / 3.7) * 100.0) as u8;
         }
@@ -160,6 +224,5 @@ pub async fn receive_radio_data(
         radio.as_tx(None).unwrap();
         radio.open_rx_pipe(0, &radio_id).unwrap();
         radio.as_rx().unwrap();
-        
     }
 }

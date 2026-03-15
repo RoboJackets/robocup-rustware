@@ -4,22 +4,24 @@ extern crate alloc;
 
 use defmt::Format;
 
-/// IMU Related Functionality
-pub mod imu;
-/// Graphics Related Functionality
-pub mod graphics;
-/// Radio Related Functionality
-pub mod radio;
-/// Gpio Handler Logic
-pub mod gpio;
-/// Motor Related Functionality
-pub mod motor;
-/// Kicker Related Functionality
-pub mod kicker;
-/// The Controller for the robot
-pub mod control;
 /// Battery Related Functionality
 pub mod battery;
+/// The Controller for the robot
+pub mod control;
+/// Gpio Handler Logic
+pub mod gpio;
+/// Graphics Related Functionality
+pub mod graphics;
+/// IMU Related Functionality
+pub mod imu;
+/// Kicker Related Functionality
+pub mod kicker;
+/// Motor Related Functionality
+pub mod motor;
+/// Radio Related Functionality
+pub mod radio;
+/// Helpful Testing Utilities
+pub mod utils;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Format)]
 /// The team the Robots are on

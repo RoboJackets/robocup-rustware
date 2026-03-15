@@ -37,6 +37,18 @@ path = "./src/bin/main.rs"
 test = false
 bench = false
 
+[[bin]]
+name = "radio-test"
+path = "./src/bin/radio_test.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "motor-test"
+path = "./src/bin/motor_test.rs"
+test = false
+bench = false
+
 [profile.dev]
 debug = true
 lto = true

@@ -1,0 +1,15 @@
+{
+  "rust-analyzer": {
+    "cargo": {
+      "target": "thumbv7em-none-eabi",
+      "allTargets": false
+    },
+    "linkedProjects": [
+      "./Cargo.toml",
+      "./drivers/icm42605/Cargo.toml"
+    ],
+    "procMacro": {
+      "enable": true
+    }
+  }
+}
