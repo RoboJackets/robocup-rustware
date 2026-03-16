@@ -6,6 +6,8 @@ In 2023, we decided to switch microcontrollers from the team built A-Train micro
 
 Therefore, this repository contains the code for the firmware for the RoboJackets RoboCup team.
 
+If you want to upload to the motorboard, follow this motorboard set-up guide (also in drive): [Set-up Guide](https://docs.google.com/document/d/1TNbchbmmp05ZtOJWJ4zDR_kkxVjz-OKKidnusW9qwN4/edit?usp=sharing)
+
 ## Setup
 
 If you are running linux or macos, run:
