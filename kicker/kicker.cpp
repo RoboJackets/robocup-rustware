@@ -115,8 +115,8 @@ int main() {
 
     printf("========================MAIN PROCESS BEGIN========================\n");
     // Command default
-    command.charge_allowed = true;
-    command.kick_strength = 15;
+    command.charge_allowed = false;
+    command.kick_strength = 0;
     command.kick_trigger = Disabled;
     command.kick_type = Kick;
 
