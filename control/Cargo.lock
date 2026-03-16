@@ -408,7 +408,10 @@ dependencies = [
 name = "graphics"
 version = "0.1.0"
 dependencies = [
+ "display-interface",
  "embedded-graphics",
+ "embedded-hal 0.2.7",
+ "ssd1306",
  "tinybmp",
 ]
 
