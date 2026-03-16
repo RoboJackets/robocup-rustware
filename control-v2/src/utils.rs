@@ -9,7 +9,7 @@ use embassy_sync::{
 };
 use kicker_controller::KickerState;
 
-use crate::radio::control_command::ControlMessage;
+use crate::{Team, radio::control_command::ControlMessage};
 
 #[embassy_executor::task]
 pub async fn radio_testing_task(
@@ -67,5 +67,49 @@ pub async fn motor_testing_task(
         dribble_on = !dribble_on;
 
         embassy_time::Timer::after(embassy_time::Duration::from_millis(500)).await;
+    }
+}
+
+#[embassy_executor::task]
+pub async fn kicker_testing_task(
+    command_publisher: Publisher<'static, NoopRawMutex, ControlMessage, 4, 2, 1>,
+) {
+    let mut base_command = ControlMessage {
+        team: Team::Blue,
+        robot_id: 0,
+        shoot_mode: crate::radio::control_command::ShootMode::Kick,
+        trigger_mode: crate::radio::control_command::TriggerMode::StandDown,
+        body_x: 0,
+        body_y: 0,
+        body_w: 0,
+        dribbler_speed: 0,
+        kick_strength: 0,
+        role: 0,
+        mode: crate::radio::control_command::Mode::Default,
+    };
+
+    loop {
+        // Stand down for 5 seconds
+        for _ in 0..10 {
+            base_command.trigger_mode = crate::radio::control_command::TriggerMode::StandDown;
+            base_command.kick_strength = 0;
+            command_publisher.publish_immediate(base_command);
+            embassy_time::Timer::after(embassy_time::Duration::from_millis(1000)).await;
+        }
+
+        // Shoot for 0.5 seconds
+        base_command.trigger_mode = crate::radio::control_command::TriggerMode::Immediate;
+        base_command.kick_strength = 100;
+        command_publisher.publish_immediate(base_command);
+        embassy_time::Timer::after(embassy_time::Duration::from_millis(500)).await;
+    }
+}
+
+#[embassy_executor::task]
+pub async fn test_dip_switches(robot_id: u8, team: Team) {
+    loop {
+        defmt::info!("Robot ID: {}, Team: {:?}", robot_id, team);
+
+        embassy_time::Timer::after(embassy_time::Duration::from_secs(1)).await;
     }
 }

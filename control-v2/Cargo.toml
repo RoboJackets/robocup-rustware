@@ -6,14 +6,26 @@ name = "control-v2"
 version = "0.1.0"
 
 [dependencies]
-cortex-m = { version = "0.7.7", features = ["inline-asm", "critical-section-single-core"] }
+cortex-m = { version = "0.7.7", features = [
+  "inline-asm",
+  "critical-section-single-core",
+] }
 cortex-m-rt = "0.7.5"
 defmt = { version = "1.0.1", optional = true }
 defmt-rtt = { version = "1.1.0", optional = true }
 embassy-embedded-hal = "0.5.0"
-embassy-executor = { version = "0.9.1", features = ["arch-cortex-m", "executor-thread"] }
+embassy-executor = { version = "0.9.1", features = [
+  "arch-cortex-m",
+  "executor-thread",
+] }
 embassy-futures = "0.1.2"
-embassy-stm32 = { version = "0.5.0", features = ["memory-x", "stm32h723vg", "time-driver-any", "exti", "unstable-pac"] }
+embassy-stm32 = { version = "0.5.0", features = [
+  "memory-x",
+  "stm32h723vg",
+  "time-driver-any",
+  "exti",
+  "unstable-pac",
+] }
 embassy-sync = "0.7.2"
 embassy-time = { version = "0.5.0", features = ["tick-hz-32_768"] }
 embedded-hal = "1.0.0"
@@ -27,7 +39,10 @@ embedded-graphics = "0.8.1"
 ssd1306 = "0.10.0"
 embedded-alloc = "0.7.0"
 common = { path = "../common" }
-nalgebra = { version = "0.34.1", features = ["libm", "nalgebra-macros"], default-features = false }
+nalgebra = { version = "0.34.1", features = [
+  "libm",
+  "nalgebra-macros",
+], default-features = false }
 libm = "0.2.16"
 display-interface = "0.5.0"
 
@@ -49,6 +64,18 @@ path = "./src/bin/motor_test.rs"
 test = false
 bench = false
 
+[[bin]]
+name = "kicker-test"
+path = "./src/bin/kicker_test.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "switches-test"
+path = "./src/bin/switches_test.rs"
+test = false
+bench = false
+
 [profile.dev]
 debug = true
 lto = true
@@ -67,13 +94,13 @@ defmt-rtt = ["dep:defmt-rtt"]
 panic-probe = ["dep:panic-probe"]
 default = ["debug"]
 debug = [
-    "defmt",
-    "defmt-rtt",
-    "panic-probe",
-    "embassy-executor/defmt",
-    "embassy-sync/defmt",
-    "embassy-futures/defmt",
-    "embassy-time/defmt",
-    "embassy-time/defmt-timestamp-uptime",
-    "embassy-stm32/defmt",
+  "defmt",
+  "defmt-rtt",
+  "panic-probe",
+  "embassy-executor/defmt",
+  "embassy-sync/defmt",
+  "embassy-futures/defmt",
+  "embassy-time/defmt",
+  "embassy-time/defmt-timestamp-uptime",
+  "embassy-stm32/defmt",
 ]

@@ -4,9 +4,9 @@
 
 #![allow(dead_code)]
 
-use nalgebra::base::*;
 use common::packing::{Packable, PackingError};
-use kicker_controller::{KickerCommand, KickType, KickTrigger};
+use kicker_controller::{KickTrigger, KickType, KickerCommand};
+use nalgebra::base::*;
 
 use crate::Team;
 
@@ -74,7 +74,7 @@ impl Into<KickType> for ShootMode {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 /// The `mode` the robot should be in
-/// 
+///
 /// In general, this field should pretty much always be set to Default.  However, I created
 /// this field so we can tell the robots to conduct specific testing procedures (or perhaps
 /// special moves) based on the flags sent from the base station
@@ -222,7 +222,7 @@ impl Packable for ControlMessage {
         if data.len() < CONTROL_MESSAGE_SIZE {
             return Err(PackingError::InvalidBufferSize);
         }
-        
+
         Ok(Self {
             team: if data[0] & (0b1 << 7) == 0 {
                 Team::Blue
@@ -311,13 +311,13 @@ impl ControlMessageBuilder {
         self.team = Some(team);
         self
     }
-    
+
     /// Assign the robot_id for the control message
     pub fn robot_id(mut self, robot_id: u8) -> Self {
         self.robot_id = Some(robot_id);
         self
     }
-    
+
     /// Assign the shoot mode for the control message
     pub fn shoot_mode(mut self, shoot_mode: ShootMode) -> Self {
         self.shoot_mode = Some(shoot_mode);
@@ -341,7 +341,7 @@ impl ControlMessageBuilder {
         self.body_y = Some((body_y * VELOCITY_SCALE_FACTOR) as i16);
         self
     }
-    
+
     /// Assign the w-direction body velocity for the control message
     pub fn body_w(mut self, body_w: f32) -> Self {
         self.body_w = Some((body_w * VELOCITY_SCALE_FACTOR) as i16);
@@ -640,3 +640,4 @@ mod tests {
         assert_eq!(expected, control_message);
     }
 }
+
