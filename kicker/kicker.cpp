@@ -31,6 +31,7 @@ void manual_mode();
 // Breakbream
 volatile bool checking_break = true;
 volatile bool break_triggered = false;
+volatile bool break_raw = false;
 
 // SPI Data
 volatile uint8_t rx_data = 0;
@@ -79,8 +80,10 @@ void core1_entry() {
             if (checking_break) {
                 break_triggered = true;
             }
+            break_raw = true;
         } else {
             gpio_put(BREAK_LED, 1);
+            break_raw = false;
         }
 
         #if DEBUG
@@ -493,7 +496,7 @@ float read_voltage() {
 // Sets the data on the spi to be read by the teensy
 void update_spi_output() {
     spi_out = ((uint8_t) voltage) >> 1;
-    spi_out |= break_triggered << 7;
+    spi_out |= break_raw << 7;
     spi_get_hw(SPI_PORT)->dr = spi_out;
 }
 

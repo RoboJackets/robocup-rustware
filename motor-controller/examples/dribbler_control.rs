@@ -220,9 +220,9 @@ mod app {
         let (pwm, clockwise) = if setpoint == 0.0 {
             (0, true)
         } else if setpoint < 125.0 {
-            (ctx.local.ch1.get_max_duty() / 4, true)
-        } else {
             (ctx.local.ch1.get_max_duty() / 4, false)
+        } else {
+            (ctx.local.ch1.get_max_duty() / 4, true)
         };
 
         let phases = hall_to_phases(
