@@ -86,8 +86,8 @@ void core1_entry() {
             break_raw = false;
         }
 
-        #if DEBUG
-            //printf("Break Off: %d, Break On: %d, Difference: %d\n", break_off, break_on, diff);
+        #if EXTRA_INFO && DEBUG
+            printf("Break Off: %d, Break On: %d, Difference: %d\n", break_off, break_on, diff);
         #endif
     }
 }
@@ -420,21 +420,21 @@ void startup() {
 
 // Test all LEDs
 void light_show() {
-    uint8_t pattern = 0b00001111;
-    for (size_t i = 0; i < 17; i++) {
-        hv_led_out(pattern);
-        gen_led_out(pattern >> 5);
-        uint8_t t = pattern & 0b1;
-        pattern = pattern >> 1;
-        pattern |= t << 7;
-        sleep_ms(150);
-    }
     hv_led_out(0b11111);
     gen_led_out(0b111);
-    sleep_ms(300);
+    sleep_ms(150);
+    hv_led_out(0b01010);
+    gen_led_out(0b101);
+    sleep_ms(150);
+    hv_led_out(0b10101);
+    gen_led_out(0b010);
+    sleep_ms(150);
+    hv_led_out(0b11111);
+    gen_led_out(0b111);
+    sleep_ms(150);
     hv_led_out(0);
     gen_led_out(0);
-    sleep_ms(300);
+    sleep_ms(150);
 }
 
 // SPI interrupt, sets data ready on new command
