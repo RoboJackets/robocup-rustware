@@ -131,13 +131,13 @@ int main() {
         /// READ DATA
         state = KickerState::CommandIO;
 
+        if (watchdog_time + WATCHDOG_TIMEOUT < to_ms_since_boot(get_absolute_time())) {
+            command.kick_trigger = Disabled;
+        }
+
         if (data_ready) {
             command = read_command();
             watchdog_time = to_ms_since_boot(get_absolute_time());
-        }
-
-        if (watchdog_time + WATCHDOG_TIMEOUT < to_ms_since_boot(get_absolute_time())) {
-            command.kick_trigger = Disabled;
         }
 
         // Read buttons
@@ -146,12 +146,14 @@ int main() {
             command.kick_trigger = Immediate;
             command.kick_strength = 15;
             kick_btn_cooldown = to_ms_since_boot(get_absolute_time());
+            watchdog_time = to_ms_since_boot(get_absolute_time());
         }
         if (chip_btn_cooldown + BTN_COOLDOWN < to_ms_since_boot(get_absolute_time()) && gpio_get(CHIP_BTN)) {
             command.kick_type = Chip;
             command.kick_trigger = Immediate;
             command.kick_strength = 15;
             chip_btn_cooldown = to_ms_since_boot(get_absolute_time());
+            watchdog_time = to_ms_since_boot(get_absolute_time());
         }
         if (charge_btn_cooldown + BTN_COOLDOWN < to_ms_since_boot(get_absolute_time()) && gpio_get(CHARGE_BTN)) {
             command.charge_allowed = !command.charge_allowed;
