@@ -5,6 +5,7 @@
 #define DISABLE_ERRORS 0 // Purely for sofware debugging, do not use
 #define SPI_CLK_FREQUENCY 2000000 // Hz
 #define BTN_COOLDOWN 500 // ms
+#define WATCHDOG_TIMEOUT 25000 // ms time till kick command cancelled
 
 #define CHARGE_SYNC_EN 1 // Do not set if board does not have charge sync resistor
 #define CHARGE_SYNC_FREQ 100000 // Hz (DONT GO OVER 200KHZ WILL DESTROY BOARD)

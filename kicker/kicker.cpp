@@ -59,6 +59,7 @@ float voltage = 0;
 float prev_voltage = 0;
 float old_voltage = 0;
 mutex_t adc_mutex;
+uint64_t watchdog_time;
 
 // Breakbeam reading
 void core1_entry() {
@@ -123,6 +124,8 @@ int main() {
     command.kick_trigger = Disabled;
     command.kick_type = Kick;
 
+    watchdog_time = to_ms_since_boot(get_absolute_time());
+
     // Main control loop
     while (true) {
         /// READ DATA
@@ -130,6 +133,11 @@ int main() {
 
         if (data_ready) {
             command = read_command();
+            watchdog_time = to_ms_since_boot(get_absolute_time());
+        }
+
+        if (watchdog_time + WATCHDOG_TIMEOUT < to_ms_since_boot(get_absolute_time())) {
+            command.kick_trigger = Disabled;
         }
 
         // Read buttons
