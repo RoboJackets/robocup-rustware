@@ -20,7 +20,7 @@
 #define KICK_COOLDOWN 100 // ms
 #define CHARGE_COOLDOWN 100 // ms
 
-#define BREAK_THRESHOLD 100
+#define BREAK_THRESHOLD 400
 
 // Error checking
 #define CHARGE_TIME_MAX 20000 // ms
