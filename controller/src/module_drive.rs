@@ -318,11 +318,10 @@ impl DriveMod {
                     self.state.current_screen = Screen::MainReceiv;
                 } else if self.btn_rising(old_state, buttons, Button::Up) {
                     self.state.current_screen = Screen::Options;
-                } else if self.btn_rising(old_state, buttons, Button::A) {
-                    self.state.dribbler_enabled = !self.state.dribbler_enabled;
                 } else if self.btn_rising(old_state, buttons, Button::B) {
-                    self.state.kicker_state = if self.state.kicker_state == 0 { 1 } else { 0 };
+                    self.state.dribbler_enabled = !self.state.dribbler_enabled;
                 }
+                self.state.kicker_state = if self.btn_held(old_state, buttons, Button::A) { 1 } else { 0 };
             }
             Screen::MainReceiv => {
                 if self.btn_rising(old_state, buttons, Button::Right) {
@@ -357,13 +356,13 @@ impl DriveMod {
 
     fn generate_outgoing_packet(&mut self) -> ControlMessage {
         //this is a *very* basic joystick mapping
-        let lx = joy_map(self.state.input_state.joy_lx as i32 - 512, 10);
-        let ly = joy_map(self.state.input_state.joy_ly as i32 - 512, 10);
-        let lw = joy_map(self.state.input_state.joy_rx as i32 - 512, 10);
+        let lx = joy_map(self.state.input_state.joy_lx as i32 - 512, 30);
+        let ly = joy_map(self.state.input_state.joy_ly as i32 - 512, 30);
+        let lw = joy_map(self.state.input_state.joy_rx as i32 - 512, 30);
 
-        let body_x = (lx as f32 / 512.0) * 1.0;
-        let body_y = (ly as f32 / 512.0) * 1.0;
-        let body_w = (lw as f32 / 512.0) * 3.0;
+        let body_x = (lx as f32 / 512.0) * 2.0;
+        let body_y = (ly as f32 / 512.0) * 2.0;
+        let body_w = (lw as f32 / 512.0) * 5.0;
 
         let msg = ControlMessageBuilder::new()
             .robot_id(self.state.radio_state.robot_id)
@@ -371,7 +370,7 @@ impl DriveMod {
                 Team::Blue
             } else {
                 Team::Yellow
-            }) 
+            })
             .shoot_mode(match self.settings.shoot_mode {
                 0 => ShootMode::Kick,
                 1 => ShootMode::Chip,
