@@ -19,11 +19,10 @@ static HEAP: Heap = Heap::empty();
 
 use teensy4_panic as _;
 
+
 #[rtic::app(device = teensy4_bsp, peripherals = true, dispatchers = [GPT2])]
 mod app {
-    use bsp::board::{self, PERCLK_FREQUENCY};
-    use embedded_hal::blocking::delay::DelayMs;
-    use imxrt_hal::timer::Blocking;
+    use bsp::board::{self};
     use teensy4_bsp as bsp;
 
     use rtic_monotonics::systick::*;
@@ -31,14 +30,19 @@ mod app {
     use kicker_controller::{KickTrigger, KickType, Kicker, KickerCommand};
 
     use robojackets_robocup_control::{
-        spi::FakeSpi, KickerCSn, KickerReset, Killn, MotorEn, GPT_CLOCK_SOURCE, GPT_DIVIDER,
-        GPT_FREQUENCY,
+        KickerSpi, KickerCSn, KickerReset, Killn, MotorEn,
     };
+    
+    use bsp::hal::iomuxc;
+    use bsp::ral;
+    use bsp::hal::lpspi::{Lpspi, Pins};
+    use embedded_hal::spi::MODE_3;
+    use ral::lpspi::LPSPI3;
 
     #[local]
     struct Local {
         kicker_controller: Kicker<KickerCSn, KickerReset>,
-        fake_spi: FakeSpi,
+        spi: KickerSpi,
         poller: imxrt_log::Poller,
     }
 
@@ -50,10 +54,8 @@ mod app {
         let board::Resources {
             pins,
             usb,
-            mut gpt2,
             mut gpio1,
             mut gpio2,
-            pit: (_pit0, _pit1, _pit2, pit3),
             ..
         } = board::t41(ctx.device);
 
@@ -61,29 +63,43 @@ mod app {
 
         let systick_token = rtic_monotonics::create_systick_token!();
         Systick::start(ctx.core.SYST, 600_000_000, systick_token);
-
-        // Gpt 2 as blocking delay
-        gpt2.disable();
-        gpt2.set_divider(GPT_DIVIDER);
-        gpt2.set_clock_source(GPT_CLOCK_SOURCE);
-        let mut delay2 = Blocking::<_, GPT_FREQUENCY>::from_gpt(gpt2);
+        
 
         let motor_en: MotorEn = gpio1.output(pins.p23);
         motor_en.set();
         let kill_n: Killn = gpio2.output(pins.p36);
         kill_n.set();
 
-        delay2.delay_ms(500u32);
+        // Define SPI pins
+        let spi_pins = Pins {
+            pcs0: pins.p38,
+            sck: pins.p27,
+            sdo: pins.p26,
+            sdi: pins.p39,
+        };
 
-        let kicker = Kicker::new(gpio1.output(pins.p38), gpio2.output(pins.p37));
+        // Generate instance of LPSPI3 to manually populate
+        let spi_block = unsafe { LPSPI3::instance() };
+        let spi_temp = Lpspi::new(spi_block, spi_pins);
 
-        let pit_delay = Blocking::<_, PERCLK_FREQUENCY>::from_pit(pit3);
-        let fake_spi = FakeSpi::new(
-            gpio1.output(pins.p27),
-            gpio1.output(pins.p26),
-            gpio1.input(pins.p39),
-            pit_delay,
-        );
+        // Release pins to split into kicker
+        let (spi_block, mut spi_pins) = spi_temp.release();
+
+        // Manually configure the data pins for LPSPI3 function
+        iomuxc::lpspi::prepare(&mut spi_pins.sdo);  // SDO/MOSI
+        iomuxc::lpspi::prepare(&mut spi_pins.sdi);  // SDI/MISO
+        iomuxc::lpspi::prepare(&mut spi_pins.sck);  // SCK
+
+        // Initialize SPI and Kicker controll
+        let mut spi = Lpspi::without_pins(spi_block);
+        let kicker = Kicker::new(gpio1.output(spi_pins.pcs0), gpio2.output(pins.p37));
+
+        // Config SPI
+        spi.disabled(|spi| {
+            spi.set_mode(MODE_3);                  // CPOL=1, CPHA=1 to match Pico
+            spi.set_clock_hz(board::LPSPI_FREQUENCY, 2_000_000);
+        });
+
 
         kicker_test::spawn().ok();
 
@@ -91,7 +107,7 @@ mod app {
             Shared {},
             Local {
                 kicker_controller: kicker,
-                fake_spi,
+                spi,
                 poller,
             },
         )
@@ -105,40 +121,47 @@ mod app {
     }
 
     #[task(
-        local = [kicker_controller, fake_spi],
+        local = [kicker_controller, spi],
         priority = 1
     )]
     async fn kicker_test(ctx: kicker_test::Context) {
+        
         Systick::delay(1_000u32.millis()).await;
+        
+        
 
         log::info!("Charging the Kicker");
         let kicker_command = KickerCommand {
             kick_type: KickType::Kick,
-            kick_trigger: KickTrigger::Disabled,
-            kick_strength: 20.0,
+            kick_trigger: KickTrigger::Breakbeam,
+            kick_strength: 15,
             charge_allowed: true,
         };
-        for _ in 0..20 {
+        log::info!("Raw Out: {:?}", kicker_command);
+        
+        loop {
             let kicker_status = ctx
                 .local
                 .kicker_controller
-                .service(kicker_command, ctx.local.fake_spi)
+                .service(kicker_command, ctx.local.spi)
                 .unwrap();
             log::info!("Kicker Status: {:?}", kicker_status);
-            Systick::delay(100u32.millis()).await;
+            Systick::delay(1000u32.millis()).await;
         }
+
+        
 
         log::info!("KICKING!!!");
         let kicker_command = KickerCommand {
             kick_type: KickType::Kick,
             kick_trigger: KickTrigger::Immediate,
-            kick_strength: 100.0,
+            kick_strength: 15,
             charge_allowed: true,
         };
         let kicker_status = ctx
             .local
             .kicker_controller
-            .service(kicker_command, ctx.local.fake_spi)
+            .service(kicker_command, ctx.local.spi)
             .unwrap();
         log::info!("Kicker Status: {:?}", kicker_status);
 
@@ -146,14 +169,14 @@ mod app {
         let kicker_command = KickerCommand {
             kick_type: KickType::Chip,
             kick_trigger: KickTrigger::Disabled,
-            kick_strength: 20.0,
+            kick_strength: 5,
             charge_allowed: true,
         };
         for _ in 0..20 {
             let kicker_status = ctx
                 .local
                 .kicker_controller
-                .service(kicker_command, ctx.local.fake_spi)
+                .service(kicker_command, ctx.local.spi)
                 .unwrap();
             log::info!("Kicker Status: {:?}", kicker_status);
             Systick::delay(100u32.millis()).await;
@@ -163,13 +186,13 @@ mod app {
         let kicker_command = KickerCommand {
             kick_type: KickType::Chip,
             kick_trigger: KickTrigger::Immediate,
-            kick_strength: 100.0,
+            kick_strength: 15,
             charge_allowed: true,
         };
         let kicker_status = ctx
             .local
             .kicker_controller
-            .service(kicker_command, ctx.local.fake_spi)
+            .service(kicker_command, ctx.local.spi)
             .unwrap();
         log::info!("Kicker Status: {:?}", kicker_status);
 
@@ -179,14 +202,14 @@ mod app {
         let kicker_command = KickerCommand {
             kick_type: KickType::Kick,
             kick_trigger: KickTrigger::Disabled,
-            kick_strength: 20.0,
+            kick_strength: 10,
             charge_allowed: true,
         };
         for _ in 0..20 {
             let kicker_status = ctx
                 .local
                 .kicker_controller
-                .service(kicker_command, ctx.local.fake_spi)
+                .service(kicker_command, ctx.local.spi)
                 .unwrap();
             log::info!("Kicker Status: {:?}", kicker_status);
             Systick::delay(100u32.millis()).await;
@@ -197,13 +220,13 @@ mod app {
             let kicker_command = KickerCommand {
                 kick_type: KickType::Kick,
                 kick_trigger: KickTrigger::Breakbeam,
-                kick_strength: 20.0,
+                kick_strength: 10,
                 charge_allowed: true,
             };
             let kicker_status = ctx
                 .local
                 .kicker_controller
-                .service(kicker_command, ctx.local.fake_spi)
+                .service(kicker_command, ctx.local.spi)
                 .unwrap();
             log::info!("Kicker Status: {:?}", kicker_status);
             Systick::delay(100u32.millis()).await;

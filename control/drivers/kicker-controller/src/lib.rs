@@ -99,7 +99,7 @@ pub struct KickerCommand {
     /// What should trigger the kick
     pub kick_trigger: KickTrigger,
     /// The desired strength of a kick
-    pub kick_strength: f32,
+    pub kick_strength: u8,
     /// Should the kicker be charging the capacitors
     pub charge_allowed: bool,
 }
@@ -109,7 +109,7 @@ impl Default for KickerCommand {
         Self {
             kick_type: KickType::Kick,
             kick_trigger: KickTrigger::Disabled,
-            kick_strength: 0.0,
+            kick_strength: 0,
             charge_allowed: false,
         }
     }
@@ -120,7 +120,7 @@ impl From<KickerCommand> for u8 {
         let mut command = 0x00;
         command |= value.kick_type as u8;
         command |= value.kick_trigger as u8;
-        command |= (value.kick_strength / 255.0 * 15.0) as u8 & KICK_POWER_MASK;
+        command |= value.kick_strength & KICK_POWER_MASK;
         if value.charge_allowed {
             command |= 1 << 4;
         }
@@ -133,7 +133,7 @@ impl From<ControlMessage> for KickerCommand {
         Self {
             kick_type: value.shoot_mode.into(),
             kick_trigger: value.trigger_mode.into(),
-            kick_strength: value.kick_strength as f32 * 255.0 / 15.0,
+            kick_strength: value.kick_strength.into(),
             charge_allowed: true,
         }
     }
