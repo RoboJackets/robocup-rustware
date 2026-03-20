@@ -14,13 +14,15 @@
 #define VOLT_CONVERSION 250 / 2.025 * VOLT_RANGE // Voltage scale with divider values
 #define VOLT_MAX 180
 #define VOLT_MIN 10
-#define KALPHA 64 // KALHPA / 255 of last value used for averaging
+#define KALPHA_VOLT 64 // KALHPA / 255 of last value used for averaging | Max 255
+
 
 #define MAX_KICK_TIME 28200 // us
 #define KICK_COOLDOWN 100 // ms
 #define CHARGE_COOLDOWN 100 // ms
 
-#define BREAK_THRESHOLD 400
+#define BREAK_THRESHOLD 400 // Max difference to trigger breakbeam
+#define KALPHA_BREAK 128 // Larger = more responive but more sensitive to light | Max 255
 
 // Error checking
 #define CHARGE_TIME_MAX 20000 // ms
