@@ -337,7 +337,7 @@ mod app {
 
                 //update joysticks
                 let joy_lx = 1024 - inputs.adc.read_blocking(&mut inputs.joy_lx);
-                let joy_ly = 1024 - inputs.adc.read_blocking(&mut inputs.joy_ly);
+                let joy_ly = inputs.adc.read_blocking(&mut inputs.joy_ly);
                 let joy_rx = inputs.adc.read_blocking(&mut inputs.joy_rx);
                 let joy_ry = inputs.adc.read_blocking(&mut inputs.joy_ry);
 
