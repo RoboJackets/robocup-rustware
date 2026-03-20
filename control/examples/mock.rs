@@ -31,12 +31,8 @@ mod app {
     use teensy4_bsp as bsp;
 
     use hal::gpio::Trigger;
-    use hal::lpspi::{Lpspi, Pins};
     use hal::timer::Blocking;
     use teensy4_bsp::hal;
-
-    use bsp::ral;
-    use ral::lpspi::LPSPI3;
 
     use rtic_nrf24l01::Radio;
 
@@ -64,7 +60,7 @@ mod app {
 
     use robojackets_robocup_control::{
         Delay2, FPGAInitError, FPGAProgError, Gpio1, ImuInitError, KickerProgramError,
-        KickerServicingError, PitDelay, RFRadio, RadioInitError, RadioInterrupt, SharedSPI, State,
+        KickerServicingError, PitDelay, RFRadio, RadioInitError, RadioInterrupt, RadioSPI, State,
         BASE_AMPLIFICATION_LEVEL, CHANNEL, GPT_1_DIVIDER, GPT_CLOCK_SOURCE, GPT_DIVIDER,
         GPT_FREQUENCY, RADIO_ADDRESS, ROBOT_ID,
     };
@@ -85,7 +81,7 @@ mod app {
         rx_int: &mut RadioInterrupt,
         gpio1: &mut Gpio1,
         radio: &mut RFRadio,
-        spi: &mut SharedSPI,
+        spi: &mut RadioSPI,
         radio_delay: &mut Delay2,
     ) {
         rx_int.clear_triggered();
@@ -103,7 +99,7 @@ mod app {
         rx_int: &mut RadioInterrupt,
         gpio1: &mut Gpio1,
         radio: &mut RFRadio,
-        spi: &mut SharedSPI,
+        spi: &mut RadioSPI,
         radio_delay: &mut Delay2,
     ) {
         rx_int.clear_triggered();
@@ -119,6 +115,7 @@ mod app {
     struct Local {
         motion_controller: MotionControl,
         last_encoders: Vector4<f32>,
+        poller: imxrt_log::Poller,
     }
 
     #[shared]
@@ -126,7 +123,7 @@ mod app {
         // Peripherals
         pit0: Pit<0>,
         gpt: Gpt<1>,
-        shared_spi: SharedSPI,
+        shared_spi: RadioSPI,
         blocking_delay: Delay2,
         rx_int: RadioInterrupt,
         gpio1: Gpio1,
@@ -165,15 +162,17 @@ mod app {
         let board::Resources {
             pins,
             mut gpio1,
+            mut gpio2,
             usb,
             mut gpt1,
             mut gpt2,
+            lpspi4,
             pit: (pit0, _pit1, pit2, _pit3),
             ..
         } = board::t41(ctx.device);
 
         // Setup USB Logging
-        bsp::LoggingFrontend::default_log().register_usb(usb);
+        let poller = imxrt_log::log::usbd(usb, imxrt_log::Interrupts::Enabled).unwrap();
 
         // Initialize Systick Async Delay
         let systick_token = rtic_monotonics::create_systick_token!();
@@ -192,30 +191,29 @@ mod app {
         let delay2 = Blocking::<_, GPT_FREQUENCY>::from_gpt(gpt2);
 
         // Setup Rx Interrupt
-        let rx_int = gpio1.input(pins.p15);
-        gpio1.set_interrupt(&rx_int, None);
+        let rx_int = gpio2.input(pins.p9);
+        gpio2.set_interrupt(&rx_int, None);
 
         // Initialize IMU
         let pit_delay = Blocking::<_, PERCLK_FREQUENCY>::from_pit(pit2);
 
-        // Initialize Shared SPI
-        let shared_spi_pins = Pins {
-            pcs0: pins.p38,
-            sck: pins.p27,
-            sdo: pins.p26,
-            sdi: pins.p39,
+        // Initialize Shared SPI. Changed to RadioSPI
+        let spi_pins = hal::lpspi::Pins {
+            pcs0: pins.p10,
+            sck: pins.p13,
+            sdo: pins.p11,
+            sdi: pins.p12,
         };
-        let shared_spi_block = unsafe { LPSPI3::instance() };
-        let mut shared_spi = Lpspi::new(shared_spi_block, shared_spi_pins);
+        let mut shared_spi = hal::lpspi::Lpspi::new(lpspi4, spi_pins);
 
         shared_spi.disabled(|spi| {
             spi.set_clock_hz(LPSPI_FREQUENCY, 5_000_000u32);
             spi.set_mode(MODE_0);
         });
 
-        // Init radio cs pin and ce pin
+        // Init radio cs pin and ce pin.
         let radio_cs = gpio1.output(pins.p14);
-        let ce = gpio1.output(pins.p20);
+        let ce = gpio1.output(pins.p41);
 
         // Initialize radio
         let radio = Radio::new(ce, radio_cs);
@@ -254,6 +252,7 @@ mod app {
             Local {
                 motion_controller: MotionControl::new(),
                 last_encoders: Vector4::zeros(),
+                poller,
             },
         )
     }
@@ -474,9 +473,9 @@ mod app {
                         Mode::ProgramKickOnBreakbeam => *state = State::ProgramKickOnBreakbeam,
                         Mode::ProgramKicker => *state = State::ProgramKicker,
                         Mode::KickerTest => *state = State::KickerTesting,
-                        Mode::FpgaTest => *state = State::FpgaTesting,
+                        _ => (),
                     }
-                    state.clone()
+                    *state
                 });
                 log::info!("New State: {:?}", new_state);
                 *command = Some(control_message);
@@ -549,9 +548,6 @@ mod app {
             }
             State::KickerTesting => {
                 let _ = test_kicker::spawn();
-            }
-            State::FpgaTesting => {
-                let _ = test_fpga_movement::spawn();
             }
         }
         if *ctx.local.iteration % 100 == 0 {
@@ -1103,5 +1099,12 @@ mod app {
                     enable_radio_interrupts(rx_int, gpio1, radio, shared_spi, delay);
                 },
             );
+    }
+
+    /// This task runs when the USB1 interrupt activates.
+    /// Simply poll the logger to control the logging process.
+    #[task(binds = USB_OTG1, local = [poller])]
+    fn usb_interrupt(cx: usb_interrupt::Context) {
+        cx.local.poller.poll();
     }
 }

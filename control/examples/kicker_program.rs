@@ -19,7 +19,7 @@ mod app {
 
     use core::mem::MaybeUninit;
 
-    use bsp::board::{self, PERCLK_FREQUENCY};
+    use bsp::board::{self};
     use teensy4_bsp as bsp;
 
     use hal::timer::Blocking;
@@ -29,8 +29,14 @@ mod app {
 
     use kicker_programmer::KickerProgrammer;
 
+    use bsp::hal::iomuxc;
+    use bsp::ral;
+    use bsp::hal::lpspi::{Lpspi, Pins};
+    use embedded_hal::spi::MODE_3;
+    use ral::lpspi::LPSPI3;
+
     use robojackets_robocup_control::{
-        spi::FakeSpi, Delay2, KickerProg, GPT_CLOCK_SOURCE, GPT_DIVIDER, GPT_FREQUENCY,
+        KickerSpi, Delay2, KickerProg, GPT_CLOCK_SOURCE, GPT_DIVIDER, GPT_FREQUENCY,
     };
 
     const HEAP_SIZE: usize = 1024;
@@ -39,8 +45,9 @@ mod app {
     #[local]
     struct Local {
         delay2: Delay2,
-        fake_spi: FakeSpi,
+        spi: KickerSpi,
         kicker_programmer: KickerProg,
+        poller: imxrt_log::Poller,
     }
 
     #[shared]
@@ -55,15 +62,15 @@ mod app {
 
         let board::Resources {
             pins,
+            mut gpio1,
             mut gpio2,
-            mut gpio4,
             usb,
             mut gpt2,
-            pit: (_pit0, _pit1, _pit2, pit3),
+            pit: (_pit0, _pit1, _pit2, _pit3),
             ..
         } = board::t41(ctx.device);
 
-        bsp::LoggingFrontend::default_log().register_usb(usb);
+        let poller = imxrt_log::log::usbd(usb, imxrt_log::Interrupts::Enabled).unwrap();
 
         let systick_token = rtic_monotonics::create_systick_token!();
         Systick::start(ctx.core.SYST, 600_000_000, systick_token);
@@ -73,41 +80,59 @@ mod app {
         gpt2.set_clock_source(GPT_CLOCK_SOURCE);
         let delay2 = Blocking::<_, GPT_FREQUENCY>::from_gpt(gpt2);
 
-        let pit_delay = Blocking::<_, PERCLK_FREQUENCY>::from_pit(pit3);
-        let kicker_reset = gpio2.output(pins.p6);
-        kicker_reset.set();
-        let kicker_csn = gpio4.output(pins.p5);
-        kicker_csn.set();
-        let fake_spi = FakeSpi::new(
-            gpio4.output(pins.p2),
-            gpio4.output(pins.p3),
-            gpio4.input(pins.p4),
-            pit_delay,
-        );
+        // Define SPI pins
+        let spi_pins = Pins {
+            pcs0: pins.p38,
+            sck: pins.p27,
+            sdo: pins.p26,
+            sdi: pins.p39,
+        };
 
-        let kicker_programmer = KickerProgrammer::new(kicker_csn, kicker_reset);
+        // Generate instance of LPSPI3 to manually populate
+        let spi_block = unsafe { LPSPI3::instance() };
+        let spi_temp = Lpspi::new(spi_block, spi_pins);
+
+        // Release pins to split into kicker
+        let (spi_block, mut spi_pins) = spi_temp.release();
+
+        // Manually configure the data pins for LPSPI3 function
+        iomuxc::lpspi::prepare(&mut spi_pins.sdo);  // SDO/MOSI
+        iomuxc::lpspi::prepare(&mut spi_pins.sdi);  // SDI/MISO
+        iomuxc::lpspi::prepare(&mut spi_pins.sck);  // SCK
+
+        // Initialize SPI and Kicker controll
+        let mut spi = Lpspi::without_pins(spi_block);
+
+        // Config SPI
+        spi.disabled(|spi| {
+            spi.set_mode(MODE_3);                  // CPOL=1, CPHA=1 to match Pico
+            spi.set_clock_hz(board::LPSPI_FREQUENCY, 2_000_000);
+        });
+
+        let kicker_programmer = KickerProgrammer::new(gpio1.output(spi_pins.pcs0), gpio2.output(pins.p37));
 
         program_kicker::spawn().ok();
 
         (
             Shared {},
             Local {
-                fake_spi,
+                spi,
                 delay2,
                 kicker_programmer,
+                poller,
             },
         )
     }
 
     #[task(
-        local = [fake_spi, delay2, kicker_programmer],
+        local = [spi, delay2, kicker_programmer],
         priority = 1
     )]
     async fn program_kicker(ctx: program_kicker::Context) {
         let result = ctx
             .local
             .kicker_programmer
-            .program_kicker(ctx.local.fake_spi, ctx.local.delay2);
+            .program_kicker(ctx.local.spi, ctx.local.delay2);
 
         match result {
             Ok(_) => log::info!("Kicker Programming Successful!!!"),
@@ -117,5 +142,12 @@ mod app {
                 Systick::delay(1_000u32.millis()).await;
             },
         }
+    }
+
+    /// This task runs when the USB1 interrupt activates.
+    /// Simply poll the logger to control the logging process.
+    #[task(binds = USB_OTG1, local = [poller])]
+    fn usb_interrupt(cx: usb_interrupt::Context) {
+        cx.local.poller.poll();
     }
 }

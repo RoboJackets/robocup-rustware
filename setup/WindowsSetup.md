@@ -11,7 +11,7 @@ This should install rust to path, but please confirm that running `rustc --versi
 First, set the default rust compiler to use the `nightly` compiler (technically this compiler is unstable, but the only feature we use from it is very close to being available in stable rust so it is effectively stable)
 
 ```sh
-rustup default nightly
+rustup default nightly-2025-02-20
 ```
 
 Next, set the curent target to be `thumb7e-none-eaihf` with:

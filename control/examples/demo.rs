@@ -27,7 +27,9 @@ mod app {
     use rtic_monotonics::systick::*;
 
     #[local]
-    struct Local {}
+    struct Local {
+        poller: imxrt_log::Poller,
+    }
 
     #[shared]
     struct Shared {}
@@ -36,14 +38,14 @@ mod app {
     fn init(ctx: init::Context) -> (Shared, Local) {
         let board::Resources { usb, .. } = board::t41(ctx.device);
 
-        bsp::LoggingFrontend::default_log().register_usb(usb);
+        let poller = imxrt_log::log::usbd(usb, imxrt_log::Interrupts::Enabled).unwrap();
 
         let systick_token = rtic_monotonics::create_systick_token!();
         Systick::start(ctx.core.SYST, 600_000_000, systick_token);
 
         blink_led::spawn().ok();
 
-        (Shared {}, Local {})
+        (Shared {}, Local { poller })
     }
 
     #[idle]
@@ -64,5 +66,12 @@ mod app {
 
             Systick::delay(1000u32.millis()).await;
         }
+    }
+
+    /// This task runs when the USB1 interrupt activates.
+    /// Simply poll the logger to control the logging process.
+    #[task(binds = USB_OTG1, local = [poller])]
+    fn usb_interrupt(cx: usb_interrupt::Context) {
+        cx.local.poller.poll();
     }
 }

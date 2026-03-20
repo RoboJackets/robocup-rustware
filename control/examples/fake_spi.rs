@@ -41,7 +41,9 @@ mod app {
     static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
 
     #[local]
-    struct Local {}
+    struct Local {
+        poller: imxrt_log::Poller,
+    }
 
     #[shared]
     struct Shared {
@@ -58,13 +60,13 @@ mod app {
 
         let board::Resources {
             mut pins,
-            mut gpio4,
+            mut gpio1,
             usb,
             pit: (_pit0, _pit1, _pit2, pit3),
             ..
         } = board::t41(ctx.device);
 
-        bsp::LoggingFrontend::default_log().register_usb(usb);
+        let poller = imxrt_log::log::usbd(usb, imxrt_log::Interrupts::Enabled).unwrap();
 
         let systick_token = rtic_monotonics::create_systick_token!();
         Systick::start(ctx.core.SYST, 600_000_000, systick_token);
@@ -73,11 +75,10 @@ mod app {
 
         let miso_config = Config::zero().set_pull_keeper(Some(PullKeeper::Pullup22k));
         configure(&mut pins.p4, miso_config);
-        let fake_csn = gpio4.output(pins.p5);
         let fake_spi = FakeSpi::new(
-            gpio4.output(pins.p2),
-            gpio4.output(pins.p3),
-            gpio4.input(pins.p4),
+            gpio1.output(pins.p27),
+            gpio1.output(pins.p26),
+            gpio1.input(pins.p39),
             pit_delay,
         );
 
@@ -86,9 +87,9 @@ mod app {
         (
             Shared {
                 fake_spi,
-                kicker_csn: fake_csn,
+                kicker_csn: gpio1.output(pins.p38),
             },
-            Local {},
+            Local { poller },
         )
     }
 
@@ -130,5 +131,12 @@ mod app {
         Systick::delay(50u32.millis()).await;
 
         write_data_spi::spawn().ok();
+    }
+
+    /// This task runs when the USB1 interrupt activates.
+    /// Simply poll the logger to control the logging process.
+    #[task(binds = USB_OTG1, local = [poller])]
+    fn usb_interrupt(cx: usb_interrupt::Context) {
+        cx.local.poller.poll();
     }
 }

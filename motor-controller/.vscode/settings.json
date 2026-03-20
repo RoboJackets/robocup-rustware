@@ -1,0 +1,13 @@
+{
+    "rust-analyzer.cargo.target": "thumbv6m-none-eabi",
+    "rust-analyzer.cargo.allTargets": false,
+    "rust-analyzer.linkedProjects": [
+        "./Cargo.toml",
+        "./modules/motion-control/Cargo.toml"
+    ],
+    "rust-analyzer.check.extraArgs": [
+        "--bins",
+        "--examples",
+        "--lib"
+    ]
+}
