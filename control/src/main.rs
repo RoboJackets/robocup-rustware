@@ -43,9 +43,9 @@ mod app {
     use hal::timer::Blocking;
     use teensy4_bsp::hal;
 
-    use hal::iomuxc;
     use bsp::ral::lpspi::LPSPI3;
     use embedded_hal::spi::MODE_3;
+    use hal::iomuxc;
 
     use rtic_nrf24l01::Radio;
 
@@ -82,12 +82,11 @@ mod app {
 
     use robojackets_robocup_control::{
         motors::{motor_interrupt, send_command},
-        KickerSpi,
         Delay2, Display, DribblerUart, Imu, ImuInitError, KickerCSn, KickerProg,
-        KickerProgramError, KickerReset, KickerServicingError, MotorFourUart, MotorOneUart,
-        MotorThreeUart, MotorTwoUart, PitDelay, RFRadio, RadioInitError, RadioInterrupt, State,
-        BASE_AMPLIFICATION_LEVEL, CHANNEL, GPT_1_DIVIDER, GPT_CLOCK_SOURCE, GPT_DIVIDER,
-        GPT_FREQUENCY, RADIO_ADDRESS, ROBOT_ID,
+        KickerProgramError, KickerReset, KickerServicingError, KickerSpi, MotorFourUart,
+        MotorOneUart, MotorThreeUart, MotorTwoUart, PitDelay, RFRadio, RadioInitError,
+        RadioInterrupt, State, BASE_AMPLIFICATION_LEVEL, CHANNEL, GPT_1_DIVIDER, GPT_CLOCK_SOURCE,
+        GPT_DIVIDER, GPT_FREQUENCY, RADIO_ADDRESS, ROBOT_ID,
     };
 
     use kicker_controller::{KickTrigger, KickType, Kicker, KickerCommand};
@@ -113,6 +112,8 @@ mod app {
     /// The amount of time the robot should continue moving without receiving a
     /// new message from the base station before it stops moving
     const DIE_TIME_US: u32 = 1_000_000;
+    // Number of consecutive readings under voltage threshold before shutting down
+    const BATT_UVLO_THRESHOLD: u32 = 10;
 
     /// Helper method to disable radio interrupts and prepare to
     /// send messages of `message_size` over the radio
@@ -175,6 +176,9 @@ mod app {
         // Dribbler
         dribbler_tx: Sender<'static, [u8; 4], 3>,
         dribbler_rx: Receiver<'static, [u8; 4], 3>,
+
+        // Battery low voltage checks
+        batt_uvlo_counter: u32,
     }
 
     #[shared]
@@ -417,22 +421,27 @@ mod app {
         let (kicker_spi_block, mut kicker_spi_pins) = kicker_spi_temp.release();
 
         // Manually configure the data pins for LPSPI3 function
-        iomuxc::lpspi::prepare(&mut kicker_spi_pins.sdo);  // SDO/MOSI
-        iomuxc::lpspi::prepare(&mut kicker_spi_pins.sdi);  // SDI/MISO
-        iomuxc::lpspi::prepare(&mut kicker_spi_pins.sck);  // SCK
+        iomuxc::lpspi::prepare(&mut kicker_spi_pins.sdo); // SDO/MOSI
+        iomuxc::lpspi::prepare(&mut kicker_spi_pins.sdi); // SDI/MISO
+        iomuxc::lpspi::prepare(&mut kicker_spi_pins.sck); // SCK
 
         // Initialize SPI and Kicker controll
         let mut kicker_spi = Lpspi::without_pins(kicker_spi_block);
 
         // Config SPI
         kicker_spi.disabled(|kicker_spi| {
-            kicker_spi.set_mode(MODE_3);                  // CPOL=1, CPHA=1 to match Pico
+            kicker_spi.set_mode(MODE_3); // CPOL=1, CPHA=1 to match Pico
             kicker_spi.set_clock_hz(board::LPSPI_FREQUENCY, 2_000_000);
         });
 
-        let kicker_controller = Kicker::new(gpio1.output(kicker_spi_pins.pcs0), gpio2.output(pins.p37));
+        let kicker_controller =
+            Kicker::new(gpio1.output(kicker_spi_pins.pcs0), gpio2.output(pins.p37));
 
         // End Initialize Kicker //
+
+        // Initialize UVLO //
+        let mut batt_uvlo_counter = 0;
+        // End Initialize UVLO //
 
         adc1.calibrate();
         let mut batt_sense = AnalogInput::new(pins.p15);
@@ -505,6 +514,7 @@ mod app {
                 motor_four_tx,
                 dribbler_tx,
                 dribbler_rx,
+                batt_uvlo_counter,
             },
         )
     }
@@ -750,27 +760,32 @@ mod app {
         log::info!("Freezed Motors!");
 
         //trigger kicker repeatedly to force discharge
-        (ctx.shared.kicker_controller, ctx.shared.kicker_spi, ctx.shared.blocking_delay).lock(|controller, kicker_spi, delay| {
-            match controller.take() {
-                Some(mut kicker) => {
-                    for _ in 0..10 {
-                        let command = KickerCommand {
-                            kick_type: KickType::Kick,
-                            kick_trigger: KickTrigger::Immediate,
-                            kick_strength: 10,
-                            charge_allowed: false,
-                        };
-                        kicker.service(command, kicker_spi).unwrap();
-                        delay.delay_ms(100u32);
+        (
+            ctx.shared.kicker_controller,
+            ctx.shared.kicker_spi,
+            ctx.shared.blocking_delay,
+        )
+            .lock(|controller, kicker_spi, delay| {
+                match controller.take() {
+                    Some(mut kicker) => {
+                        for _ in 0..10 {
+                            let command = KickerCommand {
+                                kick_type: KickType::Kick,
+                                kick_trigger: KickTrigger::Immediate,
+                                kick_strength: 10,
+                                charge_allowed: false,
+                            };
+                            kicker.service(command, kicker_spi).unwrap();
+                            delay.delay_ms(100u32);
+                        }
+                    }
+                    None => {
+                        //If we never initialized the kicker, we never told it to charge
+                        //Thus, it's unlikely to have any charge and we can kill immediately
+                        return;
                     }
                 }
-                None => {
-                    //If we never initialized the kicker, we never told it to charge
-                    //Thus, it's unlikely to have any charge and we can kill immediately
-                    return;
-                }
-            }
-        });
+            });
         log::info!("Discharged Kicker!");
 
         (ctx.shared.kill_n).lock(|kill_n| {
@@ -1016,11 +1031,12 @@ mod app {
                 ctx.shared.robot_status,
                 ctx.shared.kicker_spi,
             )
-                .lock(
-                    |controller, programmer, robot_status, kicker_spi| match controller.take() {
+                .lock(|controller, programmer, robot_status, kicker_spi| {
+                    match controller.take() {
                         Some(mut kicker_controller) => {
-                            let state =
-                                kicker_controller.service(kicker_command, kicker_spi).unwrap();
+                            let state = kicker_controller
+                                .service(kicker_command, kicker_spi)
+                                .unwrap();
                             robot_status.kick_status =
                                 kicker_command.kick_trigger != KickTrigger::Disabled;
                             robot_status.ball_sense_status = state.ball_sensed;
@@ -1030,23 +1046,29 @@ mod app {
                         None => {
                             let (cs, reset) = programmer.take().unwrap().destroy();
                             let mut kicker_controller = Kicker::new(cs, reset);
-                            let state =
-                                kicker_controller.service(kicker_command, kicker_spi).unwrap();
+                            let state = kicker_controller
+                                .service(kicker_command, kicker_spi)
+                                .unwrap();
                             robot_status.kick_status =
                                 kicker_command.kick_trigger != KickTrigger::Disabled;
                             robot_status.ball_sense_status = state.ball_sensed;
                             robot_status.kick_healthy = state.healthy;
                             *controller = Some(kicker_controller);
                         }
-                    },
-                );
+                    }
+                });
         }
 
         *ctx.local.iteration = ctx.local.iteration.wrapping_add(1);
     }
 
     #[task(
+<<<<<<< HEAD
         shared = [screen, adc1, batt_sense, robot_status],
+=======
+        shared = [display, adc1, batt_sense, robot_status],
+        local = [batt_uvlo_counter],
+>>>>>>> 22621bb (fix uvlo to ignore transients)
         priority = 1
     )]
     async fn non_critical_task(mut ctx: non_critical_task::Context) {
@@ -1069,7 +1091,12 @@ mod app {
 
         // // Battery is under voltaged so we should die
         if battery_voltage < MIN_BATTERY_VOLTAGE {
-            kill_self::spawn().ok();
+            *ctx.local.batt_uvlo_counter += 1;
+            if *ctx.local.batt_uvlo_counter >= BATT_UVLO_THRESHOLD {
+                kill_self::spawn().ok();
+            }
+        } else {
+            *ctx.local.batt_uvlo_counter = 0;
         }
 
         ctx.shared.screen.lock(|screen| {
