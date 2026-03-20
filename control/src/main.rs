@@ -941,6 +941,7 @@ mod app {
             initialized: bool = false,
             iteration: u32 = 0,
             last_time: u32 = 0
+            last_body_velocities: Vector3<f32> = Vector3::new(0.0, 0.0, 0.0),
         ],
         priority = 1,
     )]
@@ -961,14 +962,6 @@ mod app {
                     None => (Vector3::new(0.0, 0.0, 0.0), 0),
                 });
 
-        let (gyro, accel_x, accel_y) = ctx.shared.imu.lock(|imu| {
-            let gyro = imu.gyro_z().unwrap_or(0.0);
-            let accel_x = imu.accel_x().unwrap_or(0.0);
-            let accel_y = imu.accel_y().unwrap_or(0.0);
-
-            (gyro, accel_x, accel_y)
-        });
-
         let now = ctx.shared.gpt.lock(|gpt| gpt.count());
         let delta = now - *ctx.local.last_time;
         *ctx.local.last_time = now;
@@ -983,36 +976,26 @@ mod app {
             log::info!("DEAD: {}", elapsed_time);
         }
 
-        let last_encoders = (
-            ctx.shared.motor_one_velocity,
-            ctx.shared.motor_two_velocity,
-            ctx.shared.motor_three_velocity,
-            ctx.shared.motor_four_velocity,
-        )
-            .lock(|one, two, three, four| Vector4::new(*one, *two, *three, *four));
+        if body_velocities != *ctx.local.last_body_velocities {
+            *ctx.local.last_body_velocities = body_velocities;
+            let wheel_velocities = ctx.local.motion_controller.body_to_wheels(body_velocities);
 
-        let wheel_velocities = ctx.local.motion_controller.control_update(
-            Vector3::new(-accel_y, -accel_x, -gyro),
-            last_encoders,
-            body_velocities,
-            delta,
-        );
-
-        ctx.shared
-            .dribbler_uart
-            .lock(|uart| send_command(dribbler_speed as i32, ctx.local.dribbler_tx, uart, 0));
-        ctx.shared
-            .motor_one_uart
-            .lock(|uart| send_command(wheel_velocities[0], ctx.local.motor_one_tx, uart, 0));
-        ctx.shared
-            .motor_two_uart
-            .lock(|uart| send_command(wheel_velocities[1], ctx.local.motor_two_tx, uart, 0));
-        ctx.shared
-            .motor_three_uart
-            .lock(|uart| send_command(wheel_velocities[2], ctx.local.motor_three_tx, uart, 0));
-        ctx.shared
-            .motor_four_uart
-            .lock(|uart| send_command(wheel_velocities[3], ctx.local.motor_four_tx, uart, 0));
+            ctx.shared
+                .dribbler_uart
+                .lock(|uart| send_command(dribbler_speed as i32, ctx.local.dribbler_tx, uart, 0));
+            ctx.shared
+                .motor_one_uart
+                .lock(|uart| send_command(wheel_velocities[0], ctx.local.motor_one_tx, uart, 0));
+            ctx.shared
+                .motor_two_uart
+                .lock(|uart| send_command(wheel_velocities[1], ctx.local.motor_two_tx, uart, 0));
+            ctx.shared
+                .motor_three_uart
+                .lock(|uart| send_command(wheel_velocities[2], ctx.local.motor_three_tx, uart, 0));
+            ctx.shared
+                .motor_four_uart
+                .lock(|uart| send_command(wheel_velocities[3], ctx.local.motor_four_tx, uart, 0));
+        }
 
         #[cfg(feature = "debug")]
         log::info!("Moving at {:?}", wheel_velocities);
@@ -1085,9 +1068,9 @@ mod app {
         });
 
         // // Battery is under voltaged so we should die
-        // if battery_voltage < MIN_BATTERY_VOLTAGE {
-        //     kill_self::spawn().ok();
-        // }
+        if battery_voltage < MIN_BATTERY_VOLTAGE {
+            kill_self::spawn().ok();
+        }
 
         // TODO: Display robot status on display
     }
