@@ -270,10 +270,10 @@ impl DriveMod {
                 }
             }
             5 => {
-                if increment && self.settings.kick_strength <= 95 {
-                    self.settings.kick_strength += 5;
-                } else if !increment && self.settings.kick_strength >= 5 {
-                    self.settings.kick_strength -= 5;
+                if increment && self.settings.kick_strength <= 15 {
+                    self.settings.kick_strength += 1;
+                } else if !increment && self.settings.kick_strength >= 1 {
+                    self.settings.kick_strength -= 1;
                 }
             }
             _ => {}
