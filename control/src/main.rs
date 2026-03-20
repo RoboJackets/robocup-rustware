@@ -735,7 +735,7 @@ mod app {
         kill_self::spawn().ok();
     }
 
-    #[task(shared=[power_switch, kill_n,gpio2,rx_int,control_message,kicker_controller,kicker_spi],priority=2)]
+    #[task(shared=[power_switch, kill_n,gpio2,rx_int,control_message,kicker_controller,kicker_spi, blocking_delay],priority=2)]
     async fn kill_self(mut ctx: kill_self::Context) {
         // Disable new radio events from coming in by disabling the interrupt
         (ctx.shared.gpio2, ctx.shared.rx_int).lock(|gpio2, rx_int| {
@@ -750,19 +750,18 @@ mod app {
         log::info!("Freezed Motors!");
 
         //trigger kicker repeatedly to force discharge
-        (ctx.shared.kicker_controller, ctx.shared.kicker_spi).lock(|controller, kicker_spi| {
+        (ctx.shared.kicker_controller, ctx.shared.kicker_spi, ctx.shared.blocking_delay).lock(|controller, kicker_spi, delay| {
             match controller.take() {
                 Some(mut kicker) => {
-                    for _ in 0..5 {
+                    for _ in 0..10 {
                         let command = KickerCommand {
                             kick_type: KickType::Kick,
                             kick_trigger: KickTrigger::Immediate,
-                            kick_strength: 1,
+                            kick_strength: 10,
                             charge_allowed: false,
                         };
                         kicker.service(command, kicker_spi).unwrap();
-
-                        cortex_m::asm::delay(200_000_000); // 333ms
+                        delay.delay_ms(100u32);
                     }
                 }
                 None => {
