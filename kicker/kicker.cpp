@@ -74,7 +74,8 @@ void core1_entry() {
         gpio_put(BREAK_TRIG, 0);
         sleep_ms(20);
 
-        int16_t diff = abs(break_off - break_on);
+        int16_t raw_diff = abs(break_off - break_on);
+        int16_t diff = ((255 - KALPHA_BREAK) * diff + KALPHA_BREAK * raw_diff) / 255;
 
         if (diff < BREAK_THRESHOLD) {
             gpio_put(BREAK_LED, 0);
@@ -87,7 +88,7 @@ void core1_entry() {
             break_raw = false;
         }
 
-        #if EXTRA_INFO && DEBUG
+        #if DEBUG && EXTRA_INFO
             printf("Break Off: %d, Break On: %d, Difference: %d\n", break_off, break_on, diff);
         #endif
     }
@@ -495,7 +496,7 @@ uint16_t read_voltage_raw() {
 float read_voltage() {
     uint16_t raw = read_voltage_raw();
     float voltage_new = VOLT_CONVERSION * raw;
-    float voltage_norm = ((255 - KALPHA) * voltage + KALPHA * voltage_new) / 255;
+    float voltage_norm = ((255 - KALPHA_VOLT) * voltage + KALPHA_VOLT * voltage_new) / 255;
     #if DEBUG && EXTRA_INFO
         printf("Volt Raw: %d | Volt Actual: %.2f | Volt Normalized: %.2f\n", raw, voltage_new, voltage_norm);
     #endif
