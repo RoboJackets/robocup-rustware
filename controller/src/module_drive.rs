@@ -358,7 +358,7 @@ impl DriveMod {
         //this is a *very* basic joystick mapping
         let lx = joy_map(self.state.input_state.joy_lx as i32 - 512, 30);
         let ly = joy_map(self.state.input_state.joy_ly as i32 - 512, 30);
-        let lw = joy_map(self.state.input_state.joy_rx as i32 - 512, 30);
+        let lw = 1024 - joy_map(self.state.input_state.joy_rx as i32 - 512, 30);
 
         let body_x = (lx as f32 / 512.0) * 2.0;
         let body_y = (ly as f32 / 512.0) * 2.0;
