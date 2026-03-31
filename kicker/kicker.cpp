@@ -205,7 +205,7 @@ int main() {
         update_spi_output();
 
         // Allow setting the break trigger
-        checking_break = command.kick_trigger == Breakbeam && to_ms_since_boot(get_absolute_time()) - 1000 > last_kick;
+        checking_break = command.kick_trigger == Breakbeam && to_ms_since_boot(get_absolute_time()) - 1000 > last_kick && !charging;
 
         // Charging
         // Check charge allowace, time since kick, and if charging is needed
