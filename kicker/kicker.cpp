@@ -33,6 +33,11 @@ volatile bool checking_break = true;
 volatile bool break_triggered = false;
 volatile bool break_raw = false;
 
+// Voltage
+volatile float voltage = 0;
+volatile float short_volt_diff;
+volatile float long_volt_diff;
+
 // SPI Data
 volatile uint8_t rx_data = 0;
 volatile bool data_ready = false;
@@ -55,15 +60,14 @@ uint64_t last_charge = to_ms_since_boot(get_absolute_time());
 KickerState state = KickerState::Init;
 KickerCommand command = KickerCommand(0b00000000); // Start with no charge and disabled
 uint64_t count = 0;
-volatile float voltage = 0;
-volatile uint8_t volt_index = 0;
-volatile uint16_t voltage_history[10] = {0,0,0,0,0,0,0,0,0,0};
 mutex_t adc_mutex;
 uint64_t watchdog_time;
 uint64_t time = 0;
 
 // Breakbeam reading
 void core1_entry() {
+    uint8_t volt_index = 0;
+    uint16_t voltage_history[10] = {0,0,0,0,0,0,0,0,0,0};
     uint64_t last_hist = 0;
     while(true) {
         /// Breakbeam
@@ -104,11 +108,14 @@ void core1_entry() {
             voltage_history[volt_index] = raw_voltage;
             volt_index = (volt_index + 1) % 10;
             last_hist = to_ms_since_boot(get_absolute_time());
+
+            // Used for error checking
+            long_volt_diff = voltage - conv_voltage(voltage_history[volt_index]);
+            short_volt_diff = voltage - conv_voltage(voltage_history[(volt_index + 4) % 10]);
         }
 
         #if DEBUG && EXTRA_INFO
-            printf("Voltage %.2f | History: %d, %d, %d, %d, %d, %d, %d, %d, %d, %d\n", voltage, voltage_history[0], voltage_history[1], voltage_history[2], voltage_history[3], voltage_history[4], voltage_history[5], voltage_history[6], voltage_history[7], voltage_history[8], voltage_history[9]);
-            printf("Voltage %.2f | Past Voltage: %.2f | Volt Diff: %.2f\n", conv_voltage(raw_voltage), conv_voltage(voltage_history[volt_index]), conv_voltage(raw_voltage) - conv_voltage(voltage_history[volt_index]));
+            printf("Voltage: %.2f | History: %d, %d, %d, %d, %d, %d, %d, %d, %d, %d\n", voltage, voltage_history[0], voltage_history[1], voltage_history[2], voltage_history[3], voltage_history[4], voltage_history[5], voltage_history[6], voltage_history[7], voltage_history[8], voltage_history[9]);
         #endif
     }
 }
@@ -198,19 +205,19 @@ int main() {
         }
 
         // No charging
-        // if (E_NO_CHARGE && charging && !(voltage > old_voltage - VOLT_TOLERANCE) && to_ms_since_boot(get_absolute_time()) - charge_start > NO_CHARGE_COOLDOWN) {
-        //     kicker_error(KickerError::NoCharge);
-        // }
+        if (E_NO_CHARGE && charging && charge_start + NO_CHARGE_COOLDOWN < to_ms_since_boot(get_absolute_time()) && short_volt_diff < MIN_VOLT_INCREASE) {
+            kicker_error(KickerError::NoCharge);
+        }
 
         // Stuck charging
-        // if (E_CONTINUOUS_CHARGING && !charging && (voltage > old_voltage + VOLT_TOLERANCE)) {
-        //     kicker_error(KickerError::ContinuousCharging);
-        // }
+        if (E_CONTINUOUS_CHARGING && !charging && last_charge + CHARGE_COOLDOWN + 250 > to_ms_since_boot(get_absolute_time()) && long_volt_diff > MAX_PASSIVE_GAIN) {
+            kicker_error(KickerError::ContinuousCharging);
+        }
 
         // Discharging 
-        // if (E_CONTINUOUS_DISCHARGING && !charging && (voltage < old_voltage - VOLT_TOLERANCE) && !(last_kick + KICK_COOLDOWN > to_ms_since_boot(get_absolute_time()))) {
-        //     kicker_error(KickerError::ContinuousDischarge);
-        // }
+        if (E_CONTINUOUS_DISCHARGING && last_kick + KICK_COOLDOWN + 250 > to_ms_since_boot(get_absolute_time()) && long_volt_diff < MAX_PASSIVE_DROP) {
+            kicker_error(KickerError::ContinuousDischarge);
+        }
 
         /// DRIVE OUTPUTS
         update_spi_output();
@@ -282,7 +289,7 @@ int main() {
                 printf("Sys Time: %llu\n", sys_time);
                 printf("Command: ");
                 command.print();
-                printf("Voltage: %.2f | Old Voltage: %.2f\n", voltage, old_voltage);
+                printf("Voltage: %.2f | Short Diff: %.2f | Long Diff: %.2f\n", voltage, short_volt_diff, long_volt_diff);
                 printf("Charge Cooldown: %d\n", (CHARGE_COOLDOWN + last_charge > sys_time ? CHARGE_COOLDOWN - (sys_time - last_charge) : 0));
                 printf("Kick Cooldown: %d\n", (KICK_COOLDOWN + last_kick > sys_time ? KICK_COOLDOWN - (sys_time - last_kick) : 0));
                 printf("Charging: %s\n", (charging ? "TRUE" : "FALSE"));
@@ -390,18 +397,6 @@ void startup() {
     // Test LEDs + give delay for serial setup
     light_show();
 
-    // Init averaged values
-    #if DEBUG
-    printf("INIT AVERAGED VOLTAGE\n");
-    #endif
-    sleep_ms(100);
-    for (size_t i = 0; i < 20; i++) {
-        #if DEBUG && EXTRA_INFO
-            printf("Voltage: %.2f\n", voltage);
-        #endif
-        sleep_ms(1);
-    }
-
     // Test Breakbeam
     checking_break = true;
     sleep_ms(100);
@@ -410,6 +405,12 @@ void startup() {
     }
     checking_break = false;
     break_triggered = false;
+
+    // Discharge caps with small kicks if started charged
+    while (voltage > VOLT_MIN) {
+        kick(5, Kick);
+        sleep_ms(MAX_KICK_TIME / 2);
+    }
 
     // Run test cycle
     uint64_t debug_time = to_ms_since_boot(get_absolute_time());
@@ -425,11 +426,14 @@ void startup() {
     }
     gpio_put(CHARGE_EN, 0);
     sleep_ms(CHARGE_COOLDOWN);
-    float old_voltage = voltage;
-    sleep_ms(100); // Artificial delay to measure hold across time
+    sleep_ms(500); // Artificial delay to measure hold across time
 
-    if (E_CONTINUOUS_CHARGING && voltage > old_voltage + VOLT_TOLERANCE) {
+    if (E_CONTINUOUS_CHARGING && long_volt_diff >= MAX_PASSIVE_GAIN) {
         kicker_error(ContinuousCharging);
+    }
+
+    if (E_CONTINUOUS_DISCHARGING && long_volt_diff <= MAX_PASSIVE_DROP) {
+        kicker_error(ContinuousDischarge);
     }
 
     kick(15, Kick);
@@ -588,8 +592,7 @@ void kick(uint8_t strength, KickType kick_type) {
     irq_set_enabled(SPI1_IRQ, true);
 
     // If no voltage drop detected error
-    float temp_volt = conv_voltage(read_voltage());
-    if (E_NO_DISCHARGE && !(temp_volt < voltage - VOLT_MIN + VOLT_TOLERANCE) && !(temp_volt - voltage < 5 && temp_volt - voltage > -5)) {
+    if (E_NO_DISCHARGE && command.kick_strength > 0 && !(long_volt_diff < MIN_VOLT_DROP)) {
         kicker_error(NoDischarge);
     }
 }
