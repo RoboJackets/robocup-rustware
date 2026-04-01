@@ -15,7 +15,7 @@
 #define VOLT_MAX 180
 #define VOLT_MIN 10
 #define KALPHA_VOLT 64 // KALHPA / 255 of last value used for averaging | Max 255
-
+#define VOLT_CHECK_TIME 2500 //ms
 
 #define MAX_KICK_TIME 28200 // us
 #define KICK_COOLDOWN 100 // ms
@@ -31,6 +31,7 @@
 #define VOLT_TOLERANCE 3 // Used for comparing to old_voltage
 #define VOLT_TOLERANCE_CHARGE 10
 #define NO_CHARGE_COOLDOWN 1000 // ms
+#define MAX_PASSIVE_DROP 0.5
 
 // Enables for specific errors
 #define E_OVER_VOLTAGE 1

@@ -17,8 +17,8 @@ void light_show();
 void spi_irq_handler();
 KickerCommand read_command();
 uint16_t read_breakbeam();
-uint16_t read_voltage_raw();
-float read_voltage();
+uint16_t read_voltage();
+float conv_voltage(uint16_t);
 void update_spi_output();
 void hv_led_out(uint8_t);
 void gen_led_out(uint8_t);
@@ -55,15 +55,18 @@ uint64_t last_charge = to_ms_since_boot(get_absolute_time());
 KickerState state = KickerState::Init;
 KickerCommand command = KickerCommand(0b00000000); // Start with no charge and disabled
 uint64_t count = 0;
-float voltage = 0;
-float prev_voltage = 0;
-float old_voltage = 0;
+volatile float voltage = 0;
+volatile uint8_t volt_index = 0;
+volatile uint16_t voltage_history[10] = {0,0,0,0,0,0,0,0,0,0};
 mutex_t adc_mutex;
 uint64_t watchdog_time;
+uint64_t time = 0;
 
 // Breakbeam reading
 void core1_entry() {
+    uint64_t last_hist = 0;
     while(true) {
+        /// Breakbeam
         // OFF
         int16_t break_off = read_breakbeam();
         gpio_put(BREAK_TRIG, 1);
@@ -90,6 +93,22 @@ void core1_entry() {
 
         #if DEBUG && EXTRA_INFO
             printf("Break Off: %d, Break On: %d, Difference: %d\n", break_off, break_on, diff);
+        #endif
+
+
+        /// Voltage
+        uint16_t raw_voltage = read_voltage();
+        voltage = conv_voltage(raw_voltage);
+
+        if (last_hist + VOLT_CHECK_TIME >= to_ms_since_boot(get_absolute_time())) {
+            voltage_history[volt_index] = raw_voltage;
+            volt_index = (volt_index + 1) % 10;
+            last_hist = to_ms_since_boot(get_absolute_time());
+        }
+
+        #if DEBUG && EXTRA_INFO
+            printf("Voltage %.2f | History: %d, %d, %d, %d, %d, %d, %d, %d, %d, %d\n", voltage, voltage_history[0], voltage_history[1], voltage_history[2], voltage_history[3], voltage_history[4], voltage_history[5], voltage_history[6], voltage_history[7], voltage_history[8], voltage_history[9]);
+            printf("Voltage %.2f | Past Voltage: %.2f | Volt Diff: %.2f\n", conv_voltage(raw_voltage), conv_voltage(voltage_history[volt_index]), conv_voltage(raw_voltage) - conv_voltage(voltage_history[volt_index]));
         #endif
     }
 }
@@ -161,14 +180,6 @@ int main() {
             charge_btn_cooldown = to_ms_since_boot(get_absolute_time());
         }
         
-        // Read voltage staggar previous values
-        voltage = read_voltage();
-        if (count % 111 == 0) {
-                prev_voltage = voltage;
-        }
-        if (count % 200 == 0) {
-                old_voltage = prev_voltage;
-        }
 
         /// ERROR CHECKING
         // Charge Timeout
@@ -187,19 +198,19 @@ int main() {
         }
 
         // No charging
-        if (E_NO_CHARGE && charging && !(voltage > old_voltage - VOLT_TOLERANCE) && to_ms_since_boot(get_absolute_time()) - charge_start > NO_CHARGE_COOLDOWN) {
-            kicker_error(KickerError::NoCharge);
-        }
+        // if (E_NO_CHARGE && charging && !(voltage > old_voltage - VOLT_TOLERANCE) && to_ms_since_boot(get_absolute_time()) - charge_start > NO_CHARGE_COOLDOWN) {
+        //     kicker_error(KickerError::NoCharge);
+        // }
 
         // Stuck charging
-        if (E_CONTINUOUS_CHARGING && !charging && (voltage > old_voltage + VOLT_TOLERANCE)) {
-            kicker_error(KickerError::ContinuousCharging);
-        }
+        // if (E_CONTINUOUS_CHARGING && !charging && (voltage > old_voltage + VOLT_TOLERANCE)) {
+        //     kicker_error(KickerError::ContinuousCharging);
+        // }
 
         // Discharging 
-        if (E_CONTINUOUS_DISCHARGING && !charging && (voltage < old_voltage - VOLT_TOLERANCE) && !(last_kick + KICK_COOLDOWN > to_ms_since_boot(get_absolute_time()))) {
-            kicker_error(KickerError::ContinuousDischarge);
-        }
+        // if (E_CONTINUOUS_DISCHARGING && !charging && (voltage < old_voltage - VOLT_TOLERANCE) && !(last_kick + KICK_COOLDOWN > to_ms_since_boot(get_absolute_time()))) {
+        //     kicker_error(KickerError::ContinuousDischarge);
+        // }
 
         /// DRIVE OUTPUTS
         update_spi_output();
@@ -212,6 +223,8 @@ int main() {
         if (!command.charge_allowed || to_ms_since_boot(get_absolute_time()) - KICK_COOLDOWN < last_kick || charging && voltage >= VOLT_MAX) {
             if (charging) {
                 last_charge = to_ms_since_boot(get_absolute_time());
+                time = to_ms_since_boot(get_absolute_time());
+                printf("CHARGE ENDED\n");
             }
             charging = false;
             gpio_put(CHARGE_EN, 0);
@@ -220,6 +233,7 @@ int main() {
             charge_start = to_ms_since_boot(get_absolute_time());
             gpio_put(CHARGE_EN, 1);
             printf("BEGINNING CHARGE\n");
+            printf("Time not charging: %llu\n", to_ms_since_boot(get_absolute_time()) - time);
         }
         if (charging) {
             state = Charging;
@@ -382,7 +396,6 @@ void startup() {
     #endif
     sleep_ms(100);
     for (size_t i = 0; i < 20; i++) {
-        voltage = read_voltage();
         #if DEBUG && EXTRA_INFO
             printf("Voltage: %.2f\n", voltage);
         #endif
@@ -402,7 +415,6 @@ void startup() {
     uint64_t debug_time = to_ms_since_boot(get_absolute_time());
     while (voltage < VOLT_MIN * 3) {
         gpio_put(CHARGE_EN, 1);
-        voltage = read_voltage();
         if (to_ms_since_boot(get_absolute_time()) - debug_time > 5000) {
             if (E_NO_CHARGE) {
                 kicker_error(NoCharge);
@@ -413,20 +425,14 @@ void startup() {
     }
     gpio_put(CHARGE_EN, 0);
     sleep_ms(CHARGE_COOLDOWN);
-    old_voltage = voltage;
+    float old_voltage = voltage;
     sleep_ms(100); // Artificial delay to measure hold across time
-    voltage = read_voltage();
 
     if (E_CONTINUOUS_CHARGING && voltage > old_voltage + VOLT_TOLERANCE) {
         kicker_error(ContinuousCharging);
     }
 
     kick(15, Kick);
-
-    // reset vals to return
-    voltage = read_voltage();
-    old_voltage = voltage;
-    prev_voltage = voltage;
 }
 
 // Test all LEDs
@@ -484,7 +490,7 @@ uint16_t read_breakbeam() {
 }
 
 // Returns voltage value: 0-4095
-uint16_t read_voltage_raw() {
+uint16_t read_voltage() {
     mutex_enter_blocking(&adc_mutex);
     adc_select_input(VOLT_CHANNEL);
     uint16_t voltage_val = adc_read();
@@ -493,15 +499,9 @@ uint16_t read_voltage_raw() {
 }
 
 // Reads voltage pin and converts to voltage along with basic rolling average to smooth input
-float read_voltage() {
-    uint16_t raw = read_voltage_raw();
+float conv_voltage(uint16_t raw) {
     float voltage_new = VOLT_CONVERSION * raw;
-    float voltage_norm = ((255 - KALPHA_VOLT) * voltage + KALPHA_VOLT * voltage_new) / 255;
-    #if DEBUG && EXTRA_INFO
-        printf("Volt Raw: %d | Volt Actual: %.2f | Volt Normalized: %.2f\n", raw, voltage_new, voltage_norm);
-    #endif
-
-    return voltage_norm;
+    return voltage_new;
 }
 
 // Sets the data on the spi to be read by the teensy
@@ -588,16 +588,10 @@ void kick(uint8_t strength, KickType kick_type) {
     irq_set_enabled(SPI1_IRQ, true);
 
     // If no voltage drop detected error
-    adc_select_input(VOLT_CHANNEL);
-    uint16_t raw = adc_read();
-    float temp_volt = VOLT_CONVERSION * raw;
+    float temp_volt = conv_voltage(read_voltage());
     if (E_NO_DISCHARGE && !(temp_volt < voltage - VOLT_MIN + VOLT_TOLERANCE) && !(temp_volt - voltage < 5 && temp_volt - voltage > -5)) {
         kicker_error(NoDischarge);
     }
-    
-    // Reset values to prevent wrong errors
-    voltage = read_voltage();
-    old_voltage = voltage;
 }
 
 // Disable charging and discharge caps
@@ -644,7 +638,6 @@ void kicker_error(KickerError e) {
     spi_get_hw(SPI_PORT)->dr = spi_out;
     while (true) {
         if (e != MajorOverVoltage) { // Always check for extreme voltage case
-            voltage = read_voltage();
             if (voltage >= VERY_OVER_VOLTAGE) {
                 kicker_error(MajorOverVoltage);
             }
@@ -675,7 +668,6 @@ void manual_mode() {
         if (gpio_get(CHARGE_BTN) && gpio_get(KICK_BTN) && gpio_get(CHIP_BTN)) {
             // reset vars
             charging = false;
-            voltage = 0;
             hv_led_out(0);
             gen_led_out(0);
             gpio_put(CHARGE_EN, 0);
@@ -710,8 +702,6 @@ void manual_mode() {
         } else {
             gpio_put(LED_1, 1);
         }
-
-        voltage = read_voltage();
 
         // Drive HV LEDs
         uint8_t pattern = 0b00000;
