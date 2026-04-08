@@ -1,6 +1,6 @@
 #pragma once
 
-#define DEBUG 1
+#define DEBUG 0
 #define EXTRA_INFO 0 // Enables extra debug statements outside of main control loop
 #define DISABLE_ERRORS 0 // Purely for sofware debugging, do not use
 #define SPI_CLK_FREQUENCY 2000000 // Hz

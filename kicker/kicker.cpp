@@ -114,7 +114,7 @@ void core1_entry() {
             short_volt_diff = voltage - conv_voltage(voltage_history[(volt_index + 4) % 10]);
         }
 
-        #if DEBUG && EXTRA_INFO
+        #if !DEBUG
             printf("Voltage: %.2f | History: %d, %d, %d, %d, %d, %d, %d, %d, %d, %d\n", voltage, voltage_history[0], voltage_history[1], voltage_history[2], voltage_history[3], voltage_history[4], voltage_history[5], voltage_history[6], voltage_history[7], voltage_history[8], voltage_history[9]);
         #endif
     }
@@ -405,12 +405,6 @@ void startup() {
     }
     checking_break = false;
     break_triggered = false;
-
-    // Discharge caps with small kicks if started charged
-    while (voltage > VOLT_MIN) {
-        kick(5, Kick);
-        sleep_ms(MAX_KICK_TIME / 2);
-    }
 
     // Run test cycle
     uint64_t debug_time = to_ms_since_boot(get_absolute_time());
