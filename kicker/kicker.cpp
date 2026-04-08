@@ -116,6 +116,7 @@ void core1_entry() {
 
         #if !DEBUG
             printf("Voltage: %.2f | History: %d, %d, %d, %d, %d, %d, %d, %d, %d, %d\n", voltage, voltage_history[0], voltage_history[1], voltage_history[2], voltage_history[3], voltage_history[4], voltage_history[5], voltage_history[6], voltage_history[7], voltage_history[8], voltage_history[9]);
+            printf("Short: %.2f | Long: %.2f\n", short_volt_diff, long_volt_diff);
         #endif
     }
 }
@@ -210,12 +211,12 @@ int main() {
         }
 
         // Stuck charging
-        if (E_CONTINUOUS_CHARGING && !charging && last_charge + CHARGE_COOLDOWN + 250 > to_ms_since_boot(get_absolute_time()) && long_volt_diff > MAX_PASSIVE_GAIN) {
+        if (E_CONTINUOUS_CHARGING && !charging && last_charge + CHARGE_COOLDOWN + 750 < to_ms_since_boot(get_absolute_time()) && long_volt_diff > MAX_PASSIVE_GAIN) {
             kicker_error(KickerError::ContinuousCharging);
         }
 
         // Discharging 
-        if (E_CONTINUOUS_DISCHARGING && last_kick + KICK_COOLDOWN + 250 > to_ms_since_boot(get_absolute_time()) && long_volt_diff < MAX_PASSIVE_DROP) {
+        if (E_CONTINUOUS_DISCHARGING && last_kick + KICK_COOLDOWN + 750 < to_ms_since_boot(get_absolute_time()) && long_volt_diff < MAX_PASSIVE_DROP) {
             kicker_error(KickerError::ContinuousDischarge);
         }
 
@@ -406,6 +407,12 @@ void startup() {
     checking_break = false;
     break_triggered = false;
 
+    // Discharge caps before test
+    while (voltage > VOLT_MIN * 2) {
+        kick(5, Kick);
+        sleep_us(MAX_KICK_TIME);
+    }
+
     // Run test cycle
     uint64_t debug_time = to_ms_since_boot(get_absolute_time());
     while (voltage < VOLT_MIN * 3) {
@@ -426,11 +433,12 @@ void startup() {
         kicker_error(ContinuousCharging);
     }
 
-    if (E_CONTINUOUS_DISCHARGING && long_volt_diff <= MAX_PASSIVE_DROP) {
+    if (E_CONTINUOUS_DISCHARGING && long_volt_diff < MAX_PASSIVE_DROP) {
         kicker_error(ContinuousDischarge);
     }
 
     kick(15, Kick);
+    last_kick = to_ms_since_boot(get_absolute_time());
 }
 
 // Test all LEDs
@@ -580,7 +588,6 @@ void kick(uint8_t strength, KickType kick_type) {
     gpio_put(KICK_TRIG, 0);
     gpio_put(CHIP_TRIG, 0);
 
-    last_kick = to_ms_since_boot(get_absolute_time());
     command.kick_trigger = Disabled;
     gpio_put(DISCHARGE_DISABLE, 1);
     irq_set_enabled(SPI1_IRQ, true);
@@ -589,6 +596,8 @@ void kick(uint8_t strength, KickType kick_type) {
     if (E_NO_DISCHARGE && command.kick_strength > 0 && !(long_volt_diff < MIN_VOLT_DROP)) {
         kicker_error(NoDischarge);
     }
+
+    last_kick = to_ms_since_boot(get_absolute_time());
 }
 
 // Disable charging and discharge caps

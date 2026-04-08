@@ -30,10 +30,10 @@
 #define VERY_OVER_VOLTAGE 250
 #define VOLT_TOLERANCE_CHARGE 10
 #define NO_CHARGE_COOLDOWN 1000 // ms
-#define MAX_PASSIVE_DROP -0.5
-#define MAX_PASSIVE_GAIN 0.5
+#define MAX_PASSIVE_DROP -2
+#define MAX_PASSIVE_GAIN 2
 #define MIN_VOLT_DROP 5
-#define MIN_VOLT_INCREASE 5
+#define MIN_VOLT_INCREASE 1
 
 // Enables for specific errors
 #define E_OVER_VOLTAGE 1
