@@ -15,9 +15,6 @@ pub use radio::*;
 pub mod clock;
 pub use clock::*;
 
-pub mod robot;
-pub use robot::robot_config::*;
-
 pub mod peripherals;
 pub use peripherals::*;
 
@@ -25,6 +22,8 @@ pub mod errors;
 pub use errors::*;
 
 pub mod motors;
+
+pub mod selector;
 
 use rtic::Mutex;
 use rtic_sync::channel::Receiver;
