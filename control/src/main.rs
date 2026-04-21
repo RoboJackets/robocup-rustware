@@ -20,7 +20,10 @@ use teensy4_panic as _;
 mod app {
     use super::*;
 
+    use teensy4_pins::t41::{P32, P33, P34, P35};
+
     use core::mem::MaybeUninit;
+    use once_cell::sync::OnceCell;
 
     use imxrt_hal::gpt::Gpt;
     use imxrt_hal::pit::Pit;
@@ -29,15 +32,14 @@ mod app {
 
     use bsp::board::PERCLK_FREQUENCY;
     use bsp::board::{self, LPSPI_FREQUENCY};
-    use nalgebra::{Vector3, Vector4};
+    use nalgebra::Vector3;
     use robojackets_robocup_control::{
         Adc1, Gpio1, Gpio2, Killn, MotorEn, PowerSwitch, RadioSPI, MIN_BATTERY_VOLTAGE,
     };
-    use robojackets_robocup_rtp::control_message::{ShootMode, TriggerMode};
     use teensy4_bsp as bsp;
 
     use hal::adc::AnalogInput;
-    use hal::gpio::Trigger;
+    use hal::gpio::{Input, Trigger};
     use hal::lpspi::{Lpspi, Pins};
     use hal::lpuart;
     use hal::timer::Blocking;
@@ -61,8 +63,6 @@ mod app {
     use ssd1306::{prelude::*, I2CDisplayInterface, Ssd1306};
     use teensy4_pins::t41::{P18, P19};
 
-    use robojackets_robocup_control::robot::{TEAM, TEAM_NUM};
-    use robojackets_robocup_rtp::BASE_STATION_ADDRESSES;
     use robojackets_robocup_rtp::{
         control_message::Mode,
         imu_test_message::{ImuTestMessage, IMU_MESSAGE_SIZE},
@@ -72,9 +72,10 @@ mod app {
             RadioReceiveBenchmarkMessage, RadioSendBenchmarkMessage, RADIO_RECEIVE_BENCHMARK_SIZE,
             RADIO_SEND_BENCHMARK_SIZE,
         },
-        ControlMessage, RobotStatusMessage, RobotStatusMessageBuilder, CONTROL_MESSAGE_SIZE,
+        ControlMessage, RobotStatusMessage, RobotStatusMessageBuilder, Team, CONTROL_MESSAGE_SIZE,
         ROBOT_STATUS_SIZE,
     };
+    use robojackets_robocup_rtp::{BASE_STATION_ADDRESSES, ROBOT_RADIO_ADDRESSES};
 
     use motion::MotionControl;
 
@@ -82,11 +83,12 @@ mod app {
 
     use robojackets_robocup_control::{
         motors::{motor_interrupt, send_command},
+        selector::{get_team_and_id, PIN_CONFIG},
         Delay2, Display, DribblerUart, Imu, ImuInitError, KickerCSn, KickerProg,
         KickerProgramError, KickerReset, KickerServicingError, KickerSpi, MotorFourUart,
         MotorOneUart, MotorThreeUart, MotorTwoUart, PitDelay, RFRadio, RadioInitError,
         RadioInterrupt, State, BASE_AMPLIFICATION_LEVEL, CHANNEL, GPT_1_DIVIDER, GPT_CLOCK_SOURCE,
-        GPT_DIVIDER, GPT_FREQUENCY, RADIO_ADDRESS, ROBOT_ID,
+        GPT_DIVIDER, GPT_FREQUENCY,
     };
 
     use kicker_controller::{KickTrigger, KickType, Kicker, KickerCommand};
@@ -100,6 +102,9 @@ mod app {
 
     const HEAP_SIZE: usize = 1024;
     static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
+
+    static TEAM: OnceCell<Team> = OnceCell::new();
+    static ROBOT_ID: OnceCell<u8> = OnceCell::new();
 
     /// The amount of time (in us) between each motion control delay
     const MOTION_CONTROL_DELAY_US: u32 = 1_000_000 / 60;
@@ -179,6 +184,11 @@ mod app {
 
         // Battery low voltage checks
         batt_uvlo_counter: u32,
+
+        hex0: Input<P35>,
+        hex1: Input<P34>,
+        hex2: Input<P33>,
+        hex3: Input<P32>,
     }
 
     #[shared]
@@ -257,9 +267,10 @@ mod app {
 
         // Grab the board peripherals
         let board::Resources {
-            pins,
+            mut pins,
             mut gpio1,
             mut gpio2,
+            mut gpio4,
             usb,
             lpi2c1,
             lpspi4,
@@ -433,8 +444,18 @@ mod app {
         // End Initialize Kicker //
 
         // Initialize UVLO //
-        let mut batt_uvlo_counter = 0;
+        let batt_uvlo_counter = 0;
         // End Initialize UVLO //
+
+        // Read the dip switch
+        iomuxc::configure(&mut pins.p35, PIN_CONFIG);
+        let hex0 = gpio2.input(pins.p35);
+        iomuxc::configure(&mut pins.p34, PIN_CONFIG);
+        let hex1 = gpio2.input(pins.p34);
+        iomuxc::configure(&mut pins.p33, PIN_CONFIG);
+        let hex2 = gpio4.input(pins.p33);
+        iomuxc::configure(&mut pins.p32, PIN_CONFIG);
+        let hex3 = gpio2.input(pins.p32);
 
         adc1.calibrate();
         let mut batt_sense = AnalogInput::new(pins.p15);
@@ -454,7 +475,7 @@ mod app {
                 rx_int,
                 gpio1,
                 gpio2,
-                robot_status: RobotStatusMessageBuilder::new().robot_id(ROBOT_ID).build(),
+                robot_status: RobotStatusMessageBuilder::new().robot_id(0).build(),
                 control_message: None,
                 counter: 0,
                 elapsed_time: 0,
@@ -503,6 +524,10 @@ mod app {
                 dribbler_tx,
                 dribbler_rx,
                 batt_uvlo_counter,
+                hex0,
+                hex1,
+                hex2,
+                hex3,
             },
         )
     }
@@ -528,12 +553,25 @@ mod app {
     }
 
     /// Initialize the display
-    #[task(shared=[display])]
+    #[task(shared=[display], local=[hex0, hex1, hex2, hex3], priority = 1)]
     async fn initialize_display(mut ctx: initialize_display::Context) {
+        let (team, id) = get_team_and_id(
+            &ctx.local.hex0,
+            &ctx.local.hex1,
+            &ctx.local.hex2,
+            &ctx.local.hex3,
+        );
+        TEAM.set(team).ok();
+        ROBOT_ID.set(id).ok();
         ctx.shared.display.lock(|display| {
             display.init().ok();
             display.clear();
-            let start_scrn = StartScreen::new(Point::new(0, 0), Point::new(24, 8));
+            let start_scrn = StartScreen::new(
+                Point::new(0, 0),
+                Point::new(24, 8),
+                *TEAM.get().unwrap() == Team::Blue,
+                *ROBOT_ID.get().unwrap(),
+            );
             let _ = start_scrn.draw(display);
             let _ = display.flush();
         });
@@ -558,8 +596,18 @@ mod app {
                         radio.set_pa_level(BASE_AMPLIFICATION_LEVEL, spi, delay);
                         radio.set_channel(CHANNEL, spi, delay);
                         radio.set_payload_size(CONTROL_MESSAGE_SIZE as u8, spi, delay);
-                        radio.open_writing_pipe(BASE_STATION_ADDRESSES[TEAM_NUM], spi, delay);
-                        radio.open_reading_pipe(1, RADIO_ADDRESS, spi, delay);
+                        radio.open_writing_pipe(
+                            BASE_STATION_ADDRESSES[*TEAM.get().unwrap() as usize],
+                            spi,
+                            delay,
+                        );
+                        radio.open_reading_pipe(
+                            1,
+                            ROBOT_RADIO_ADDRESSES[*TEAM.get().unwrap() as usize]
+                                [*ROBOT_ID.get().unwrap() as usize],
+                            spi,
+                            delay,
+                        );
                         radio.stop_listening(spi, delay);
                     }
                     Err(err) => *radio_init_error = Some(err),
@@ -838,6 +886,7 @@ mod app {
                 *command = Some(control_message);
 
                 let mut packed_data = [0u8; ROBOT_STATUS_SIZE];
+                robot_status.robot_id = *ROBOT_ID.get().unwrap();
                 robot_status.pack(&mut packed_data).unwrap();
 
                 radio.set_payload_size(ROBOT_STATUS_SIZE as u8, spi, delay);
@@ -1293,8 +1342,8 @@ mod app {
 
                 for _ in 0..100 {
                     let robot_status = RobotStatusMessageBuilder::new()
-                        .robot_id(ROBOT_ID)
-                        .team(TEAM)
+                        .robot_id(*ROBOT_ID.get().unwrap())
+                        .team(*TEAM.get().unwrap())
                         .ball_sense_status(!last_ball_sense)
                         .kick_status(!last_kick_status)
                         .build();

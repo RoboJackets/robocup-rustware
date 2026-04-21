@@ -40,8 +40,6 @@ mod app {
 
     use ncomm_utils::packing::Packable;
 
-    use robojackets_robocup_control::robot::{TEAM, TEAM_NUM};
-    use robojackets_robocup_rtp::BASE_STATION_ADDRESSES;
     use robojackets_robocup_rtp::{
         control_message::Mode,
         control_test_message::{ControlTestMessage, CONTROL_TEST_MESSAGE_SIZE},
@@ -55,6 +53,7 @@ mod app {
         ControlMessage, RobotStatusMessage, RobotStatusMessageBuilder, CONTROL_MESSAGE_SIZE,
         ROBOT_STATUS_SIZE,
     };
+    use robojackets_robocup_rtp::{Team, BASE_STATION_ADDRESSES, ROBOT_RADIO_ADDRESSES};
 
     use motion::MotionControl;
 
@@ -62,7 +61,7 @@ mod app {
         Delay2, FPGAInitError, FPGAProgError, Gpio1, ImuInitError, KickerProgramError,
         KickerServicingError, PitDelay, RFRadio, RadioInitError, RadioInterrupt, RadioSPI, State,
         BASE_AMPLIFICATION_LEVEL, CHANNEL, GPT_1_DIVIDER, GPT_CLOCK_SOURCE, GPT_DIVIDER,
-        GPT_FREQUENCY, RADIO_ADDRESS, ROBOT_ID,
+        GPT_FREQUENCY,
     };
 
     const HEAP_SIZE: usize = 1024;
@@ -219,7 +218,7 @@ mod app {
         let radio = Radio::new(ce, radio_cs);
 
         // Set an initial robot status
-        let initial_robot_status = RobotStatusMessageBuilder::new().robot_id(ROBOT_ID).build();
+        let initial_robot_status = RobotStatusMessageBuilder::new().robot_id(0).build();
 
         rx_int.clear_triggered();
 
@@ -275,8 +274,8 @@ mod app {
                         radio.set_pa_level(BASE_AMPLIFICATION_LEVEL, spi, delay);
                         radio.set_channel(CHANNEL, spi, delay);
                         radio.set_payload_size(CONTROL_MESSAGE_SIZE as u8, spi, delay);
-                        radio.open_writing_pipe(BASE_STATION_ADDRESSES[TEAM_NUM], spi, delay);
-                        radio.open_reading_pipe(1, RADIO_ADDRESS, spi, delay);
+                        radio.open_writing_pipe(BASE_STATION_ADDRESSES[0], spi, delay);
+                        radio.open_reading_pipe(1, ROBOT_RADIO_ADDRESSES[0][0], spi, delay);
                         radio.stop_listening(spi, delay);
                     }
                     Err(err) => *radio_init_error = Some(err),
@@ -799,8 +798,8 @@ mod app {
 
                 for _ in 0..100 {
                     let robot_status = RobotStatusMessageBuilder::new()
-                        .robot_id(ROBOT_ID)
-                        .team(TEAM)
+                        .robot_id(0)
+                        .team(Team::Blue)
                         .ball_sense_status(!last_ball_sense)
                         .kick_status(!last_kick_status)
                         .build();

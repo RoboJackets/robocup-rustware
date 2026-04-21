@@ -19,7 +19,6 @@ static HEAP: Heap = Heap::empty();
 
 use teensy4_panic as _;
 
-
 #[rtic::app(device = teensy4_bsp, peripherals = true, dispatchers = [GPT2])]
 mod app {
     use bsp::board::{self};
@@ -29,13 +28,11 @@ mod app {
 
     use kicker_controller::{KickTrigger, KickType, Kicker, KickerCommand};
 
-    use robojackets_robocup_control::{
-        KickerSpi, KickerCSn, KickerReset, Killn, MotorEn,
-    };
-    
+    use robojackets_robocup_control::{KickerCSn, KickerReset, KickerSpi, Killn, MotorEn};
+
     use bsp::hal::iomuxc;
-    use bsp::ral;
     use bsp::hal::lpspi::{Lpspi, Pins};
+    use bsp::ral;
     use embedded_hal::spi::MODE_3;
     use ral::lpspi::LPSPI3;
 
@@ -63,7 +60,6 @@ mod app {
 
         let systick_token = rtic_monotonics::create_systick_token!();
         Systick::start(ctx.core.SYST, 600_000_000, systick_token);
-        
 
         let motor_en: MotorEn = gpio1.output(pins.p23);
         motor_en.set();
@@ -86,9 +82,9 @@ mod app {
         let (spi_block, mut spi_pins) = spi_temp.release();
 
         // Manually configure the data pins for LPSPI3 function
-        iomuxc::lpspi::prepare(&mut spi_pins.sdo);  // SDO/MOSI
-        iomuxc::lpspi::prepare(&mut spi_pins.sdi);  // SDI/MISO
-        iomuxc::lpspi::prepare(&mut spi_pins.sck);  // SCK
+        iomuxc::lpspi::prepare(&mut spi_pins.sdo); // SDO/MOSI
+        iomuxc::lpspi::prepare(&mut spi_pins.sdi); // SDI/MISO
+        iomuxc::lpspi::prepare(&mut spi_pins.sck); // SCK
 
         // Initialize SPI and Kicker controll
         let mut spi = Lpspi::without_pins(spi_block);
@@ -96,10 +92,9 @@ mod app {
 
         // Config SPI
         spi.disabled(|spi| {
-            spi.set_mode(MODE_3);                  // CPOL=1, CPHA=1 to match Pico
+            spi.set_mode(MODE_3); // CPOL=1, CPHA=1 to match Pico
             spi.set_clock_hz(board::LPSPI_FREQUENCY, 2_000_000);
         });
-
 
         kicker_test::spawn().ok();
 
@@ -125,10 +120,7 @@ mod app {
         priority = 1
     )]
     async fn kicker_test(ctx: kicker_test::Context) {
-        
         Systick::delay(1_000u32.millis()).await;
-        
-        
 
         log::info!("Charging the Kicker");
         let kicker_command = KickerCommand {
@@ -138,7 +130,7 @@ mod app {
             charge_allowed: true,
         };
         log::info!("Raw Out: {:?}", kicker_command);
-        
+
         loop {
             let kicker_status = ctx
                 .local
@@ -148,8 +140,6 @@ mod app {
             log::info!("Kicker Status: {:?}", kicker_status);
             Systick::delay(1000u32.millis()).await;
         }
-
-        
 
         log::info!("KICKING!!!");
         let kicker_command = KickerCommand {

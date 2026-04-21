@@ -38,12 +38,13 @@ mod app {
     use hal::timer::Blocking;
 
     use robojackets_robocup_control::{
-        robot::TEAM_NUM, Delay2, Display, Imu, Killn, MotorEn, PitDelay, RFRadio, RadioInitError,
-        RadioSPI, BASE_AMPLIFICATION_LEVEL, CHANNEL, GPT_CLOCK_SOURCE, GPT_DIVIDER, GPT_FREQUENCY,
-        RADIO_ADDRESS,
+        Delay2, Display, Imu, Killn, MotorEn, PitDelay, RFRadio, RadioInitError, RadioSPI,
+        BASE_AMPLIFICATION_LEVEL, CHANNEL, GPT_CLOCK_SOURCE, GPT_DIVIDER, GPT_FREQUENCY,
     };
 
-    use robojackets_robocup_rtp::{BASE_STATION_ADDRESSES, CONTROL_MESSAGE_SIZE};
+    use robojackets_robocup_rtp::{
+        BASE_STATION_ADDRESSES, CONTROL_MESSAGE_SIZE, ROBOT_RADIO_ADDRESSES,
+    };
 
     use teensy4_pins::t41::{P18, P19};
 
@@ -227,8 +228,8 @@ mod app {
                         radio.set_pa_level(BASE_AMPLIFICATION_LEVEL, spi, delay);
                         radio.set_channel(CHANNEL, spi, delay);
                         radio.set_payload_size(CONTROL_MESSAGE_SIZE as u8, spi, delay);
-                        radio.open_writing_pipe(BASE_STATION_ADDRESSES[TEAM_NUM], spi, delay);
-                        radio.open_reading_pipe(1, RADIO_ADDRESS, spi, delay);
+                        radio.open_writing_pipe(BASE_STATION_ADDRESSES[0], spi, delay);
+                        radio.open_reading_pipe(1, ROBOT_RADIO_ADDRESSES[0][0], spi, delay);
                         radio.stop_listening(spi, delay);
                     }
                     Err(err) => *radio_init_error = Some(err),

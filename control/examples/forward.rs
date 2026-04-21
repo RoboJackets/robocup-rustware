@@ -64,7 +64,7 @@ mod app {
         Delay2, Display, DribblerUart, Gpio1, Imu, ImuInitError, KickerCSn, KickerProg,
         KickerProgramError, KickerReset, KickerServicingError, MotorFourUart, MotorOneUart,
         MotorThreeUart, MotorTwoUart, PitDelay, RFRadio, RadioInitError, RadioInterrupt, State,
-        GPT_1_DIVIDER, GPT_CLOCK_SOURCE, GPT_DIVIDER, GPT_FREQUENCY, ROBOT_ID,
+        GPT_1_DIVIDER, GPT_CLOCK_SOURCE, GPT_DIVIDER, GPT_FREQUENCY,
     };
 
     use kicker_controller::Kicker;
@@ -367,7 +367,7 @@ mod app {
                 blocking_delay: delay2,
                 rx_int,
                 gpio1,
-                robot_status: RobotStatusMessageBuilder::new().robot_id(ROBOT_ID).build(),
+                robot_status: RobotStatusMessageBuilder::new().robot_id(0).build(),
                 control_message: Some(ControlMessageBuilder::new().body_y(1.0).build()),
                 counter: 0,
                 elapsed_time: 0,
@@ -440,7 +440,7 @@ mod app {
         ctx.shared.display.lock(|display| {
             display.init().ok();
             display.clear();
-            let start_scrn = StartScreen::new(Point::new(0, 0), Point::new(24, 8));
+            let start_scrn = StartScreen::new(Point::new(0, 0), Point::new(24, 8), true, 0);
             let _ = start_scrn.draw(display);
             let _ = display.flush();
         });
