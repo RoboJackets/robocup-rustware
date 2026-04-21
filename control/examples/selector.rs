@@ -24,9 +24,8 @@ mod app {
     use bsp::board;
     use teensy4_bsp as bsp;
 
-    use teensy4_pins::t41::{P32, P33, P34, P35};
     use imxrt_hal::gpio::Input;
-    use imxrt_iomuxc::Config;
+    use teensy4_pins::t41::{P32, P33, P34, P35};
 
     use rtic_monotonics::systick::*;
 
@@ -70,7 +69,16 @@ mod app {
 
         read_selector::spawn().unwrap();
 
-        (Shared {}, Local { poller, hex0, hex1, hex2, hex3 })
+        (
+            Shared {},
+            Local {
+                poller,
+                hex0,
+                hex1,
+                hex2,
+                hex3,
+            },
+        )
     }
 
     #[idle]
@@ -86,10 +94,15 @@ mod app {
     )]
     async fn read_selector(ctx: read_selector::Context) {
         loop {
-            let (team, id) = get_team_and_id(&ctx.local.hex0, &ctx.local.hex1, &ctx.local.hex2, &ctx.local.hex3);
+            let (team, id) = get_team_and_id(
+                &ctx.local.hex0,
+                &ctx.local.hex1,
+                &ctx.local.hex2,
+                &ctx.local.hex3,
+            );
 
             log::info!("Team: {:?}, ID: {}", team, id);
-            
+
             Systick::delay(1000u32.millis()).await;
         }
     }

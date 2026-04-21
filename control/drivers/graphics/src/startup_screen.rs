@@ -2,14 +2,11 @@ extern crate alloc;
 use alloc::format;
 
 use embedded_graphics::{
-    mono_font::{
-        MonoTextStyle,
-        ascii::{FONT_6X9, FONT_7X13},
-    },
-    image::Image, 
+    image::Image,
+    mono_font::{MonoTextStyle, ascii::FONT_6X9},
     pixelcolor::BinaryColor,
     prelude::*,
-    text::{Text, Baseline, Alignment, TextStyleBuilder}
+    text::{Alignment, Baseline, Text, TextStyleBuilder},
 };
 
 use tinybmp::Bmp;
@@ -58,17 +55,23 @@ impl Drawable for StartScreen<'_> {
             .build();
         let char_style = MonoTextStyle::new(&FONT_6X9, BinaryColor::On);
         Text::with_text_style(
-            if self.blue_team { "Blue Team" } else { "Yellow Team" },
+            if self.blue_team {
+                "Blue Team"
+            } else {
+                "Yellow Team"
+            },
             Point::new(45, 30),
             char_style,
             text_style,
-        ).draw(target)?;
+        )
+        .draw(target)?;
         Text::with_text_style(
             &format!("Robot {}", self.robot_id),
             Point::new(45, 50),
             char_style,
             text_style,
-        ).draw(target)?;
+        )
+        .draw(target)?;
         Ok(())
     }
 }

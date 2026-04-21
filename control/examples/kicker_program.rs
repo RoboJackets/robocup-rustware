@@ -30,13 +30,13 @@ mod app {
     use kicker_programmer::KickerProgrammer;
 
     use bsp::hal::iomuxc;
-    use bsp::ral;
     use bsp::hal::lpspi::{Lpspi, Pins};
+    use bsp::ral;
     use embedded_hal::spi::MODE_3;
     use ral::lpspi::LPSPI3;
 
     use robojackets_robocup_control::{
-        KickerSpi, Delay2, KickerProg, GPT_CLOCK_SOURCE, GPT_DIVIDER, GPT_FREQUENCY,
+        Delay2, KickerProg, KickerSpi, GPT_CLOCK_SOURCE, GPT_DIVIDER, GPT_FREQUENCY,
     };
 
     const HEAP_SIZE: usize = 1024;
@@ -96,20 +96,21 @@ mod app {
         let (spi_block, mut spi_pins) = spi_temp.release();
 
         // Manually configure the data pins for LPSPI3 function
-        iomuxc::lpspi::prepare(&mut spi_pins.sdo);  // SDO/MOSI
-        iomuxc::lpspi::prepare(&mut spi_pins.sdi);  // SDI/MISO
-        iomuxc::lpspi::prepare(&mut spi_pins.sck);  // SCK
+        iomuxc::lpspi::prepare(&mut spi_pins.sdo); // SDO/MOSI
+        iomuxc::lpspi::prepare(&mut spi_pins.sdi); // SDI/MISO
+        iomuxc::lpspi::prepare(&mut spi_pins.sck); // SCK
 
         // Initialize SPI and Kicker controll
         let mut spi = Lpspi::without_pins(spi_block);
 
         // Config SPI
         spi.disabled(|spi| {
-            spi.set_mode(MODE_3);                  // CPOL=1, CPHA=1 to match Pico
+            spi.set_mode(MODE_3); // CPOL=1, CPHA=1 to match Pico
             spi.set_clock_hz(board::LPSPI_FREQUENCY, 2_000_000);
         });
 
-        let kicker_programmer = KickerProgrammer::new(gpio1.output(spi_pins.pcs0), gpio2.output(pins.p37));
+        let kicker_programmer =
+            KickerProgrammer::new(gpio1.output(spi_pins.pcs0), gpio2.output(pins.p37));
 
         program_kicker::spawn().ok();
 

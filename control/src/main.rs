@@ -39,7 +39,7 @@ mod app {
     use teensy4_bsp as bsp;
 
     use hal::adc::AnalogInput;
-    use hal::gpio::{Trigger, Input};
+    use hal::gpio::{Input, Trigger};
     use hal::lpspi::{Lpspi, Pins};
     use hal::lpuart;
     use hal::timer::Blocking;
@@ -63,9 +63,7 @@ mod app {
     use ssd1306::{prelude::*, I2CDisplayInterface, Ssd1306};
     use teensy4_pins::t41::{P18, P19};
 
-    use robojackets_robocup_rtp::BASE_STATION_ADDRESSES;
     use robojackets_robocup_rtp::{
-        Team,
         control_message::Mode,
         imu_test_message::{ImuTestMessage, IMU_MESSAGE_SIZE},
         kicker_program_message::{KickerProgramMessage, KICKER_PROGRAM_MESSAGE},
@@ -74,9 +72,10 @@ mod app {
             RadioReceiveBenchmarkMessage, RadioSendBenchmarkMessage, RADIO_RECEIVE_BENCHMARK_SIZE,
             RADIO_SEND_BENCHMARK_SIZE,
         },
-        ControlMessage, RobotStatusMessage, RobotStatusMessageBuilder, CONTROL_MESSAGE_SIZE,
+        ControlMessage, RobotStatusMessage, RobotStatusMessageBuilder, Team, CONTROL_MESSAGE_SIZE,
         ROBOT_STATUS_SIZE,
     };
+    use robojackets_robocup_rtp::{BASE_STATION_ADDRESSES, ROBOT_RADIO_ADDRESSES};
 
     use motion::MotionControl;
 
@@ -89,7 +88,7 @@ mod app {
         KickerProgramError, KickerReset, KickerServicingError, KickerSpi, MotorFourUart,
         MotorOneUart, MotorThreeUart, MotorTwoUart, PitDelay, RFRadio, RadioInitError,
         RadioInterrupt, State, BASE_AMPLIFICATION_LEVEL, CHANNEL, GPT_1_DIVIDER, GPT_CLOCK_SOURCE,
-        GPT_DIVIDER, GPT_FREQUENCY, RADIO_ADDRESS,
+        GPT_DIVIDER, GPT_FREQUENCY,
     };
 
     use kicker_controller::{KickTrigger, KickType, Kicker, KickerCommand};
@@ -528,7 +527,7 @@ mod app {
                 hex0,
                 hex1,
                 hex2,
-                hex3
+                hex3,
             },
         )
     }
@@ -556,13 +555,23 @@ mod app {
     /// Initialize the display
     #[task(shared=[display], local=[hex0, hex1, hex2, hex3], priority = 1)]
     async fn initialize_display(mut ctx: initialize_display::Context) {
-        let (team, id) = get_team_and_id(&ctx.local.hex0, &ctx.local.hex1, &ctx.local.hex2, &ctx.local.hex3);
+        let (team, id) = get_team_and_id(
+            &ctx.local.hex0,
+            &ctx.local.hex1,
+            &ctx.local.hex2,
+            &ctx.local.hex3,
+        );
         TEAM.set(team).ok();
         ROBOT_ID.set(id).ok();
         ctx.shared.display.lock(|display| {
             display.init().ok();
             display.clear();
-            let start_scrn = StartScreen::new(Point::new(0, 0), Point::new(24, 8), *TEAM.get().unwrap() == Team::Blue, *ROBOT_ID.get().unwrap());
+            let start_scrn = StartScreen::new(
+                Point::new(0, 0),
+                Point::new(24, 8),
+                *TEAM.get().unwrap() == Team::Blue,
+                *ROBOT_ID.get().unwrap(),
+            );
             let _ = start_scrn.draw(display);
             let _ = display.flush();
         });
@@ -587,8 +596,18 @@ mod app {
                         radio.set_pa_level(BASE_AMPLIFICATION_LEVEL, spi, delay);
                         radio.set_channel(CHANNEL, spi, delay);
                         radio.set_payload_size(CONTROL_MESSAGE_SIZE as u8, spi, delay);
-                        radio.open_writing_pipe(BASE_STATION_ADDRESSES[*TEAM.get().unwrap() as usize], spi, delay);
-                        radio.open_reading_pipe(1, RADIO_ADDRESS, spi, delay);
+                        radio.open_writing_pipe(
+                            BASE_STATION_ADDRESSES[*TEAM.get().unwrap() as usize],
+                            spi,
+                            delay,
+                        );
+                        radio.open_reading_pipe(
+                            1,
+                            ROBOT_RADIO_ADDRESSES[*TEAM.get().unwrap() as usize]
+                                [*ROBOT_ID.get().unwrap() as usize],
+                            spi,
+                            delay,
+                        );
                         radio.stop_listening(spi, delay);
                     }
                     Err(err) => *radio_init_error = Some(err),
