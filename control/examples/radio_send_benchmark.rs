@@ -26,8 +26,6 @@ mod app {
 
     use core::mem::MaybeUninit;
 
-    use robojackets_robocup_control::ROBOT_ID;
-
     use embedded_hal::spi::MODE_0;
 
     use rtic_nrf24l01::error::RadioError;
@@ -45,15 +43,13 @@ mod app {
 
     use ncomm_utils::packing::Packable;
 
+    use robojackets_robocup_control::{
+        Delay2, RFRadio, RadioSPI, CHANNEL, GPT_CLOCK_SOURCE, GPT_DIVIDER, GPT_FREQUENCY,
+    };
     use robojackets_robocup_rtp::Team;
     use robojackets_robocup_rtp::BASE_STATION_ADDRESSES;
     use robojackets_robocup_rtp::{
-        RobotStatusMessage, RobotStatusMessageBuilder, ROBOT_STATUS_SIZE,
-    };
-
-    use robojackets_robocup_control::{
-        Delay2, RFRadio, RadioSPI, CHANNEL, GPT_CLOCK_SOURCE, GPT_DIVIDER, GPT_FREQUENCY,
-        RADIO_ADDRESS,
+        RobotStatusMessage, RobotStatusMessageBuilder, ROBOT_RADIO_ADDRESSES, ROBOT_STATUS_SIZE,
     };
 
     const HEAP_SIZE: usize = 1024;
@@ -126,7 +122,7 @@ mod app {
             radio.set_channel(CHANNEL, &mut shared_spi, &mut delay2);
             radio.set_payload_size(ROBOT_STATUS_SIZE as u8, &mut shared_spi, &mut delay2);
             radio.open_writing_pipe(BASE_STATION_ADDRESSES[0], &mut shared_spi, &mut delay2);
-            radio.open_reading_pipe(1, RADIO_ADDRESS, &mut shared_spi, &mut delay2);
+            radio.open_reading_pipe(1, ROBOT_RADIO_ADDRESSES[0][0], &mut shared_spi, &mut delay2);
             radio.stop_listening(&mut shared_spi, &mut delay2);
 
             send_status::spawn().ok();
@@ -176,7 +172,7 @@ mod app {
         )
             .lock(|robot_status, radio, spi, delay| {
                 let new_robot_status = RobotStatusMessageBuilder::new()
-                    .robot_id(ROBOT_ID)
+                    .robot_id(0)
                     .team(Team::Blue)
                     .ball_sense_status(!*ctx.local.last_ball_sense)
                     .kick_status(!*ctx.local.last_kick_status)

@@ -26,7 +26,7 @@ mod app {
 
     use core::mem::MaybeUninit;
 
-    use embedded_graphics::mono_font::ascii::{FONT_5X8, FONT_6X10};
+    use embedded_graphics::mono_font::ascii::FONT_6X10;
     use embedded_graphics::mono_font::MonoTextStyle;
     use embedded_graphics::pixelcolor::BinaryColor;
     use embedded_graphics::text::Text;
@@ -58,7 +58,7 @@ mod app {
 
     use robojackets_robocup_control::{
         Delay2, Display, Gpio2, Killn, MotorEn, RFRadio, RadioInterrupt, RadioSPI, CHANNEL,
-        GPT_CLOCK_SOURCE, GPT_DIVIDER, GPT_FREQUENCY, RADIO_ADDRESS,
+        GPT_CLOCK_SOURCE, GPT_DIVIDER, GPT_FREQUENCY,
     };
 
     use embedded_hal::blocking::delay::DelayMs;
@@ -205,7 +205,7 @@ mod app {
         ctx.shared.display.lock(|display| {
             display.init().ok();
             display.clear();
-            let start_scrn = StartScreen::new(Point::new(0, 0), Point::new(24, 8));
+            let start_scrn = StartScreen::new(Point::new(0, 0), Point::new(24, 8), true, 0);
             let _ = start_scrn.draw(display);
             let _ = display.flush();
         });

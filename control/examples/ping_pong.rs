@@ -22,12 +22,12 @@ mod app {
 
     use rtic_monotonics::systick::*;
 
-    use robojackets_robocup_control::{robot::TEAM_NUM, Killn, MotorEn};
-    use robojackets_robocup_rtp::BASE_STATION_ADDRESSES;
+    use robojackets_robocup_control::{Killn, MotorEn};
+    use robojackets_robocup_rtp::{BASE_STATION_ADDRESSES, ROBOT_RADIO_ADDRESSES};
 
     use robojackets_robocup_control::{
         Delay2, RFRadio, RadioSPI, BASE_AMPLIFICATION_LEVEL, CHANNEL, GPT_CLOCK_SOURCE,
-        GPT_DIVIDER, GPT_FREQUENCY, RADIO_ADDRESS,
+        GPT_DIVIDER, GPT_FREQUENCY,
     };
 
     use embedded_hal::blocking::delay::DelayMs;
@@ -100,12 +100,8 @@ mod app {
         radio.set_pa_level(BASE_AMPLIFICATION_LEVEL, &mut shared_spi, &mut delay);
         radio.set_channel(CHANNEL, &mut shared_spi, &mut delay);
         radio.set_payload_size(4, &mut shared_spi, &mut delay);
-        radio.open_writing_pipe(
-            BASE_STATION_ADDRESSES[TEAM_NUM],
-            &mut shared_spi,
-            &mut delay,
-        );
-        radio.open_reading_pipe(1, RADIO_ADDRESS, &mut shared_spi, &mut delay);
+        radio.open_writing_pipe(BASE_STATION_ADDRESSES[0], &mut shared_spi, &mut delay);
+        radio.open_reading_pipe(1, ROBOT_RADIO_ADDRESSES[0][0], &mut shared_spi, &mut delay);
         radio.start_listening(&mut shared_spi, &mut delay);
 
         ping_pong::spawn().unwrap();
