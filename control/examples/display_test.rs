@@ -12,6 +12,7 @@ use embedded_graphics::prelude::*;
 use ssd1306::{mode::BufferedGraphicsMode, prelude::*, I2CDisplayInterface, Ssd1306};
 
 use embedded_alloc::Heap;
+extern crate alloc;
 
 #[global_allocator]
 static HEAP: Heap = Heap::empty();
@@ -20,6 +21,7 @@ static HEAP: Heap = Heap::empty();
 mod app {
     use super::*;
 
+    use alloc::string::ToString;
     use graphics::error_screen::ErrorScreen;
     use graphics::main_window::MainWindow;
     use teensy4_bsp::board::Lpi2c1;
@@ -107,7 +109,8 @@ mod app {
         let error_screen = ErrorScreen::new(
             "Example Program",
             "Lorem ipsum dolor sit amet, consectetur adipiscing elit, 
-            sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.",
+            sed do eiusmod tempor incididunt ut labore et dolore magna aliqua."
+                .to_string(),
         );
         let latency_placeholder: u16 = 0;
 

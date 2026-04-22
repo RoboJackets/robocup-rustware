@@ -59,7 +59,7 @@ mod app {
 
     // Includes for display module
     use embedded_graphics::prelude::*;
-    use graphics::{error_screen::ErrorScreen, startup_screen::StartScreen};
+    use graphics::screen::Screen;
     use ssd1306::{prelude::*, I2CDisplayInterface, Ssd1306};
     use teensy4_pins::t41::{P18, P19};
 
@@ -225,7 +225,7 @@ mod app {
         adc1: Adc1,
         batt_sense: AnalogInput<P15, 1>,
         //Display
-        display: Display,
+        screen: Screen<'static, Display>,
 
         // State
         state: State,
@@ -384,6 +384,8 @@ mod app {
         )
         .into_buffered_graphics_mode();
 
+        let screen = Screen::new(0, true, display);
+
         // End Initialize I2C Devices //
 
         // Initialize Radio //
@@ -484,8 +486,8 @@ mod app {
                 pit_delay,
                 kicker_programmer: None,
                 kicker_controller: Some(kicker_controller),
+                screen,
                 kicker_spi,
-                display,
                 state: State::default(),
                 adc1,
                 batt_sense,
@@ -553,7 +555,7 @@ mod app {
     }
 
     /// Initialize the display
-    #[task(shared=[display], local=[hex0, hex1, hex2, hex3], priority = 1)]
+    #[task(shared=[screen], local=[hex0, hex1, hex2, hex3], priority = 1)]
     async fn initialize_display(mut ctx: initialize_display::Context) {
         let (team, id) = get_team_and_id(
             &ctx.local.hex0,
@@ -563,17 +565,11 @@ mod app {
         );
         TEAM.set(team).ok();
         ROBOT_ID.set(id).ok();
-        ctx.shared.display.lock(|display| {
-            display.init().ok();
-            display.clear();
-            let start_scrn = StartScreen::new(
-                Point::new(0, 0),
-                Point::new(24, 8),
-                *TEAM.get().unwrap() == Team::Blue,
-                *ROBOT_ID.get().unwrap(),
-            );
-            let _ = start_scrn.draw(display);
-            let _ = display.flush();
+        ctx.shared.screen.lock(|screen| {
+            screen.set_team(team == Team::Blue);
+            screen.set_robot_id(id);
+            screen.init_display().ok();
+            screen.draw().ok();
         });
         initialize_radio::spawn().ok();
     }
@@ -664,7 +660,7 @@ mod app {
             radio_init_error,
             kicker_program_error,
             kicker_service_error,
-            display,
+            screen,
         ],
         priority = 1
     )]
@@ -697,38 +693,30 @@ mod app {
             log::error!("KICKER-PROG: {:?}", kicker_program_error);
             log::error!("KICKER-SERVICE: {:?}", kicker_service_error);
 
-            ctx.shared.display.lock(|display| {
-                let err_txt = &format!("{:?}", imu_init_error);
-                let err_scrn = ErrorScreen::new("IMU Init Error", err_txt);
-                display.clear();
-                let _ = err_scrn.draw(display);
-                display.flush().ok();
+            ctx.shared.screen.lock(|screen| {
+                let err_txt = format!("{:?}", imu_init_error);
+                screen.error_update("IMU Init Error", err_txt);
+                screen.draw().ok();
             });
             Systick::delay(3000u32.millis()).await;
 
             Systick::delay(3000u32.millis()).await;
-            ctx.shared.display.lock(|display| {
-                let err_txt = &format!("{:?}", radio_init_error);
-                let err_scrn = ErrorScreen::new("Radio Init Error", err_txt);
-                display.clear();
-                let _ = err_scrn.draw(display);
-                display.flush().ok();
+            ctx.shared.screen.lock(|screen| {
+                let err_txt = format!("{:?}", radio_init_error);
+                screen.error_update("Radio Init Error", err_txt);
+                screen.draw().ok();
             });
             Systick::delay(3000u32.millis()).await;
-            ctx.shared.display.lock(|display| {
-                let err_txt = &format!("{:?}", kicker_program_error);
-                let err_scrn = ErrorScreen::new("Kicker Prog Error", err_txt);
-                display.clear();
-                let _ = err_scrn.draw(display);
-                display.flush().ok();
+            ctx.shared.screen.lock(|screen| {
+                let err_txt = format!("{:?}", kicker_program_error);
+                screen.error_update("Kicker Prog Error", err_txt);
+                screen.draw().ok();
             });
             Systick::delay(3000u32.millis()).await;
-            ctx.shared.display.lock(|display| {
-                let err_txt = &format!("{:?}", kicker_service_error);
-                let err_scrn = ErrorScreen::new("Kicker Serv Error", err_txt);
-                display.clear();
-                let _ = err_scrn.draw(display);
-                display.flush().ok();
+            let err_txt = format!("{:?}", kicker_service_error);
+            ctx.shared.screen.lock(move |screen| {
+                screen.error_update("Kicker Serv Error", err_txt);
+                screen.draw().ok();
             });
             Systick::delay(3000u32.millis()).await;
         }
@@ -1111,7 +1099,7 @@ mod app {
     }
 
     #[task(
-        shared = [display, adc1, batt_sense, robot_status],
+        shared = [screen, adc1, batt_sense, robot_status],
         local = [batt_uvlo_counter],
         priority = 1
     )]
@@ -1143,7 +1131,15 @@ mod app {
             *ctx.local.batt_uvlo_counter = 0;
         }
 
-        // TODO: Display robot status on display
+        ctx.shared.screen.lock(|screen| {
+            screen.main_loop_update(
+                _status.battery_voltage.into(),
+                _status.kick_status,
+                _status.ball_sense_status,
+                0,
+            );
+            screen.draw().ok();
+        });
     }
 
     /// Stop the motors from moving and discharge the kicker.
