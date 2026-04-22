@@ -384,12 +384,7 @@ mod app {
         )
         .into_buffered_graphics_mode();
 
-        let team_name = if TEAM_NUM == robojackets_robocup_rtp::BLUE_TEAM {
-            "Blue"
-        } else {
-            "Yellow"
-        };
-        let screen = Screen::new(ROBOT_ID.into(), team_name, display);
+        let screen = Screen::new(0, true, display);
 
         // End Initialize I2C Devices //
 
@@ -493,7 +488,6 @@ mod app {
                 kicker_controller: Some(kicker_controller),
                 screen,
                 kicker_spi,
-                screen,
                 state: State::default(),
                 adc1,
                 batt_sense,
@@ -572,6 +566,8 @@ mod app {
         TEAM.set(team).ok();
         ROBOT_ID.set(id).ok();
         ctx.shared.screen.lock(|screen| {
+            screen.set_team(team == Team::Blue);
+            screen.set_robot_id(id);
             screen.init_display().ok();
             screen.draw().ok();
         });

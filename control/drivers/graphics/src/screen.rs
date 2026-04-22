@@ -28,9 +28,9 @@ pub enum DisplayState {
 ///     Returns Result<(), Self::DisplayError>
 pub trait ScreenDisplay<Color>: DrawTarget<Color=Color> {
     type DisplayError;
-    fn initDisp(&mut self) -> Result<(), Self::DisplayError>;
-    fn clearDisp(&mut self);
-    fn flushDisp(&mut self) -> Result<(), Self::DisplayError>;
+    fn init_disp(&mut self) -> Result<(), Self::DisplayError>;
+    fn clear_disp(&mut self);
+    fn flush_disp(&mut self) -> Result<(), Self::DisplayError>;
 }
 
 /// Container for errors in sending data to the display and errors in the display interface.
@@ -53,20 +53,34 @@ where
     data: MainWindow<'a>,
     errors: ErrorScreen<'a>,
     display: D,
+    robot_id: u8,
+    blue_team: bool,
 }
 impl<'a, D> Screen<'a, D>
 where
     D: ScreenDisplay<BinaryColor> + DrawTarget<Color = BinaryColor>,
 {
+    pub fn set_team(&mut self, blue_team: bool) {
+        self.blue_team = blue_team;
+        self.data.team = if blue_team { "Blue" } else { "Yellow" };
+    }
+
+    pub fn set_robot_id(&mut self, robot_id: u8) {
+        self.robot_id = robot_id;
+        self.data.robot_id = robot_id as u16;
+    }
+
     /// Initialize a new Screen with defaults for data and errors.
     /// Default state is DisplayState::Start.
-    /// Requires robot_id: u16, team: &'a str, display: D
-    pub fn new(robot_id: u16, team: &'a str, display: D) -> Self {
+    /// Requires robot_id: u16, blue_team: bool, display: D
+    pub fn new(robot_id: u8, blue_team: bool, display: D) -> Self {
         let instance = Screen {
             state: DisplayState::Start,
-            data: MainWindow::new(robot_id, team),
+            data: MainWindow::new(robot_id as u16, if blue_team { "Blue" } else { "Yellow" }),
             errors: ErrorScreen::new("Error", "Unspecified error".to_string()),
             display: display,
+            robot_id,
+            blue_team,
         };
         return instance;
     }
@@ -74,18 +88,18 @@ where
     /// Initializes and clears the display.
     /// Returns Result<(), D::DisplayError>.
     pub fn init_display(&mut self) -> Result<(), D::DisplayError> {
-        self.display.initDisp()?;
-        self.display.clearDisp();
+        self.display.init_disp()?;
+        self.display.clear_disp();
         Ok(())
     }
 
     /// Draws to the screen and flushes the queue, depending on the current state.
     /// Does not change the current data to be displayed; only sends the data to the screen.
     pub fn draw(&mut self) -> Result<(), DrawError<D::DisplayError, D::Error>> {
-        self.display.clearDisp();
+        self.display.clear_disp();
         match self.state {
             DisplayState::Start => {
-                StartScreen::new(Point::new(0, 0), Point::new(24, 8))
+                StartScreen::new(Point::new(0, 0), Point::new(24, 8), self.blue_team, self.robot_id)
                     .draw(&mut self.display)
                     .map_err(DrawError::Draw)?;
             }
@@ -99,7 +113,7 @@ where
             }
         }
         self.display
-            .flushDisp()
+            .flush_disp()
             .map_err(DrawError::DisplayInterface)?;
         Ok(())
     }
@@ -137,17 +151,17 @@ impl<B: embedded_hal::blocking::i2c::Write> ScreenDisplay<BinaryColor>
 {
     type DisplayError = display_interface::DisplayError;
 
-    fn initDisp(&mut self) -> Result<(), Self::DisplayError> {
+    fn init_disp(&mut self) -> Result<(), Self::DisplayError> {
         self.init()?;
         self.clear();
         Ok(())
     }
 
-    fn clearDisp(&mut self) {
+    fn clear_disp(&mut self) {
         self.clear();
     }
 
-    fn flushDisp(&mut self) -> Result<(), Self::DisplayError> {
+    fn flush_disp(&mut self) -> Result<(), Self::DisplayError> {
         self.flush()?;
         Ok(())
     }
