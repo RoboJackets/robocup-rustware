@@ -26,7 +26,7 @@ pub enum DisplayState {
 /// clearDisp must remove all contents from the display
 /// flushDisp must send to the display all data currently in the queue if it exists.
 ///     Returns Result<(), Self::DisplayError>
-pub trait ScreenDisplay<Color>: DrawTarget<Color=Color> {
+pub trait ScreenDisplay<Color>: DrawTarget<Color = Color> {
     type DisplayError;
     fn init_disp(&mut self) -> Result<(), Self::DisplayError>;
     fn clear_disp(&mut self);
@@ -99,9 +99,14 @@ where
         self.display.clear_disp();
         match self.state {
             DisplayState::Start => {
-                StartScreen::new(Point::new(0, 0), Point::new(24, 8), self.blue_team, self.robot_id)
-                    .draw(&mut self.display)
-                    .map_err(DrawError::Draw)?;
+                StartScreen::new(
+                    Point::new(0, 0),
+                    Point::new(24, 8),
+                    self.blue_team,
+                    self.robot_id,
+                )
+                .draw(&mut self.display)
+                .map_err(DrawError::Draw)?;
             }
             DisplayState::MainLoop => {
                 self.data.draw(&mut self.display).map_err(DrawError::Draw)?;
