@@ -4,7 +4,7 @@
 
 use imxrt_hal::gpio::Input;
 use imxrt_iomuxc::{Config, PullKeeper};
-use robojackets_robocup_rtp::Team;
+use crate::radio::Team;
 
 pub const PIN_CONFIG: Config = Config::modify().set_pull_keeper(Some(PullKeeper::Pullup47k));
 
