@@ -67,10 +67,10 @@ mod app {
         loop {
             defmt::info!("On!!!");
             ctx.local.led.set_high().unwrap();
-            Mono::delay(100.millis()).await;
+            Mono::delay(2000.millis()).await;
             defmt::info!("Off!!!");
             ctx.local.led.set_low().unwrap();
-            Mono::delay(100.millis()).await;
+            Mono::delay(2000.millis()).await;
         }
     }
 }

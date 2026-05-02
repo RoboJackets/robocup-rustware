@@ -99,7 +99,7 @@ mod app {
 
         let (mut ch1, mut ch1n, mut ch2, mut ch2n, mut ch3, mut ch3n) = pwm;
 
-        ch1.set_dead_time(pwm::DTInterval::DT_7);
+        ch1.set_dead_time(&mut rcc, 1000);
         ch1.set_duty(0);
         ch2.set_duty(0);
         ch3.set_duty(0);
@@ -133,7 +133,7 @@ mod app {
 
         let (tx, rx) = cortex_m::interrupt::free(|cs| {
             (
-                gpioa.pa14.into_alternate_af1(cs),
+                gpiob.pb6.into_alternate_af0(cs),
                 gpioa.pa15.into_alternate_af1(cs),
             )
         });

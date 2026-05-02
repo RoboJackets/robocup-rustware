@@ -14,9 +14,9 @@ use embedded_hal::PwmPin;
 use stm32f0xx_hal::prelude::*;
 use stm32f0xx_hal::{
     gpio::{
-        AF1, Alternate, Input, Output, PullDown, PushPull,
+        AF0, AF1, Alternate, Input, Output, PullDown, PushPull,
         gpioa::{PA0, PA1, PA2, PA11, PA14, PA15},
-        gpiob::PB12,
+        gpiob::{PB12, PB6},
         gpiof::{PF6, PF7},
     },
     pac::{EXTI, SYSCFG, USART1},
@@ -63,7 +63,7 @@ pub type HS2 = PA1<Input<PullDown>>;
 pub type HS3 = PA2<Input<PullDown>>;
 
 /// The usart TX Pin
-pub type UsartTx = PA14<Alternate<AF1>>;
+pub type UsartTx = PB6<Alternate<AF0>>;
 /// The usart RX Pin
 pub type UsartRx = PA15<Alternate<AF1>>;
 /// The USART Peripheral
