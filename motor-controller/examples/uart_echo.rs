@@ -43,7 +43,7 @@ mod app {
 
         let (tx, rx) = cortex_m::interrupt::free(|cs| {
             (
-                gpioa.pa14.into_alternate_af1(cs),
+                gpiob.pb6.into_alternate_af0(cs),
                 gpioa.pa15.into_alternate_af1(cs),
             )
         });
