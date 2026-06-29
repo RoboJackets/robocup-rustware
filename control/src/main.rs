@@ -540,16 +540,19 @@ mod app {
         priority = 1
     )]
     async fn initialize_imu(ctx: initialize_imu::Context) {
-        (
-            ctx.shared.imu,
-            ctx.shared.pit_delay,
-            ctx.shared.imu_init_error,
-        )
-            .lock(|imu, pit_delay, imu_init_error| {
-                if let Err(err) = imu.init(pit_delay) {
-                    *imu_init_error = Some(err);
-                }
-            });
+        
+        // We do not use the IMU for motion control, so we will disable init
+        // to prevent issues 
+        // (
+        //     ctx.shared.imu,
+        //     ctx.shared.pit_delay,
+        //     ctx.shared.imu_init_error,
+        // )
+        //     .lock(|imu, pit_delay, imu_init_error| {
+        //         if let Err(err) = imu.init(pit_delay) {
+        //             *imu_init_error = Some(err);
+        //         }
+        //     });
         Systick::delay(1000.millis()).await;
         initialize_display::spawn().ok();
     }
