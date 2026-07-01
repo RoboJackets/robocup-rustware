@@ -18,19 +18,14 @@ mod app {
         hall_to_phases,
     };
     use stm32f0xx_hal::{
-        gpio::{Output, PushPull, gpiob::PB1},
-        pac::{TIM1, TIM2, TIM3},
-        prelude::*,
-        pwm::{self, C1, C1N, C2, C2N, C3, C3N, ComplementaryPwm, PwmChannels},
-        qei::Qei,
-        serial::{self, Serial},
-        timers::{Event, Timer},
+        gpio::{Output, PushPull, gpiob::PB1}, pac::{TIM1, TIM2, TIM3, i2c1::icr::TIMOUTCF_AW}, prelude::*, pwm::{self, C1, C1N, C2, C2N, C3, C3N, ComplementaryPwm, PwmChannels}, qei::Qei, serial::{self, Serial}, timers::{Event, Timer},
     };
 
     /// The maximum PWM that is sendable to the motors
     pub const MAXIMUM_OUTPUT: u16 = 100;
     /// The timeout (in milliseconds)
-    pub const TIMEOUT_MS: u32 = 100;
+    pub const TIMEOUT_MS: u32 = 1000;
+
 
     #[local]
     struct Local {
@@ -78,6 +73,8 @@ mod app {
         setpoint: i32,
         // The current velocity (in ticks per second) of the motor
         current_velocity: i32,
+        // Watchdog counter
+        watchdog: u32,
     }
 
     #[init]
@@ -170,6 +167,7 @@ mod app {
             Shared {
                 setpoint: 0,
                 current_velocity: 0,
+                watchdog: 0,
             },
             Local {
                 encoders,
@@ -221,12 +219,19 @@ mod app {
         shared = [
             setpoint,
             current_velocity,
+            watchdog,
         ],
         binds = TIM2,
         priority = 1
     )]
     /// Update the speed of the motors.  The timer calls an interrupt every 1ms
     fn motion_control_update(mut ctx: motion_control_update::Context) {
+        // Watchdog check
+        let timed_out = ctx.shared.watchdog.lock(|w| {
+            *w += 1;
+            *w >= TIMEOUT_MS
+        });
+        
         if *ctx.local.iteration % 2_000 == 0 {
             if *ctx.local.last_led {
                 ctx.local.led.set_low().unwrap();
@@ -237,7 +242,11 @@ mod app {
             }
         }
         // Setpoint in ticks per second
-        let setpoint = ctx.shared.setpoint.lock(|setpoint| *setpoint);
+        let setpoint = if timed_out {
+            0 
+        } else {
+            ctx.shared.setpoint.lock(|setpoint| *setpoint) 
+        };
 
         let (pwm, clockwise) = ctx.local.pid.update(setpoint, ctx.local.encoders.count());
 
@@ -322,6 +331,7 @@ mod app {
         shared = [
             setpoint,
             current_velocity,
+            watchdog,
         ],
         binds = USART1,
         priority = 1
@@ -342,6 +352,7 @@ mod app {
         if *ctx.local.idx == ctx.local.buffer.len() {
             let setpoint = i32::from_le_bytes(*ctx.local.buffer);
             ctx.shared.setpoint.lock(|s| *s = setpoint);
+            ctx.shared.watchdog.lock(|w| *w = 0);
 
             ctx.shared
                 .current_velocity

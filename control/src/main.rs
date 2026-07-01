@@ -1030,26 +1030,24 @@ mod app {
             log::info!("DEAD: {}", elapsed_time);
         }
 
-        if body_velocities != *ctx.local.last_body_velocities {
-            *ctx.local.last_body_velocities = body_velocities;
-            let wheel_velocities = ctx.local.motion_controller.body_to_wheels(body_velocities);
+        *ctx.local.last_body_velocities = body_velocities;
+        let wheel_velocities = ctx.local.motion_controller.body_to_wheels(body_velocities);
 
-            ctx.shared
-                .dribbler_uart
-                .lock(|uart| send_command(dribbler_speed as i32, ctx.local.dribbler_tx, uart, 0));
-            ctx.shared
-                .motor_one_uart
-                .lock(|uart| send_command(wheel_velocities[0], ctx.local.motor_one_tx, uart, 0));
-            ctx.shared
-                .motor_two_uart
-                .lock(|uart| send_command(wheel_velocities[1], ctx.local.motor_two_tx, uart, 0));
-            ctx.shared
-                .motor_three_uart
-                .lock(|uart| send_command(wheel_velocities[2], ctx.local.motor_three_tx, uart, 0));
-            ctx.shared
-                .motor_four_uart
-                .lock(|uart| send_command(wheel_velocities[3], ctx.local.motor_four_tx, uart, 0));
-        }
+        ctx.shared
+            .dribbler_uart
+            .lock(|uart| send_command(dribbler_speed as i32, ctx.local.dribbler_tx, uart, 0));
+        ctx.shared
+            .motor_one_uart
+            .lock(|uart| send_command(wheel_velocities[0], ctx.local.motor_one_tx, uart, 0));
+        ctx.shared
+            .motor_two_uart
+            .lock(|uart| send_command(wheel_velocities[1], ctx.local.motor_two_tx, uart, 0));
+        ctx.shared
+            .motor_three_uart
+            .lock(|uart| send_command(wheel_velocities[2], ctx.local.motor_three_tx, uart, 0));
+        ctx.shared
+            .motor_four_uart
+            .lock(|uart| send_command(wheel_velocities[3], ctx.local.motor_four_tx, uart, 0));
 
         #[cfg(feature = "debug")]
         log::info!("Moving at {:?}", wheel_velocities);
