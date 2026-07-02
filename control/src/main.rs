@@ -105,7 +105,7 @@ mod app {
     };
     use teensy4_pins::tmm::P15;
 
-    const HEAP_SIZE: usize = 1024;
+    const HEAP_SIZE: usize = 1024 * 64;
     static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
 
     static TEAM: OnceCell<Team> = OnceCell::new();
