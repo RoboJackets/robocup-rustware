@@ -62,10 +62,6 @@ mod app {
 
     use shared_bus;
 
-    // Includes for display module
-    use embedded_graphics::prelude::*;
-    use graphics::screen::Screen;
-    use ssd1306::{prelude::*, I2CDisplayInterface, Ssd1306};
     use teensy4_pins::t41::{P18, P19};
 
     use robojackets_robocup_rtp::{
@@ -229,8 +225,6 @@ mod app {
         pit1: Pit<1>,
         adc1: Adc1,
         batt_sense: AnalogInput<P15, 1>,
-        //Display
-        screen: Screen<'static, Display>,
 
         // State
         state: State,
@@ -381,15 +375,6 @@ mod app {
         .expect("Failed to initialize shared I2C bus LPI2C1");
         let imu = IMU::new(i2c_bus.acquire_i2c());
 
-        let display_interface = I2CDisplayInterface::new(i2c_bus.acquire_i2c());
-        let display: Display = Ssd1306::new(
-            display_interface,
-            DisplaySize128x64,
-            DisplayRotation::Rotate0,
-        )
-        .into_buffered_graphics_mode();
-
-        let screen = Screen::new(0, true, display);
 
         // End Initialize I2C Devices //
 
@@ -491,7 +476,6 @@ mod app {
                 pit_delay,
                 kicker_programmer: None,
                 kicker_controller: Some(kicker_controller),
-                screen,
                 kicker_spi,
                 state: State::default(),
                 adc1,
@@ -542,6 +526,7 @@ mod app {
     /// Initialize the IMU
     #[task(
         shared = [imu, pit_delay, imu_init_error],
+        local=[hex0, hex1, hex2, hex3],
         priority = 1
     )]
     async fn initialize_imu(ctx: initialize_imu::Context) {
@@ -558,13 +543,6 @@ mod app {
         //             *imu_init_error = Some(err);
         //         }
         //     });
-        Systick::delay(1000.millis()).await;
-        initialize_display::spawn().ok();
-    }
-
-    /// Initialize the display
-    #[task(shared=[screen], local=[hex0, hex1, hex2, hex3], priority = 1)]
-    async fn initialize_display(mut ctx: initialize_display::Context) {
         let (team, id) = get_team_and_id(
             &ctx.local.hex0,
             &ctx.local.hex1,
@@ -573,12 +551,7 @@ mod app {
         );
         TEAM.set(team).ok();
         ROBOT_ID.set(id).ok();
-        ctx.shared.screen.lock(|screen| {
-            screen.set_team(team == Team::Blue);
-            screen.set_robot_id(id);
-            screen.init_display().ok();
-            screen.draw().ok();
-        });
+        Systick::delay(1000.millis()).await;
         initialize_radio::spawn().ok();
     }
 
@@ -668,7 +641,6 @@ mod app {
             radio_init_error,
             kicker_program_error,
             kicker_service_error,
-            screen,
         ],
         priority = 1
     )]
@@ -701,31 +673,6 @@ mod app {
             log::error!("KICKER-PROG: {:?}", kicker_program_error);
             log::error!("KICKER-SERVICE: {:?}", kicker_service_error);
 
-            ctx.shared.screen.lock(|screen| {
-                let err_txt = format!("{:?}", imu_init_error);
-                screen.error_update("IMU Init Error", err_txt);
-                screen.draw().ok();
-            });
-            Systick::delay(3000u32.millis()).await;
-
-            Systick::delay(3000u32.millis()).await;
-            ctx.shared.screen.lock(|screen| {
-                let err_txt = format!("{:?}", radio_init_error);
-                screen.error_update("Radio Init Error", err_txt);
-                screen.draw().ok();
-            });
-            Systick::delay(3000u32.millis()).await;
-            ctx.shared.screen.lock(|screen| {
-                let err_txt = format!("{:?}", kicker_program_error);
-                screen.error_update("Kicker Prog Error", err_txt);
-                screen.draw().ok();
-            });
-            Systick::delay(3000u32.millis()).await;
-            let err_txt = format!("{:?}", kicker_service_error);
-            ctx.shared.screen.lock(move |screen| {
-                screen.error_update("Kicker Serv Error", err_txt);
-                screen.draw().ok();
-            });
             Systick::delay(3000u32.millis()).await;
         }
     }
@@ -1105,7 +1052,7 @@ mod app {
     }
 
     #[task(
-        shared = [screen, adc1, batt_sense, robot_status],
+        shared = [adc1, batt_sense, robot_status],
         local = [batt_uvlo_counter],
         priority = 1
     )]
@@ -1137,15 +1084,6 @@ mod app {
             *ctx.local.batt_uvlo_counter = 0;
         }
 
-        ctx.shared.screen.lock(|screen| {
-            screen.main_loop_update(
-                _status.battery_voltage.into(),
-                _status.kick_status,
-                _status.ball_sense_status,
-                0,
-            );
-            screen.draw().ok();
-        });
     }
 
     /// Stop the motors from moving and discharge the kicker.
