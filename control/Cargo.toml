@@ -79,7 +79,7 @@ features = [
 ]
 
 [dependencies.imxrt-hal]
-version = "=0.5.4"
+version = "=0.5.13"
 
 # allows for debugging messages when panicking
 [dependencies.teensy4-panic]
