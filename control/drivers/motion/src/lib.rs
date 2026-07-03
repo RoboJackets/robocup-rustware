@@ -7,9 +7,6 @@ use nalgebra::base::*;
 pub mod motion_control;
 pub use motion_control::MotionControl;
 
-pub mod pid;
-pub use pid::Pid;
-
 /// The number of encoder ticks per rotation (Wheels have a gear ration of 1:3 and encoders have
 /// 2048 counts per rotation)
 pub const TICKS_PER_ROTATION: f32 = 6144.0;
